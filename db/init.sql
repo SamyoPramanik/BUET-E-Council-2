@@ -91,7 +91,7 @@ CREATE TABLE members (
     department_id UUID REFERENCES departments (id) ON DELETE SET NULL,
     office_id UUID REFERENCES offices (id) ON DELETE SET NULL,
     email VARCHAR(255) UNIQUE,
-    member_type member_type_enum NOT NULL DEFAULT 'none',
+    member_type member_type_enum NOT NULL DEFAULT 'academic',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

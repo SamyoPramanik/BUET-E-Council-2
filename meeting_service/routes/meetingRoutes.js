@@ -13,6 +13,8 @@ router.put('/:id', meetingController.updateMeeting);
 router.delete('/:id', meetingController.deleteMeeting); // critical
 
 router.post('/:id/invitees', meetingController.addInvitees);
+router.get('/:id/invitees', meetingController.getInvitees);
+router.delete('/:id/invitees/:inviteeId', meetingController.removeInvitee);
 router.post('/:id/invitees/bulk-fetch', meetingController.bulkFetchInvitees);
 router.post('/:id/presentees', meetingController.addPresentees);
 

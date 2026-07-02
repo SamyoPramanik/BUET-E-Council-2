@@ -163,6 +163,42 @@ const bulkFetchInvitees = async (req, res, next) => {
     }
 };
 
+const getInvitees = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query(`
+            SELECT i.*, d.name_english as department_name, o.name_bangla as office_name
+            FROM invitees i
+            LEFT JOIN departments d ON i.department_id = d.id
+            LEFT JOIN offices o ON i.office_id = o.id
+            WHERE i.meeting_id = $1
+            ORDER BY i.created_at ASC
+        `, [id]);
+        
+        res.status(200).json({ success: true, data: result.rows });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const removeInvitee = async (req, res, next) => {
+    try {
+        const { id, inviteeId } = req.params;
+        const result = await db.query(
+            'DELETE FROM invitees WHERE id = $1 AND meeting_id = $2 RETURNING *',
+            [inviteeId, id]
+        );
+
+        if (result.rows.length === 0) {
+            return next(new CustomError('Invitee not found', 404));
+        }
+
+        res.status(200).json({ success: true, message: 'Invitee removed' });
+    } catch (error) {
+        next(error);
+    }
+};
+
 const addPresentees = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -226,6 +262,8 @@ module.exports = {
     deleteMeeting,
     addInvitees,
     bulkFetchInvitees,
+    getInvitees,
+    removeInvitee,
     addPresentees,
     generatePdf
 };

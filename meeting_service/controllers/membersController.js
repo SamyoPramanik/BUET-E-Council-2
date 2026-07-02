@@ -7,7 +7,7 @@ const getMembers = async (req, res, next) => {
         const { type } = req.query; // ?type=academic or ?type=syndicate
 
         let query = `
-            SELECT m.*, d.name_english as department_name, o.name_bangla as office_name
+            SELECT m.*, d.name_bangla as department_name, o.name_bangla as office_name
             FROM members m
             LEFT JOIN departments d ON m.department_id = d.id
             LEFT JOIN offices o ON m.office_id = o.id
@@ -42,12 +42,12 @@ const createMember = async (req, res, next) => {
             `INSERT INTO members (name, prefix, designation, department_id, office_id, email, member_type) 
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
             [
-                name, 
-                prefix !== undefined ? prefix : null, 
-                designation !== undefined ? designation : null, 
-                (department_id === "" || department_id === undefined) ? null : department_id, 
-                (office_id === "" || office_id === undefined) ? null : office_id, 
-                processedEmail, 
+                name,
+                prefix !== undefined ? prefix : null,
+                designation !== undefined ? designation : null,
+                (department_id === "" || department_id === undefined) ? null : department_id,
+                (office_id === "" || office_id === undefined) ? null : office_id,
+                processedEmail,
                 member_type || 'none'
             ]
         );
@@ -82,13 +82,13 @@ const updateMember = async (req, res, next) => {
                  member_type = COALESCE($7, member_type)
              WHERE id = $8 RETURNING *`,
             [
-                name !== undefined ? name : null, 
-                prefix !== undefined ? prefix : null, 
-                designation !== undefined ? designation : null, 
-                processedDeptId, 
-                processedOfficeId, 
-                processedEmail, 
-                member_type !== undefined ? member_type : null, 
+                name !== undefined ? name : null,
+                prefix !== undefined ? prefix : null,
+                designation !== undefined ? designation : null,
+                processedDeptId,
+                processedOfficeId,
+                processedEmail,
+                member_type !== undefined ? member_type : null,
                 id
             ]
         );
@@ -150,7 +150,7 @@ const fetchExternalMembers = async (req, res, next) => {
             let syncCount = 0;
 
             for (const u of usersData) {
-                const name = u['name:'];
+                const name = u['Bangla Name:'];
                 const designation = u['designation:'];
                 const deptSort = u['dept_sort:'];
                 let rawEmail = u['email:'];
@@ -166,7 +166,7 @@ const fetchExternalMembers = async (req, res, next) => {
                 let department_id = (deptSort && deptMap[deptSort.toLowerCase()]) ? deptMap[deptSort.toLowerCase()] : null;
                 let office_id = null;
 
-                const dh = deanHeadData.find(d => d['name:'] === name);
+                const dh = deanHeadData.find(d => d['Bangla Name:'] === name);
                 if (dh) {
                     const dhDesig = dh['designation:'];
                     const dhOffice = dh['In-Charge-Office:'];

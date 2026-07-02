@@ -23,7 +23,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const handleRemove = (inviteeId: string) => {
     confirm("Remove Invitee", "Are you sure you want to remove this invitee?", async () => {
       try {
-        await api.delete(`/invitees/${inviteeId}`);
+        await api.delete(`/meetings/${meeting.id}/invitees/${inviteeId}`);
         mutateInvitees();
         toast.success("Invitee removed successfully");
       } catch (err) {

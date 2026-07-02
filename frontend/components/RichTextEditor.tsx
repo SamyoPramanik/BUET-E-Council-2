@@ -187,11 +187,13 @@ const MenuBar = ({ editor }: { editor: any }) => {
 export default function RichTextEditor({ 
   content, 
   onChange,
-  className = "p-4 min-h-[150px]"
+  className = "p-4 min-h-[150px]",
+  editable = true
 }: { 
   content: string; 
   onChange: (html: string) => void;
   className?: string;
+  editable?: boolean;
 }) {
   const editor = useEditor({
     extensions: [
@@ -208,6 +210,7 @@ export default function RichTextEditor({
       }),
     ],
     content,
+    editable,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
@@ -226,9 +229,9 @@ export default function RichTextEditor({
   }, [content, editor]);
 
   return (
-    <div className="flex flex-col w-full h-full bg-background overflow-hidden">
-      <MenuBar editor={editor} />
-      <div className="flex-1 overflow-y-auto">
+    <div className={`flex flex-col w-full h-full bg-background overflow-hidden ${!editable ? 'opacity-70 cursor-not-allowed' : ''}`}>
+      {editable && <MenuBar editor={editor} />}
+      <div className={`flex-1 overflow-y-auto ${!editable ? 'pointer-events-none' : ''}`}>
         <EditorContent editor={editor} className="h-full cursor-text" />
       </div>
     </div>

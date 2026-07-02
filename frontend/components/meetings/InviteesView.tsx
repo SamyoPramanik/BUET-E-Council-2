@@ -13,6 +13,7 @@ import { useConfirm } from "../../hooks/useConfirm";
 export default function InviteesView({ meeting, type, mutate }: { meeting: any, type: string, mutate: any }) {
   const isPast = meeting.status === 'past';
   const displayType = isPast ? 'Presentees' : 'Invitees';
+  const isLocked = meeting.is_locked;
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAddPresenteeModalOpen, setIsAddPresenteeModalOpen] = useState(false);
@@ -247,50 +248,54 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
 
         <div className="flex items-center gap-4">
           {!isPast ? (
-            <>
-              <button 
-                onClick={() => setIsTakingAttendance(true)}
-                className="border border-primary text-primary px-4 py-2 text-sm font-medium rounded-md hover:bg-primary/5 transition-colors"
-              >
-                Take Attendance
-              </button>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleBulkFetch}
-                  disabled={isFetching}
-                  className="bg-accent text-accent-foreground border border-border px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:bg-accent/80 transition-opacity disabled:opacity-50"
+            !isLocked && (
+              <>
+                <button 
+                  onClick={() => setIsTakingAttendance(true)}
+                  className="border border-primary text-primary px-4 py-2 text-sm font-medium rounded-md hover:bg-primary/5 transition-colors"
                 >
-                  <Plus className="w-4 h-4" />
-                  {isFetching ? "Fetching..." : "Fetch From Members"}
+                  Take Attendance
                 </button>
-                <button className="bg-secondary text-secondary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity">
-                  <Mail className="w-4 h-4" />
-                  Send Agenda
-                </button>
-                <button
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="bg-primary text-primary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Invitee
-                </button>
-              </div>
-            </>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleBulkFetch}
+                    disabled={isFetching}
+                    className="bg-accent text-accent-foreground border border-border px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:bg-accent/80 transition-opacity disabled:opacity-50"
+                  >
+                    <Plus className="w-4 h-4" />
+                    {isFetching ? "Fetching..." : "Fetch From Members"}
+                  </button>
+                  <button className="bg-secondary text-secondary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity">
+                    <Mail className="w-4 h-4" />
+                    Send Agenda
+                  </button>
+                  <button
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="bg-primary text-primary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Invitee
+                  </button>
+                </div>
+              </>
+            )
           ) : (
-            <button
-              onClick={() => {
-                // Initialize selectedMembers with already added presentees
-                const initiallySelected = allMembers
-                  .filter((m: any) => invitees.some((p: any) => p.name === m.name && p.designation === m.designation))
-                  .map((m: any) => m.id);
-                setSelectedMembers(initiallySelected);
-                setIsAddPresenteeModalOpen(true);
-              }}
-              className="bg-primary text-primary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
-            >
-              <Plus className="w-4 h-4" />
-              Add Presentee
-            </button>
+            !isLocked && (
+              <button
+                onClick={() => {
+                  // Initialize selectedMembers with already added presentees
+                  const initiallySelected = allMembers
+                    .filter((m: any) => invitees.some((p: any) => p.name === m.name && p.designation === m.designation))
+                    .map((m: any) => m.id);
+                  setSelectedMembers(initiallySelected);
+                  setIsAddPresenteeModalOpen(true);
+                }}
+                className="bg-primary text-primary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
+              >
+                <Plus className="w-4 h-4" />
+                Add Presentee
+              </button>
+            )
           )}
         </div>
       </div>
@@ -305,8 +310,8 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         <DataTable
           columns={columns}
           data={invitees}
-          onEdit={isPast ? handleEditClick : undefined}
-          onDelete={(row) => handleRemove(row.id)}
+          onEdit={!isLocked && isPast ? handleEditClick : undefined}
+          onDelete={!isLocked ? (row) => handleRemove(row.id) : undefined}
         />
       )}
 

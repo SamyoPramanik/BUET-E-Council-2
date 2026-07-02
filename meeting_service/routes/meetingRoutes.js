@@ -15,6 +15,7 @@ router.post('/', meetingController.createMeeting);
 router.put('/:id', meetingController.updateMeeting);
 router.delete('/:id', meetingController.deleteMeeting); // critical
 router.post('/:id/complete', meetingController.completeMeeting);
+router.put('/:id/lock', meetingController.toggleLock);
 
 router.post('/:id/invitees', meetingController.addInvitees);
 router.get('/:id/invitees', meetingController.getInvitees);

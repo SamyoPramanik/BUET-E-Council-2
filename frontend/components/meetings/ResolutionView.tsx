@@ -10,8 +10,9 @@ import { toast } from "sonner";
 import TemplateDrawer from "../TemplateDrawer";
 
 export default function ResolutionView({ meeting }: { meeting: any }) {
+  const isLocked = meeting.is_locked;
   const { data: response, mutate } = useSWR(`/agendas?meeting_id=${meeting.id}`, fetcher, { fallbackData: { data: [] } });
-  
+
   // Sort main agendas first, suppli agendas last, then by serial
   const agendas = [...(response?.data || [])].sort((a: any, b: any) => {
     if (a.is_suppli === b.is_suppli) {
@@ -97,111 +98,115 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
       ) : (
         agendas.map((agenda: any, index: number) => (
           <div key={agenda.id} className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm">
-          
-          {/* Top Section (Read-Only Agenda) */}
-          <div className="mb-6">
-            <h3 className="font-semibold text-sm text-primary uppercase tracking-wider mb-2">
-              {agenda.is_suppli ? 'Suppli Ag-' : 'Ag-'}{agenda.agenda_serial || index + 1}
-            </h3>
-            <div className="text-muted-foreground bg-muted/30 p-4 rounded-md border-l-4 border-muted/50 prose prose-sm dark:prose-invert max-w-none">
-              <div dangerouslySetInnerHTML={{ __html: agenda.content || "<p class='italic opacity-50'>Empty agenda...</p>" }} />
+
+            {/* Top Section (Read-Only Agenda) */}
+            <div className="mb-6">
+              <h3 className="font-semibold text-sm text-primary uppercase tracking-wider mb-2">
+                {agenda.is_suppli ? 'Suppli Ag-' : 'Ag-'}{agenda.agenda_serial || index + 1}
+              </h3>
+              <div className="text-muted-foreground bg-muted/30 p-4 rounded-md border-l-4 border-muted/50 prose prose-sm dark:prose-invert max-w-none">
+                <div dangerouslySetInnerHTML={{ __html: agenda.content || "<p class='italic opacity-50'>Empty agenda...</p>" }} />
+              </div>
             </div>
-          </div>
 
-          {/* Bottom Section (The Resolution) */}
-          <div>
-            <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-primary" />
-              Resolution Outcome
-            </h4>
+            {/* Bottom Section (The Resolution) */}
+            <div>
+              <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-primary" />
+                Resolution Outcome
+              </h4>
 
-            {editingId === agenda.id ? (
-              <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10">
-                <RichTextEditor 
-                  content={editContent}
-                  onChange={setEditContent}
-                  className="p-4 min-h-[150px]"
-                />
-                <div className="bg-muted p-2 flex justify-between items-center border-t border-border">
-                  <button 
-                    onClick={() => { setTargetAgendaId(agenda.id); setIsDrawerOpen(true); }}
-                    className="px-3 py-1 text-xs text-primary font-medium hover:bg-primary/10 rounded-md flex items-center gap-1.5 transition-colors"
-                  >
-                    <FileText className="w-3.5 h-3.5" /> From Template
-                  </button>
-                  <div className="flex gap-2">
-                    <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
-                    <button onClick={handleSave} disabled={isSaving} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md disabled:opacity-50">
-                      {isSaving ? "Saving..." : "Save Resolution"}
+              {editingId === agenda.id ? (
+                <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10">
+                  <RichTextEditor
+                    content={editContent}
+                    onChange={setEditContent}
+                    className="p-4 min-h-[150px]"
+                  />
+                  <div className="bg-muted p-2 flex justify-between items-center border-t border-border">
+                    <button
+                      onClick={() => { setTargetAgendaId(agenda.id); setIsDrawerOpen(true); }}
+                      className="px-3 py-1 text-xs text-primary font-medium hover:bg-primary/10 rounded-md flex items-center gap-1.5 transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> From Template
                     </button>
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
+                      <button onClick={handleSave} disabled={isSaving} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md disabled:opacity-50">
+                        {isSaving ? "Saving..." : "Save Resolution"}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ) : agenda.resolution ? (
-              <div className="relative group">
-                <button 
-                  onClick={() => handleEditClick(agenda)}
-                  className="absolute top-0 right-0 text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-primary/10 rounded-md hover:bg-primary/20 flex items-center gap-2 text-xs font-medium z-10"
-                >
-                  <Edit3 className="w-3.5 h-3.5" /> Edit
-                </button>
-                <div 
-                  className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-background border border-border p-5 rounded-md shadow-inner"
-                  dangerouslySetInnerHTML={{ __html: agenda.resolution }} 
-                />
-              </div>
-            ) : (
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => handleEditClick(agenda)}
-                  className="bg-background border border-primary text-primary hover:bg-primary/5 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors"
-                >
-                  <Edit3 className="w-4 h-4" /> Create Resolution
-                </button>
-                <button 
-                  onClick={() => {
-                    handleEditClick(agenda);
-                    setTargetAgendaId(agenda.id);
-                    setIsDrawerOpen(true);
-                  }}
-                  className="bg-accent text-accent-foreground border border-border shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 hover:bg-accent/80 transition-colors"
-                >
-                  <FileText className="w-4 h-4" /> From Template
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Annexure List placed underneath the resolution content */}
-          {agenda.resolution && (
-            <AnnexureList contentId={agenda.id} type="resolution" />
-          )}
-
-          {/* Execution Status (Only for past meetings) */}
-          {meeting.status === 'past' && agenda.resolution && (
-            <div className="mt-8 pt-6 border-t border-border/50">
-              <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-                <FileCheck className="w-4 h-4 text-emerald-500" />
-                Execution Status
-              </h4>
-              
-              <div className="flex items-center gap-3 mb-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    className="w-4 h-4 rounded border-input text-emerald-600 focus:ring-emerald-500"
-                    checked={agenda.is_executed || false}
-                    onChange={() => handleToggleExecuted(agenda)}
+              ) : agenda.resolution ? (
+                <div className="relative group">
+                  {!isLocked && (
+                    <button
+                      onClick={() => handleEditClick(agenda)}
+                      className="absolute top-0 right-0 text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-primary/10 rounded-md hover:bg-primary/20 flex items-center gap-2 text-xs font-medium z-10"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" /> Edit
+                    </button>
+                  )}
+                  <div
+                    className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-background border border-border p-5 rounded-md shadow-inner"
+                    dangerouslySetInnerHTML={{ __html: agenda.resolution }}
                   />
-                  <span className="text-sm font-medium">Resolution Executed</span>
-                </label>
-              </div>
+                </div>
+              ) : (
+                !isLocked && (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => handleEditClick(agenda)}
+                      className="bg-background border border-primary text-primary hover:bg-primary/5 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors"
+                    >
+                      <Edit3 className="w-4 h-4" /> Create Resolution
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleEditClick(agenda);
+                        setTargetAgendaId(agenda.id);
+                        setIsDrawerOpen(true);
+                      }}
+                      className="bg-accent text-accent-foreground border border-border shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 hover:bg-accent/80 transition-colors"
+                    >
+                      <FileText className="w-4 h-4" /> From Template
+                    </button>
+                  </div>
+                )
+              )}
+            </div>
 
-              {agenda.is_executed && (
-                <div className="pl-6 border-l-2 border-emerald-500/20">
+            {/* Annexure List placed underneath the resolution content */}
+            {agenda.resolution && (
+              <AnnexureList contentId={agenda.id} type="resolution" />
+            )}
+
+            {/* Execution Status (Only for past meetings) */}
+            {meeting.status === 'past' && agenda.resolution && (
+              <div className="mt-8 pt-6 border-t border-border/50">
+                <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+                  <FileCheck className="w-4 h-4 text-emerald-500" />
+                  Execution Status
+                </h4>
+
+                <div className="flex items-center gap-3 mb-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      disabled={isLocked}
+                      className="w-4 h-4 rounded border-input text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
+                      checked={agenda.is_executed || false}
+                      onChange={() => handleToggleExecuted(agenda)}
+                    />
+                    <span className="text-sm font-medium">Resolution Executed</span>
+                  </label>
+                </div>
+
+                <div>
                   {executingId === agenda.id ? (
                     <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10 mb-4">
-                      <RichTextEditor 
+                      <RichTextEditor
                         content={executionContent}
                         onChange={setExecutionContent}
                         className="p-4 min-h-[100px]"
@@ -215,36 +220,39 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                     </div>
                   ) : agenda.execution_status ? (
                     <div className="relative group mb-4">
-                      <button 
-                        onClick={() => { setExecutingId(agenda.id); setExecutionContent(agenda.execution_status); }}
-                        className="absolute top-0 right-0 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-emerald-50 rounded-md hover:bg-emerald-100 flex items-center gap-2 text-xs font-medium z-10"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" /> Edit Details
-                      </button>
-                      <div 
-                        className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-emerald-50/30 border border-emerald-100 p-4 rounded-md shadow-sm"
-                        dangerouslySetInnerHTML={{ __html: agenda.execution_status }} 
+                      {!isLocked && (
+                        <button
+                          onClick={() => { setExecutingId(agenda.id); setExecutionContent(agenda.execution_status); }}
+                          className="absolute top-0 right-0 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-emerald-50 rounded-md hover:bg-emerald-100 flex items-center gap-2 text-xs font-medium z-10"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" /> Edit Details
+                        </button>
+                      )}
+                      <div
+                        className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-emerald-200/30 border border-emerald-100 p-4 rounded-md shadow-sm"
+                        dangerouslySetInnerHTML={{ __html: agenda.execution_status }}
                       />
                     </div>
                   ) : (
-                    <button 
-                      onClick={() => { setExecutingId(agenda.id); setExecutionContent(""); }}
-                      className="bg-background border border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors mb-4"
-                    >
-                      <Edit3 className="w-4 h-4" /> Add Execution Details
-                    </button>
+                    !isLocked && (
+                      <button
+                        onClick={() => { setExecutingId(agenda.id); setExecutionContent(""); }}
+                        className="bg-background border border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors mb-4"
+                      >
+                        <Edit3 className="w-4 h-4" /> Add Execution Details
+                      </button>
+                    )
                   )}
                 </div>
-              )}
-            </div>
-          )}
-          
-        </div>
-      )))}
+              </div>
+            )}
 
-      <TemplateDrawer 
-        isOpen={isDrawerOpen} 
-        onClose={() => setIsDrawerOpen(false)} 
+          </div>
+        )))}
+
+      <TemplateDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
         type="resolution"
         onSelect={(templateContent) => {
           if (editingId === targetAgendaId) {

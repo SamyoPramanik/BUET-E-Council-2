@@ -16,6 +16,7 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
   const title = type === 'description' ? 'Meeting Description' : 'Meeting Conclusion';
   const dbField = type === 'description' ? 'description' : 'conclusion';
   const templateType = type === 'description' ? 'description' : 'conclusion';
+  const isLocked = meeting.is_locked;
 
   // Re-initialize content when switching between Description and Conclusion
   useEffect(() => {
@@ -46,6 +47,7 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
       <div className="flex-1 flex flex-col bg-card border border-border rounded-lg shadow-sm overflow-hidden relative">
         <RichTextEditor 
           content={content}
+          editable={!isLocked}
           onChange={(html) => {
             setContent(html);
             setIsDirty(true);
@@ -54,9 +56,10 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
         />
 
         {/* Action Area */}
-        <div className="bg-muted/30 border-t border-border p-4 flex justify-between shrink-0">
-          <button 
-            onClick={() => setIsDrawerOpen(true)}
+        {!isLocked && (
+          <div className="bg-muted/30 border-t border-border p-4 flex justify-between shrink-0">
+            <button 
+              onClick={() => setIsDrawerOpen(true)}
             className="text-primary hover:text-primary/80 font-medium px-4 py-2 transition-colors flex items-center gap-2"
           >
             <FileText className="w-4 h-4" /> From Template
@@ -71,6 +74,7 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
             Save {type === 'description' ? 'Description' : 'Conclusion'}
           </button>
         </div>
+        )}
       </div>
       
       <TemplateDrawer 

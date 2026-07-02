@@ -24,6 +24,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const title = type === 'suppli-agenda' ? 'Supplementary Agenda' : 'Agenda Items';
+  const isLocked = meeting.is_locked;
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -148,20 +149,22 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               <h3 className="text-lg font-semibold text-primary">No Agendas Found</h3>
               <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are currently no agendas for this meeting. Create a new agenda to get started.</p>
             </div>
-            <div className="flex gap-4 mt-4">
-              <button 
-                onClick={handleStartCreate} 
-                className="bg-primary text-primary-foreground py-2 px-6 rounded-md font-medium shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" /> Create New Agenda
-              </button>
-              <button 
-                onClick={() => setIsDrawerOpen(true)}
-                className="bg-accent text-accent-foreground border border-border py-2 px-6 rounded-md font-medium shadow-sm hover:bg-accent/80 transition-colors flex items-center gap-2"
-              >
-                <FileText className="w-4 h-4" /> Create from Template
-              </button>
-            </div>
+            {!isLocked && (
+              <div className="flex gap-4 mt-4">
+                <button 
+                  onClick={handleStartCreate} 
+                  className="bg-primary text-primary-foreground py-2 px-6 rounded-md font-medium shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" /> Create New Agenda
+                </button>
+                <button 
+                  onClick={() => setIsDrawerOpen(true)}
+                  className="bg-accent text-accent-foreground border border-border py-2 px-6 rounded-md font-medium shadow-sm hover:bg-accent/80 transition-colors flex items-center gap-2"
+                >
+                  <FileText className="w-4 h-4" /> Create from Template
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -173,22 +176,24 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 <h3 className="font-semibold text-lg text-primary">
                   {agenda.is_suppli ? 'Suppli Ag-' : 'Ag-'}{agenda.agenda_serial || index + 1}
                 </h3>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleEditClick(agenda)}
-                    className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
-                    title="Edit Agenda"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => handleDelete(agenda.id)}
-                    className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
-                    title="Delete Agenda"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                {!isLocked && (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleEditClick(agenda)}
+                      className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
+                      title="Edit Agenda"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(agenda.id)}
+                      className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
+                      title="Delete Agenda"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
               
               {editingId === agenda.id ? (
@@ -217,7 +222,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             </div>
 
             {/* Insertion Strip (UX Magic) */}
-            {!isCreating && (
+            {!isCreating && !isLocked && (
               <div className="h-10 my-2 relative group flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t-2 border-dashed border-primary/30"></div>
@@ -236,7 +241,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
         ))}
         
         {/* Create New Agenda Form */}
-        {isCreating && (
+        {isCreating && !isLocked && (
           <div className="bg-card border border-primary/50 rounded-lg relative group shadow-sm hover:shadow-md transition-shadow mt-4">
             <div className="p-6">
               <div className="flex justify-between items-start mb-4">
@@ -250,10 +255,10 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                   onChange={setNewContent}
                   className="p-4 min-h-[200px]"
                 />
-                <div className="bg-muted p-2 flex justify-end gap-2 border-t border-border">
-                  <button onClick={() => setIsCreating(false)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
-                  <button onClick={handleSaveNew} disabled={isSaving} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md disabled:opacity-50">
-                    {isSaving ? "Saving..." : "Save"}
+                <div className="bg-muted p-3 flex justify-end gap-3 border-t border-border">
+                  <button onClick={() => setIsCreating(false)} className="px-4 py-1.5 text-sm font-medium text-muted-foreground hover:bg-background rounded-md transition-colors">Cancel</button>
+                  <button onClick={handleSaveNew} disabled={isSaving || !newContent} className="px-4 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-50 transition-opacity">
+                    {isSaving ? "Saving..." : "Create Agenda"}
                   </button>
                 </div>
               </div>

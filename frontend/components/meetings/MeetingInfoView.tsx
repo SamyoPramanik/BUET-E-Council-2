@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import api from "../../lib/api";
+import api, { fetcher } from "../../lib/api";
 import SearchableSelect from "../SearchableSelect";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
+import useSWR from "swr";
+import { Lock, Unlock } from "lucide-react";
 
 const typeOptions = [
   { value: "syndicate", label: "Syndicate" },
@@ -25,6 +27,10 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
     status: meeting.status || "draft"
   });
   const { confirm, ConfirmModal } = useConfirm();
+  const { data: authResponse } = useSWR('/auth/me', fetcher);
+  const isAdmin = authResponse?.data?.role === 'admin';
+  const isLocked = meeting.is_locked;
+  const isPast = formData.status === 'past';
 
   const [saving, setSaving] = useState(false);
   const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
@@ -69,10 +75,46 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
     }
   };
 
+  const handleToggleLock = async () => {
+    const actionStr = isLocked ? "unlock" : "lock";
+    confirm(`${isLocked ? 'Unlock' : 'Lock'} Meeting`, `Are you sure you want to ${actionStr} this meeting?`, async () => {
+      try {
+        await api.put(`/meetings/${meeting.id}/lock`);
+        mutate();
+        toast.success(`Meeting ${actionStr}ed successfully.`);
+      } catch (err: any) {
+        toast.error(err.response?.data?.message || `Failed to ${actionStr} meeting`);
+      }
+    });
+  };
+
   return (
     <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-500">
       <ConfirmModal />
-      <h2 className="text-2xl font-bold mb-6">Meeting Info</h2>
+      
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Meeting Info</h2>
+        {isAdmin && (
+          <button 
+            onClick={handleToggleLock}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium text-sm transition-colors ${
+              isLocked 
+                ? "bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-300"
+                : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-300"
+            }`}
+          >
+            {isLocked ? (
+              <>
+                <Unlock className="w-4 h-4" /> Unlock Meeting
+              </>
+            ) : (
+              <>
+                <Lock className="w-4 h-4" /> Lock Meeting
+              </>
+            )}
+          </button>
+        )}
+      </div>
       
       <div className="bg-card border border-border shadow-sm rounded-lg p-6">
         <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -81,7 +123,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
               <label className="text-sm font-medium">Meeting Serial Number</label>
               <input 
                 required 
-                disabled={formData.status === 'past'}
+                disabled={isPast || isLocked}
                 value={formData.title} 
                 onChange={e => setFormData({...formData, title: e.target.value})} 
                 className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm disabled:opacity-50" 
@@ -92,7 +134,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
             <div className="space-y-1 w-2/3">
               <label className="text-sm font-medium">Meeting Title</label>
               <input 
-                disabled={formData.status === 'past'}
+                disabled={isPast || isLocked}
                 value={formData.meeting_title} 
                 onChange={e => setFormData({...formData, meeting_title: e.target.value})} 
                 className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm disabled:opacity-50" 
@@ -102,30 +144,37 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium">Meeting Date</label>
+            <label className="text-sm font-medium">Date</label>
             <input 
               required 
               type="date" 
+              disabled={isPast || isLocked}
               value={formData.meeting_date} 
               onChange={e => setFormData({...formData, meeting_date: e.target.value})} 
-              className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" 
+              className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm disabled:opacity-50" 
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium">Meeting Type</label>
-            <SearchableSelect 
-              options={typeOptions}
-              value={formData.type}
-              onChange={(val) => setFormData({...formData, type: val})}
-            />
+            <label className="text-sm font-medium">Type</label>
+            {isPast || isLocked ? (
+              <div className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm opacity-50 cursor-not-allowed">
+                {typeOptions.find(o => o.value === formData.type)?.label || formData.type}
+              </div>
+            ) : (
+              <SearchableSelect 
+                options={typeOptions}
+                value={formData.type}
+                onChange={(val) => setFormData({...formData, type: val})}
+              />
+            )}
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-medium">Meeting Status</label>
-            {formData.status === 'past' ? (
-              <div className="w-full px-3 py-2 bg-input/10 border border-input rounded-md text-sm text-muted-foreground cursor-not-allowed">
-                Past (Completed)
+            <label className="text-sm font-medium">Status</label>
+            {isPast || isLocked ? (
+              <div className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm opacity-50 cursor-not-allowed">
+                {formData.status === 'past' ? 'Past' : (statusOptions.find(o => o.value === formData.status)?.label || formData.status)}
               </div>
             ) : (
               <SearchableSelect 
@@ -136,18 +185,20 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
             )}
           </div>
 
-          <div className="md:col-span-2 pt-2">
-            <button 
-              type="submit" 
-              disabled={saving}
-              className="bg-primary text-primary-foreground hover:opacity-90 px-6 py-2 rounded-md font-medium disabled:opacity-50 transition-opacity"
-            >
-              {saving ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
+          {!isPast && !isLocked && (
+            <div className="col-span-1 md:col-span-2 flex justify-end mt-4">
+              <button 
+                type="submit" 
+                disabled={saving}
+                className="bg-primary text-primary-foreground py-2 px-6 rounded-md font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          )}
         </form>
 
-        {formData.status !== 'past' && (
+        {!isPast && !isLocked && (
           <>
             <hr className="my-8 border-border" />
             <div>

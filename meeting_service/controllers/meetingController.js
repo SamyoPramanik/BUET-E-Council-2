@@ -431,6 +431,34 @@ const uploadMaterial = async (req, res, next) => {
     }
 };
 
+const toggleLock = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        
+        if (req.user?.role !== 'admin') {
+            return next(new CustomError('Only admins can lock or unlock meetings', 403));
+        }
+
+        const meetingCheck = await db.query('SELECT is_locked FROM meetings WHERE id = $1', [id]);
+        if (meetingCheck.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+
+        const newLockState = !meetingCheck.rows[0].is_locked;
+
+        const result = await db.query(
+            'UPDATE meetings SET is_locked = $1 WHERE id = $2 RETURNING *',
+            [newLockState, id]
+        );
+
+        res.status(200).json({ 
+            success: true, 
+            message: `Meeting successfully ${newLockState ? 'locked' : 'unlocked'}`, 
+            data: result.rows[0] 
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getMeetings,
     getMeetingById,
@@ -448,5 +476,6 @@ module.exports = {
     saveAttendance,
     generatePdf,
     completeMeeting,
-    uploadMaterial
+    uploadMaterial,
+    toggleLock
 };

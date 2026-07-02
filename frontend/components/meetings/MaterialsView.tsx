@@ -12,6 +12,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadType, setUploadType] = useState<string | null>(null);
   const { mutate } = useSWRConfig();
+  const isLocked = meeting.is_locked;
 
   const handleGenerate = async (type: string, filename: string) => {
     setGenerating(type);
@@ -162,14 +163,16 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
             ) : (
               <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
             )}
-            <button 
-              onClick={() => triggerUpload('agenda')}
-              disabled={uploading === 'agenda'}
-              className="mt-auto flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 py-2 px-4 rounded-md font-medium text-sm transition-colors"
-            >
-              {uploading === 'agenda' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {meeting.agenda_pdf_link ? "Replace PDF" : "Upload PDF"}
-            </button>
+            {!isLocked && (
+              <button 
+                onClick={() => triggerUpload('agenda')}
+                disabled={uploading === 'agenda'}
+                className="mt-auto flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 py-2 px-4 rounded-md font-medium text-sm transition-colors"
+              >
+                {uploading === 'agenda' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {meeting.agenda_pdf_link ? "Replace PDF" : "Upload PDF"}
+              </button>
+            )}
           </div>
 
           {/* Upload Resolution PDF */}
@@ -187,14 +190,16 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
             ) : (
               <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
             )}
-            <button 
-              onClick={() => triggerUpload('resolution')}
-              disabled={uploading === 'resolution'}
-              className="mt-auto flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 py-2 px-4 rounded-md font-medium text-sm transition-colors"
-            >
-              {uploading === 'resolution' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {meeting.resolution_pdf_link ? "Replace PDF" : "Upload PDF"}
-            </button>
+            {!isLocked && (
+              <button 
+                onClick={() => triggerUpload('resolution')}
+                disabled={uploading === 'resolution'}
+                className="mt-auto flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 py-2 px-4 rounded-md font-medium text-sm transition-colors"
+              >
+                {uploading === 'resolution' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {meeting.resolution_pdf_link ? "Replace PDF" : "Upload PDF"}
+              </button>
+            )}
           </div>
 
           {/* Upload Resolution Status PDF */}
@@ -212,14 +217,16 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
             ) : (
               <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
             )}
-            <button 
-              onClick={() => triggerUpload('resolution-status')}
-              disabled={uploading === 'resolution-status'}
-              className="mt-auto flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 py-2 px-4 rounded-md font-medium text-sm transition-colors"
-            >
-              {uploading === 'resolution-status' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {meeting.resolution_status_pdf_link ? "Replace PDF" : "Upload PDF"}
-            </button>
+            {!isLocked && (
+              <button 
+                onClick={() => triggerUpload('resolution-status')}
+                disabled={uploading === 'resolution-status'}
+                className="mt-auto flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 py-2 px-4 rounded-md font-medium text-sm transition-colors"
+              >
+                {uploading === 'resolution-status' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {meeting.resolution_status_pdf_link ? "Replace PDF" : "Upload PDF"}
+              </button>
+            )}
           </div>
 
         </div>

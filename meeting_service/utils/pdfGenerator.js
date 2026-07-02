@@ -220,8 +220,175 @@ const generateResolutionPdf = async (meetingId) => {
     }
 };
 
-const generateAttendanceSheet = async (meetingData) => {
-    return Buffer.from('');
+const generateAttendanceSheet = async (meetingId) => {
+    try {
+        const meetingQuery = `SELECT * FROM meetings WHERE id = $1`;
+        const { rows: meetings } = await pool.query(meetingQuery, [meetingId]);
+        if (meetings.length === 0) throw new Error("Meeting not found");
+        const meeting = meetings[0];
+
+        const presenteesQuery = `
+            SELECT p.id, p.name, p.designation, d.name_bangla as department_name, o.name_bangla as office_name 
+            FROM invitees p 
+            LEFT JOIN departments d ON p.department_id = d.id 
+            LEFT JOIN offices o ON p.office_id = o.id 
+            WHERE p.meeting_id = $1 
+        `;
+        const { rows: presentees } = await pool.query(presenteesQuery, [meetingId]);
+
+        const admins = [];
+        const deans = [];
+        const heads = [];
+        const depts = {};
+        const others = [];
+
+        presentees.forEach(p => {
+            let extractedName = p.name;
+            let officeStr = p.office_name || '';
+            if (!extractedName && officeStr.includes(',')) {
+                const parts = officeStr.split(',');
+                extractedName = parts[0].trim();
+                officeStr = parts.slice(1).join(',').trim();
+            }
+            if (!extractedName) extractedName = 'Unknown';
+            
+            // Collect full details for display
+            let details = [];
+            if (p.designation) details.push(p.designation);
+            if (p.department_name) details.push(p.department_name);
+            if (officeStr) details.push(officeStr);
+            const detailStr = details.length > 0 ? `(${details.join(', ')})` : '';
+            
+            const pObj = { 
+                name: extractedName, 
+                office: officeStr, 
+                designation: p.designation,
+                detailStr: detailStr
+            };
+
+            if (officeStr.includes('উপাচার্য')) {
+                admins.push(pObj);
+            } else if (officeStr.includes('ডিন')) {
+                deans.push(pObj);
+            } else if (officeStr.includes('বিভাগীয় প্রধান')) {
+                heads.push(pObj);
+            } else if (p.department_name) {
+                if (!depts[p.department_name]) depts[p.department_name] = [];
+                depts[p.department_name].push(pObj);
+            } else {
+                others.push(pObj);
+            }
+        });
+
+        admins.sort((a, b) => {
+            const aIsVc = a.office === 'উপাচার্য' || (a.office.includes('উপাচার্য') && !a.office.includes('উপ-উপাচার্য') && !a.office.includes('উপউপাচার্য'));
+            const bIsVc = b.office === 'উপাচার্য' || (b.office.includes('উপাচার্য') && !b.office.includes('উপ-উপাচার্য') && !b.office.includes('উপউপাচার্য'));
+            const aIsPro = a.office.includes('উপউপাচার্য') || a.office.includes('উপ-উপাচার্য');
+            const bIsPro = b.office.includes('উপউপাচার্য') || b.office.includes('উপ-উপাচার্য');
+            if (aIsVc) return -1;
+            if (bIsVc) return 1;
+            if (aIsPro) return -1;
+            if (bIsPro) return 1;
+            return 0;
+        });
+
+        const fontBase64 = getFontBase64();
+        const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); }` : '';
+
+        const renderTableSection = (title, items) => {
+            if (!items || items.length === 0) return '';
+            let html = `
+                <div class="section-title">${title}</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 70%;">Name (Designation, Department, Office)</th>
+                            <th style="width: 30%;">Signature</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            items.forEach(item => {
+                html += `
+                    <tr>
+                        <td>
+                            <strong>${item.name}</strong><br/>
+                            <span style="font-size: 12px; color: #333;">${item.detailStr}</span>
+                        </td>
+                        <td></td>
+                    </tr>
+                `;
+            });
+            html += `</tbody></table>`;
+            return html;
+        };
+
+        const serialNo = meeting.title || 'Untitled';
+
+        let html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                ${fontFace}
+                body {
+                    font-family: 'PrimaryFont', sans-serif;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    margin: 0;
+                    padding: 0;
+                }
+                .text-center { text-align: center; }
+                .header-title { font-size: 19px; margin-bottom: 10px; font-weight: bold; }
+                .sub-title { font-size: 16px; margin-bottom: 20px; }
+                
+                .section-title {
+                    font-size: 16px;
+                    font-weight: bold;
+                    margin-top: 20px;
+                    margin-bottom: 10px;
+                    text-decoration: underline;
+                }
+                
+                table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+                table, th, td { border: 1px solid black; }
+                th, td { padding: 8px; text-align: left; vertical-align: middle; }
+                td { height: 40px; } /* Space for signature */
+            </style>
+        </head>
+        <body>
+            <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title">${serialNo}</div>
+            
+            ${renderTableSection('প্রশাসন', admins)}
+            ${renderTableSection('সকল ডিন', deans)}
+            ${renderTableSection('সকল বিভাগীয় প্রধান', heads)}
+            ${Object.keys(depts).sort().map(dept => renderTableSection(dept, depts[dept])).join('')}
+            ${renderTableSection('অন্যান্য সদস্য', others)}
+        </body>
+        </html>
+        `;
+
+        const browser = await puppeteer.launch({
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+            headless: true
+        });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+        
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            margin: { top: '20mm', right: '20mm', bottom: '20mm', left: '20mm' },
+            printBackground: true
+        });
+        
+        await browser.close();
+        return pdfBuffer;
+
+    } catch (error) {
+        throw error;
+    }
 };
 
 module.exports = {

@@ -173,6 +173,24 @@ const updateResolution = async (req, res, next) => {
     }
 };
 
+const updateExecutionStatus = async (req, res, next) => {
+    try {
+        const agendamId = req.params.resId;
+        const { is_executed, execution_status } = req.body;
+
+        const result = await db.query(
+            'UPDATE agenda SET is_executed = $1, execution_status = $2 WHERE id = $3 RETURNING *',
+            [is_executed, execution_status, agendamId]
+        );
+
+        if (result.rows.length === 0) return next(new CustomError('Resolution/Agenda not found', 404));
+
+        res.status(200).json({ success: true, message: 'Execution status updated', data: result.rows[0] });
+    } catch (error) {
+        next(error);
+    }
+};
+
 const deleteResolution = async (req, res, next) => {
     try {
         // Just nullify the resolution column
@@ -322,6 +340,7 @@ module.exports = {
     getResolutions,
     createResolution,
     updateResolution,
+    updateExecutionStatus,
     deleteResolution,
     getAnnexures,
     uploadAnnexure,

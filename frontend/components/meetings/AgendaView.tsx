@@ -11,7 +11,7 @@ import { useConfirm } from "../../hooks/useConfirm";
 import TemplateDrawer from "../TemplateDrawer";
 
 export default function AgendaView({ meeting, type }: { meeting: any, type: string }) {
-  const isSuppliView = type === 'Supplementary Agenda';
+  const isSuppliView = type === 'suppli-agenda';
   const { data: response, mutate } = useSWR(`/agendas?meeting_id=${meeting.id}&is_suppli=${isSuppliView}`, fetcher, { fallbackData: { data: [] } });
   const agendas = response?.data || [];
   const { confirm, ConfirmModal } = useConfirm();

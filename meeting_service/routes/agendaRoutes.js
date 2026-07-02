@@ -20,6 +20,7 @@ router.delete('/:id', agendaController.deleteAgendam);
 router.get('/:id/resolutions', agendaController.getResolutions);
 router.post('/:id/resolutions', agendaController.createResolution);
 router.put('/resolutions/:resId', agendaController.updateResolution);
+router.put('/resolutions/:resId/execution', agendaController.updateExecutionStatus);
 router.delete('/resolutions/:resId', agendaController.deleteResolution);
 
 // Annexures

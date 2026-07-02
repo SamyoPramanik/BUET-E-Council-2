@@ -26,7 +26,7 @@ const generateAgendaPdf = async (meetingData) => {
     });
 };
 
-const generateResolutionPdf = async (resolutionData) => {
+const generateResolutionPdf = async (meetingId, includeStatus = false) => {
     return new Promise((resolve, reject) => {
         try {
             const doc = new PDFDocument();
@@ -38,9 +38,9 @@ const generateResolutionPdf = async (resolutionData) => {
                 resolve(pdfData);
             });
 
-            doc.fontSize(20).text('Meeting Resolution', { align: 'center' });
+            doc.fontSize(20).text(includeStatus ? 'Meeting Resolution Status' : 'Meeting Resolution', { align: 'center' });
             doc.moveDown();
-            doc.fontSize(12).text(`Details: ${resolutionData.details || 'N/A'}`);
+            doc.fontSize(12).text(`Meeting ID: ${meetingId}`);
             
             doc.end();
         } catch (error) {

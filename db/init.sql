@@ -108,6 +108,7 @@ CREATE TABLE meetings (
     agenda_pdf_link VARCHAR(255),
     transcript VARCHAR(255),
     resolution_pdf_link VARCHAR(255),
+    resolution_status_pdf_link VARCHAR(255),
     status meeting_status NOT NULL DEFAULT 'draft',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

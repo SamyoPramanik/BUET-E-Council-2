@@ -1,6 +1,8 @@
 const CustomError = require('../errors/CustomError');
 const db = require('../db');
 const { generateAgendaPdf, generateResolutionPdf, generateAttendanceSheet } = require('../utils/pdfGenerator');
+const storageService = require('../utils/storageService');
+const crypto = require('crypto');
 
 const getMeetings = async (req, res, next) => {
     try {
@@ -375,6 +377,8 @@ const generatePdf = async (req, res, next) => {
             pdfBuffer = await generateResolutionPdf(id);
         } else if (type === 'attendance') {
             pdfBuffer = await generateAttendanceSheet(id);
+        } else if (type === 'resolution-status') {
+            pdfBuffer = await generateResolutionPdf(id, true); // true indicates includeStatus
         } else {
             return next(new CustomError('Invalid pdf type requested', 400));
         }
@@ -382,6 +386,46 @@ const generatePdf = async (req, res, next) => {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=${type}-${id}.pdf`);
         res.send(pdfBuffer);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const uploadMaterial = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { type } = req.body; // 'agenda', 'resolution', 'resolution-status'
+        const file = req.file;
+
+        if (!id || !type || !file) {
+            return next(new CustomError('id, type, and file are required', 400));
+        }
+
+        const validTypes = ['agenda', 'resolution', 'resolution-status'];
+        if (!validTypes.includes(type)) {
+            return next(new CustomError('Invalid material type', 400));
+        }
+
+        // Check if meeting exists
+        const meetingCheck = await db.query('SELECT * FROM meetings WHERE id = $1', [id]);
+        if (meetingCheck.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+
+        const ext = file.originalname.split('.').pop() || 'pdf';
+        const fileKey = `materials/${id}/${type}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+
+        await storageService.uploadFile(file.buffer, fileKey, file.mimetype);
+
+        let column = '';
+        if (type === 'agenda') column = 'agenda_pdf_link';
+        else if (type === 'resolution') column = 'resolution_pdf_link';
+        else if (type === 'resolution-status') column = 'resolution_status_pdf_link';
+
+        const result = await db.query(
+            `UPDATE meetings SET ${column} = $1 WHERE id = $2 RETURNING *`,
+            [fileKey, id]
+        );
+
+        res.status(200).json({ success: true, message: 'Material uploaded successfully', data: result.rows[0] });
     } catch (error) {
         next(error);
     }
@@ -403,5 +447,6 @@ module.exports = {
     removePresentee,
     saveAttendance,
     generatePdf,
-    completeMeeting
+    completeMeeting,
+    uploadMaterial
 };

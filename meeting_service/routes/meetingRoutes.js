@@ -1,6 +1,9 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const meetingController = require('../controllers/meetingController');
+const multer = require('multer');
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
 
@@ -25,5 +28,8 @@ router.put('/:id/attendance', meetingController.saveAttendance);
 
 // Unified endpoint for generating PDFs
 router.get('/:id/pdf/:type', meetingController.generatePdf);
+
+// Endpoint for uploading material PDFs
+router.post('/:id/materials/upload', upload.single('file'), meetingController.uploadMaterial);
 
 module.exports = router;

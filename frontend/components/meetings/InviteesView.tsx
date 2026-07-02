@@ -139,8 +139,19 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const handleAddPresentees = async () => {
     setIsSavingPresentees(true);
     try {
+      // Find presentees to remove (they are in invitees but their member.id is NOT in selectedMembers)
+      const presenteesToRemove = invitees.filter((p: any) => {
+        const matchedMember = allMembers.find((m: any) => p.name === m.name && p.designation === m.designation);
+        if (matchedMember) {
+          return !selectedMembers.includes(matchedMember.id);
+        }
+        return false; // don't remove custom presentees that don't match any member
+      });
+
+      // Find presentees to add (they are in selectedMembers but NOT in invitees)
       const presenteesToAdd = allMembers
         .filter((m: any) => selectedMembers.includes(m.id))
+        .filter((m: any) => !invitees.some((p: any) => p.name === m.name && p.designation === m.designation))
         .map((m: any) => ({
             name: m.name,
             designation: m.designation,
@@ -148,15 +159,21 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
             office_id: m.office_id
         }));
 
+      // Delete removed ones
+      for (const p of presenteesToRemove) {
+        await api.delete(`/meetings/${meeting.id}/presentees/${p.id}`);
+      }
+
+      // Add new ones
       if (presenteesToAdd.length > 0) {
         await api.post(`/meetings/${meeting.id}/presentees`, { presentees: presenteesToAdd });
-        toast.success("Presentees added successfully");
-        setIsAddPresenteeModalOpen(false);
-        setSelectedMembers([]);
-        mutateInvitees();
       }
+
+      toast.success("Presentees synced successfully");
+      setIsAddPresenteeModalOpen(false);
+      mutateInvitees();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to add presentees");
+      toast.error(err.response?.data?.message || "Failed to sync presentees");
     } finally {
       setIsSavingPresentees(false);
     }
@@ -261,7 +278,14 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
             </>
           ) : (
             <button
-              onClick={() => setIsAddPresenteeModalOpen(true)}
+              onClick={() => {
+                // Initialize selectedMembers with already added presentees
+                const initiallySelected = allMembers
+                  .filter((m: any) => invitees.some((p: any) => p.name === m.name && p.designation === m.designation))
+                  .map((m: any) => m.id);
+                setSelectedMembers(initiallySelected);
+                setIsAddPresenteeModalOpen(true);
+              }}
               className="bg-primary text-primary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
             >
               <Plus className="w-4 h-4" />
@@ -382,12 +406,11 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                 {filteredMembers.map((member: any) => {
                   const isAlreadyAdded = invitees.some((p: any) => p.name === member.name && p.designation === member.designation);
                   return (
-                    <label key={member.id} className={`flex items-center gap-3 p-3 rounded-md border border-border ${isAlreadyAdded ? 'opacity-60 bg-muted/50 cursor-not-allowed' : 'hover:bg-muted/30 cursor-pointer'}`}>
+                    <label key={member.id} className={`flex items-center gap-3 p-3 rounded-md border border-border ${isAlreadyAdded ? 'bg-muted/10' : 'hover:bg-muted/30'} cursor-pointer`}>
                       <input 
                         type="checkbox" 
                         className="w-4 h-4 rounded border-input"
-                        checked={isAlreadyAdded || selectedMembers.includes(member.id)}
-                        disabled={isAlreadyAdded}
+                        checked={selectedMembers.includes(member.id)}
                         onChange={(e) => {
                           if (e.target.checked) {
                             setSelectedMembers(prev => [...prev, member.id]);

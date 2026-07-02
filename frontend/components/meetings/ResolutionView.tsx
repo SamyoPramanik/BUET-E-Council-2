@@ -25,6 +25,9 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [targetAgendaId, setTargetAgendaId] = useState<string | null>(null);
+  const [executingId, setExecutingId] = useState<string | null>(null);
+  const [executionContent, setExecutionContent] = useState("");
+  const [isSavingExecution, setIsSavingExecution] = useState(false);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -43,6 +46,36 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
   const handleEditClick = (agenda: any) => {
     setEditingId(agenda.id);
     setEditContent(agenda.resolution || "");
+  };
+
+  const handleToggleExecuted = async (agenda: any) => {
+    try {
+      await api.put(`/resolutions/${agenda.id}/execution`, {
+        is_executed: !agenda.is_executed,
+        execution_status: agenda.execution_status || ""
+      });
+      mutate();
+      toast.success("Execution status updated");
+    } catch (err) {
+      toast.error("Failed to update execution status");
+    }
+  };
+
+  const handleSaveExecution = async (agendaId: string) => {
+    setIsSavingExecution(true);
+    try {
+      await api.put(`/resolutions/${agendaId}/execution`, {
+        is_executed: true,
+        execution_status: executionContent
+      });
+      mutate();
+      setExecutingId(null);
+      toast.success("Execution details saved");
+    } catch (err) {
+      toast.error("Failed to save execution details");
+    } finally {
+      setIsSavingExecution(false);
+    }
   };
 
   return (
@@ -142,6 +175,68 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
           {/* Annexure List placed underneath the resolution content */}
           {agenda.resolution && (
             <AnnexureList contentId={agenda.id} type="resolution" />
+          )}
+
+          {/* Execution Status (Only for past meetings) */}
+          {meeting.status === 'past' && agenda.resolution && (
+            <div className="mt-8 pt-6 border-t border-border/50">
+              <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-emerald-500" />
+                Execution Status
+              </h4>
+              
+              <div className="flex items-center gap-3 mb-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="w-4 h-4 rounded border-input text-emerald-600 focus:ring-emerald-500"
+                    checked={agenda.is_executed || false}
+                    onChange={() => handleToggleExecuted(agenda)}
+                  />
+                  <span className="text-sm font-medium">Resolution Executed</span>
+                </label>
+              </div>
+
+              {agenda.is_executed && (
+                <div className="pl-6 border-l-2 border-emerald-500/20">
+                  {executingId === agenda.id ? (
+                    <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10 mb-4">
+                      <RichTextEditor 
+                        content={executionContent}
+                        onChange={setExecutionContent}
+                        className="p-4 min-h-[100px]"
+                      />
+                      <div className="bg-muted p-2 flex justify-end gap-2 border-t border-border">
+                        <button onClick={() => setExecutingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
+                        <button onClick={() => handleSaveExecution(agenda.id)} disabled={isSavingExecution} className="px-3 py-1 text-xs bg-emerald-600 text-white hover:bg-emerald-700 rounded-md disabled:opacity-50 transition-colors">
+                          {isSavingExecution ? "Saving..." : "Save Details"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : agenda.execution_status ? (
+                    <div className="relative group mb-4">
+                      <button 
+                        onClick={() => { setExecutingId(agenda.id); setExecutionContent(agenda.execution_status); }}
+                        className="absolute top-0 right-0 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-emerald-50 rounded-md hover:bg-emerald-100 flex items-center gap-2 text-xs font-medium z-10"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" /> Edit Details
+                      </button>
+                      <div 
+                        className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-emerald-50/30 border border-emerald-100 p-4 rounded-md shadow-sm"
+                        dangerouslySetInnerHTML={{ __html: agenda.execution_status }} 
+                      />
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => { setExecutingId(agenda.id); setExecutionContent(""); }}
+                      className="bg-background border border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors mb-4"
+                    >
+                      <Edit3 className="w-4 h-4" /> Add Execution Details
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           
         </div>

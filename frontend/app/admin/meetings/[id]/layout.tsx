@@ -7,7 +7,6 @@ import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers } fr
 const navigation = [
   { name: 'Meeting Info', view: 'info', icon: Info },
   { name: 'Description', view: 'description', icon: FileText },
-  { name: 'President', view: 'president', icon: Users },
   { name: 'Invitees', view: 'invitees', icon: Users },
   { name: 'Agenda', view: 'agenda', icon: LayoutList },
   { name: 'Suppli Agenda', view: 'suppli-agenda', icon: Layers },
@@ -42,11 +41,10 @@ export default function MeetingWorkspaceLayout({
               <Link
                 key={item.name}
                 href={`/admin/meetings/${params.id}?view=${item.view}`}
-                className={`flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors ${
-                  isActive
+                className={`flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors ${isActive
                     ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium shadow-sm'
                     : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                }`}
+                  }`}
               >
                 <Icon className="w-4 h-4" />
                 {item.name}
@@ -55,7 +53,7 @@ export default function MeetingWorkspaceLayout({
           })}
         </nav>
       </div>
-      
+
       {/* Main Workspace Area */}
       <main className="flex-1 bg-background overflow-y-auto p-8 relative">
         {children}

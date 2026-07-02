@@ -13,7 +13,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'search' | 'custom'>('search');
   const { confirm, ConfirmModal } = useConfirm();
-  
+
   // This would fetch actual invitees for this meeting
   // For now we will mock it or leave it empty if the API is not fully set up for fetching invitees
   const { data: inviteesRes, mutate: mutateInvitees } = useSWR(`/meetings/${meeting.id}/invitees`, fetcher, { fallbackData: { data: [] } });
@@ -24,8 +24,8 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     { key: "designation", label: "Designation" },
     { key: "department_name", label: "Department" },
     { key: "office_name", label: "Office" },
-    { 
-      key: "email_sent", 
+    {
+      key: "email_sent",
       label: "Agenda Sent",
       render: (val: any) => val ? (
         <span className="inline-flex items-center gap-1 bg-accent text-accent-foreground px-2 py-0.5 rounded-full text-xs font-medium">
@@ -73,13 +73,13 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
       <ConfirmModal />
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold capitalize">{type}</h2>
-        
+
         <div className="flex items-center gap-4">
           <button className="border border-primary text-primary px-4 py-2 text-sm font-medium rounded-md hover:bg-primary/5 transition-colors">
             Take Attendance
           </button>
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={handleBulkFetch}
               disabled={isFetching}
               className="bg-accent text-accent-foreground border border-border px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:bg-accent/80 transition-opacity disabled:opacity-50"
@@ -91,12 +91,12 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
               <Mail className="w-4 h-4" />
               Send Agenda
             </button>
-            <button 
+            <button
               onClick={() => setIsAddModalOpen(true)}
               className="bg-primary text-primary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
             >
               <Plus className="w-4 h-4" />
-              Add {type === 'president' ? 'President' : 'Invitee'}
+              Add Invitee
             </button>
           </div>
         </div>
@@ -109,10 +109,10 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
           <p className="text-muted-foreground mt-1">Click the add button above to include participants.</p>
         </div>
       ) : (
-        <DataTable 
-          columns={columns} 
-          data={invitees} 
-          title="Invitees List" 
+        <DataTable
+          columns={columns}
+          data={invitees}
+          title="Invitees List"
           onDelete={(row) => handleRemove(row.id)}
         />
       )}
@@ -122,25 +122,25 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border overflow-hidden">
             <div className="flex border-b border-border">
-              <button 
+              <button
                 className={`flex-1 py-3 text-sm font-medium ${activeTab === 'search' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
                 onClick={() => setActiveTab('search')}
               >
                 Search Members
               </button>
-              <button 
+              <button
                 className={`flex-1 py-3 text-sm font-medium ${activeTab === 'custom' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
                 onClick={() => setActiveTab('custom')}
               >
                 Create Custom
               </button>
             </div>
-            
+
             <div className="p-6">
               {activeTab === 'search' ? (
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">Search and select an existing member from the database.</p>
-                  <SearchableSelect options={[]} value="" onChange={() => {}} placeholder="Search members by name..." />
+                  <SearchableSelect options={[]} value="" onChange={() => { }} placeholder="Search members by name..." />
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -150,7 +150,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                   <input placeholder="Designation" className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm" />
                 </div>
               )}
-              
+
               <div className="flex justify-end gap-2 mt-6">
                 <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80">Cancel</button>
                 <button className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add to Meeting</button>

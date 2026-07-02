@@ -1,81 +1,227 @@
-const PDFDocument = require('pdfkit');
+const puppeteer = require('puppeteer-core');
+const fs = require('fs');
+const path = require('path');
+const { pool } = require('../db');
 
-const generateAgendaPdf = async (meetingData) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument();
-            const buffers = [];
+const getFontBase64 = () => {
+    const sonarPath = path.join(__dirname, 'fonts', 'SonarBangla.ttf');
+    const kalpurushPath = path.join(__dirname, 'fonts', 'Kalpurush.ttf');
+    let fontPath = null;
 
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => {
-                const pdfData = Buffer.concat(buffers);
-                resolve(pdfData);
-            });
+    if (fs.existsSync(sonarPath)) {
+        fontPath = sonarPath;
+    } else if (fs.existsSync(kalpurushPath)) {
+        fontPath = kalpurushPath;
+    }
 
-            // Example content
-            doc.fontSize(20).text(`Agenda for Meeting: ${meetingData.title || 'Untitled'}`, { align: 'center' });
-            doc.moveDown();
-            doc.fontSize(12).text(`Date: ${meetingData.date || 'TBD'}`);
-            
-            // Add more meeting specific data here
-            
-            doc.end();
-        } catch (error) {
-            reject(error);
-        }
-    });
+    if (fontPath) {
+        return `data:font/ttf;base64,${fs.readFileSync(fontPath).toString('base64')}`;
+    }
+    return null;
 };
 
-const generateResolutionPdf = async (meetingId, includeStatus = false) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument();
-            const buffers = [];
+const generateAgendaPdf = async (meetingData) => {
+    // Left untouched for now, or just return empty buffer
+    return Buffer.from('');
+};
 
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => {
-                const pdfData = Buffer.concat(buffers);
-                resolve(pdfData);
-            });
+const generateResolutionPdf = async (meetingId) => {
+    try {
+        const meetingQuery = `SELECT * FROM meetings WHERE id = $1`;
+        const { rows: meetings } = await pool.query(meetingQuery, [meetingId]);
+        if (meetings.length === 0) throw new Error("Meeting not found");
+        const meeting = meetings[0];
 
-            doc.fontSize(20).text(includeStatus ? 'Meeting Resolution Status' : 'Meeting Resolution', { align: 'center' });
-            doc.moveDown();
-            doc.fontSize(12).text(`Meeting ID: ${meetingId}`);
+        const presenteesQuery = `
+            SELECT p.id, p.name, p.designation, d.name_bangla as department_name, o.name_bangla as office_name 
+            FROM presentees p 
+            LEFT JOIN departments d ON p.department_id = d.id 
+            LEFT JOIN offices o ON p.office_id = o.id 
+            WHERE p.meeting_id = $1 
+        `;
+        const { rows: presentees } = await pool.query(presenteesQuery, [meetingId]);
+
+        const agendasQuery = `SELECT * FROM agenda WHERE meeting_id = $1 ORDER BY agenda_serial ASC`;
+        const { rows: agendas } = await pool.query(agendasQuery, [meetingId]);
+
+        const admins = [];
+        const deans = [];
+        const heads = [];
+        const depts = {};
+        const others = [];
+
+        presentees.forEach(p => {
+            let extractedName = p.name;
+            let officeStr = p.office_name || '';
+            if (!extractedName && officeStr.includes(',')) {
+                const parts = officeStr.split(',');
+                extractedName = parts[0].trim();
+                officeStr = parts.slice(1).join(',').trim();
+            }
+            if (!extractedName) extractedName = 'Unknown';
             
-            doc.end();
-        } catch (error) {
-            reject(error);
-        }
-    });
+            const pObj = { name: extractedName, office: officeStr, designation: p.designation };
+
+            if (officeStr.includes('উপাচার্য')) {
+                admins.push(pObj);
+            } else if (officeStr.includes('ডিন')) {
+                deans.push(pObj);
+            } else if (officeStr.includes('বিভাগীয় প্রধান')) {
+                heads.push(pObj);
+            } else if (p.department_name) {
+                if (!depts[p.department_name]) depts[p.department_name] = [];
+                depts[p.department_name].push(pObj);
+            } else {
+                others.push(pObj);
+            }
+        });
+
+        admins.sort((a, b) => {
+            const aIsVc = a.office === 'উপাচার্য' || (a.office.includes('উপাচার্য') && !a.office.includes('উপ-উপাচার্য') && !a.office.includes('উপউপাচার্য'));
+            const bIsVc = b.office === 'উপাচার্য' || (b.office.includes('উপাচার্য') && !b.office.includes('উপ-উপাচার্য') && !b.office.includes('উপউপাচার্য'));
+            const aIsPro = a.office.includes('উপউপাচার্য') || a.office.includes('উপ-উপাচার্য');
+            const bIsPro = b.office.includes('উপউপাচার্য') || b.office.includes('উপ-উপাচার্য');
+            if (aIsVc) return -1;
+            if (bIsVc) return 1;
+            if (aIsPro) return -1;
+            if (bIsPro) return 1;
+            return 0;
+        });
+
+        const fontBase64 = getFontBase64();
+        const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); }` : '';
+
+        const getSuffix = (item) => {
+            if (item.office === 'উপাচার্য' || (item.office.includes('উপাচার্য') && !item.office.includes('উপ-উপাচার্য') && !item.office.includes('উপউপাচার্য'))) {
+                return 'সভাপতি';
+            }
+            return 'সদস্য';
+        };
+
+        const renderSection = (title, items) => {
+            if (!items || items.length === 0) return '';
+            let html = `<div class="presentee-section"><div class="section-title"><u>${title}</u></div>`;
+            items.forEach(item => {
+                html += `<div class="presentee-row">
+                    <div class="p-name">${item.name}</div>
+                    <div class="p-suffix">${getSuffix(item)}</div>
+                </div>`;
+            });
+            html += `</div>`;
+            return html;
+        };
+
+        const meetingDate = new Date(meeting.meeting_date).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' });
+        const serialNo = meeting.title || 'Untitled';
+
+        let html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                ${fontFace}
+                body {
+                    font-family: 'PrimaryFont', sans-serif;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    margin: 0;
+                    padding: 0;
+                }
+                .text-center { text-align: center; }
+                .header-title { font-size: 19px; margin-bottom: 10px; }
+                .sub-title { font-size: 16px; text-decoration: underline; margin-bottom: 20px; }
+                .description { font-size: 14px; text-align: justify; margin-bottom: 30px; }
+                .presentees-header { font-size: 14px; text-decoration: underline; margin-bottom: 15px; }
+                .columns-container {
+                    column-count: 2;
+                    column-gap: 40px;
+                    font-size: 12px;
+                    margin-bottom: 30px;
+                }
+                .presentee-section {
+                    break-inside: avoid;
+                    margin-bottom: 15px;
+                }
+                .section-title {
+                    font-weight: bold;
+                    margin-bottom: 5px;
+                }
+                .presentee-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 3px;
+                }
+                .p-name { width: 75%; text-align: left; }
+                .p-suffix { width: 25%; text-align: right; }
+                .disclaimer { text-align: center; margin-top: 20px; margin-bottom: 40px; font-size: 14px; }
+                
+                .agenda-block {
+                    page-break-inside: avoid;
+                    margin-bottom: 30px;
+                }
+                .agenda-title { font-weight: bold; margin-bottom: 5px; font-size: 14px;}
+                .agenda-content, .agenda-resolution { margin-left: 30px; text-align: justify; font-size: 14px;}
+                
+                /* Rich text formatting overrides */
+                table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
+                table, th, td { border: 1px solid black; }
+                th, td { padding: 4px; text-align: left; }
+                p { margin: 0 0 10px 0; }
+            </style>
+        </head>
+        <body>
+            <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title">${meetingDate} তারিখে অনুষ্ঠিত ${serialNo}নং সভার কার্যবিবরণী</div>
+            
+            ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}
+
+            <div class="presentees-header">উপস্থিত সদস্যবৃন্দ</div>
+            <div class="columns-container">
+                ${renderSection('প্রশাসন', admins)}
+                ${renderSection('সকল ডিন', deans)}
+                ${renderSection('সকল বিভাগীয় প্রধান', heads)}
+                ${Object.keys(depts).sort().map(dept => renderSection(dept, depts[dept])).join('')}
+                ${renderSection('অন্যান্য সদস্য', others)}
+            </div>
+            
+            <div class="disclaimer">এই তালিকা সিনিওরিটি হিসেবে গণ্য হবে না।</div>
+            
+            ${agendas.map(ag => `
+                <div class="agenda-block">
+                    <div class="agenda-title">প্রস্তাব নং: ${ag.agenda_serial || ''}</div>
+                    <div class="agenda-content">${ag.content || ''}</div>
+                    <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
+                    <div class="agenda-resolution">${ag.resolution || ''}</div>
+                </div>
+            `).join('')}
+        </body>
+        </html>
+        `;
+
+        const browser = await puppeteer.launch({
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+            headless: true
+        });
+        const page = await browser.newPage();
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+        
+        const pdfBuffer = await page.pdf({
+            format: 'A4',
+            margin: { top: '20mm', right: '20mm', bottom: '20mm', left: '20mm' },
+            printBackground: true
+        });
+        
+        await browser.close();
+        return pdfBuffer;
+
+    } catch (error) {
+        throw error;
+    }
 };
 
 const generateAttendanceSheet = async (meetingData) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const doc = new PDFDocument();
-            const buffers = [];
-
-            doc.on('data', buffers.push.bind(buffers));
-            doc.on('end', () => {
-                const pdfData = Buffer.concat(buffers);
-                resolve(pdfData);
-            });
-
-            doc.fontSize(20).text(`Attendance Sheet: ${meetingData.title || 'Untitled'}`, { align: 'center' });
-            doc.moveDown();
-            doc.fontSize(12).text(`Date: ${meetingData.date || 'TBD'}`);
-            doc.moveDown();
-            
-            // Placeholder for a table or list
-            doc.text('1. ______________________');
-            doc.moveDown();
-            doc.text('2. ______________________');
-            
-            doc.end();
-        } catch (error) {
-            reject(error);
-        }
-    });
+    return Buffer.from('');
 };
 
 module.exports = {

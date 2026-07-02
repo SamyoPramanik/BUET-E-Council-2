@@ -1,13 +1,25 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
-import { fetcher } from "../../../lib/api";
-import api from "../../../lib/api";
+import api, { fetcher } from "../../../lib/api";
 import DataTable from "../../../components/DataTable";
+import SearchableSelect from "../../../components/SearchableSelect";
 
 export default function ManageUsersPage() {
   const { data: response, error, mutate } = useSWR('/auth/users', fetcher);
   
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [newUser, setNewUser] = useState({
+    username: "",
+    email: "",
+    password: "",
+    role: "member",
+    member_type: "none"
+  });
+
   const columns = [
     { key: "username", label: "Username" },
     { key: "email", label: "Email" },
@@ -34,16 +46,46 @@ export default function ManageUsersPage() {
     window.location.href = `${api.defaults.baseURL}/auth/download-csv`;
   };
 
-  const handleChangeRole = async (user: any) => {
-    const newRole = prompt(`Change role for ${user.username} (current: ${user.role}). Enter new role (admin/member):`, user.role);
-    if (!newRole) return;
-    
+  const handleEdit = (user: any) => {
+    setIsEditMode(true);
+    setEditingId(user.id);
+    setNewUser({
+      username: user.username || "",
+      email: user.email || "",
+      password: "", // Usually blank out password on edit
+      role: user.role || "member",
+      member_type: user.member_type || "none"
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = async (user: any) => {
+    if (window.confirm("Are you sure you want to delete this user?")) {
+      try {
+        await api.delete(`/auth/users/${user.id}`);
+        mutate();
+      } catch (err) {
+        console.error(err);
+        alert('Failed to delete user');
+      }
+    }
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
-      await api.put(`/auth/users/${user.id}/role`, { role: newRole });
+      if (isEditMode && editingId) {
+        await api.put(`/auth/users/${editingId}`, newUser);
+      } else {
+        await api.post('/auth/signup', newUser);
+      }
+      setIsModalOpen(false);
+      setIsEditMode(false);
+      setEditingId(null);
+      setNewUser({ username: "", email: "", password: "", role: "member", member_type: "none" });
       mutate();
-    } catch (err) {
-      console.error(err);
-      alert('Failed to change role');
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to save user');
     }
   };
 
@@ -58,8 +100,73 @@ export default function ManageUsersPage() {
         title="Manage Users"
         onUploadCsv={handleUploadCsv}
         onDownloadCsv={handleDownloadCsv}
-        onEdit={handleChangeRole}
+        onAdd={() => {
+          setIsEditMode(false);
+          setEditingId(null);
+          setNewUser({ username: "", email: "", password: "", role: "member", member_type: "none" });
+          setIsModalOpen(true);
+        }}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
       />
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-card w-full max-w-md rounded-lg shadow-xl border border-border p-6 relative">
+            <h3 className="text-lg font-semibold mb-4">{isEditMode ? "Edit User" : "Add New User"}</h3>
+            <form onSubmit={handleAddSubmit} className="space-y-4">
+              
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Username</label>
+                <input required value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Email</label>
+                <input required type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Password {isEditMode ? "(Leave blank to keep unchanged)" : ""}</label>
+                <input type="password" required={!isEditMode} value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Role</label>
+                  <SearchableSelect 
+                    options={[
+                      { value: "member", label: "Member" },
+                      { value: "moderator", label: "Moderator" },
+                      { value: "admin", label: "Admin" }
+                    ]}
+                    value={newUser.role}
+                    onChange={(val) => setNewUser({...newUser, role: val})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Member Type</label>
+                  <SearchableSelect 
+                    options={[
+                      { value: "none", label: "None" },
+                      { value: "academic", label: "Academic" },
+                      { value: "syndicate", label: "Syndicate" }
+                    ]}
+                    value={newUser.member_type}
+                    onChange={(val) => setNewUser({...newUser, member_type: val})}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80">Cancel</button>
+                <button type="submit" className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">{isEditMode ? "Update User" : "Save User"}</button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

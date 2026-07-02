@@ -21,9 +21,15 @@ const createFaculty = async (req, res, next) => {
             return next(new CustomError('Name (Bangla and English) are required', 400));
         }
 
+        let assignedSerial = serial;
+        if (!assignedSerial) {
+            const maxSerialResult = await db.query('SELECT MAX(serial) as max_serial FROM faculties');
+            assignedSerial = (maxSerialResult.rows[0].max_serial || 0) + 1;
+        }
+
         const result = await db.query(
             'INSERT INTO faculties (name_bangla, name_english, serial) VALUES ($1, $2, $3) RETURNING *',
-            [name_bangla, name_english, serial || null]
+            [name_bangla, name_english, assignedSerial]
         );
         
         res.status(201).json({ success: true, message: 'Faculty created', data: result.rows[0] });

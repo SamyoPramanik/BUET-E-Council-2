@@ -3,7 +3,24 @@ const db = require('../db');
 
 const getMembers = async (req, res, next) => {
     try {
-        const result = await db.query('SELECT * FROM members ORDER BY created_at DESC');
+        const { type } = req.query; // ?type=academic or ?type=syndicate
+
+        let query = `
+            SELECT m.*, d.name_english as department_name, o.name_bangla as office_name
+            FROM members m
+            LEFT JOIN departments d ON m.department_id = d.id
+            LEFT JOIN offices o ON m.office_id = o.id
+        `;
+        const params = [];
+
+        if (type && ['academic', 'syndicate', 'none'].includes(type)) {
+            query += ' WHERE m.member_type = $1 ';
+            params.push(type);
+        }
+
+        query += ' ORDER BY m.created_at DESC';
+
+        const result = await db.query(query, params);
         res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
         next(error);
@@ -12,21 +29,32 @@ const getMembers = async (req, res, next) => {
 
 const createMember = async (req, res, next) => {
     try {
-        const { name, prefix, designation, department_id, office_id, email } = req.body;
+        const { name, prefix, designation, department_id, office_id, email, member_type } = req.body;
 
         if (!name) {
             return next(new CustomError('Name is required', 400));
         }
 
+        const processedEmail = (email === "" || email === undefined) ? null : email;
+
         const result = await db.query(
-            'INSERT INTO members (name, prefix, designation, department_id, office_id, email) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [name, prefix, designation, department_id || null, office_id || null, email]
+            `INSERT INTO members (name, prefix, designation, department_id, office_id, email, member_type) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [
+                name, 
+                prefix !== undefined ? prefix : null, 
+                designation !== undefined ? designation : null, 
+                (department_id === "" || department_id === undefined) ? null : department_id, 
+                (office_id === "" || office_id === undefined) ? null : office_id, 
+                processedEmail, 
+                member_type || 'none'
+            ]
         );
 
         res.status(201).json({ success: true, message: 'Member created', data: result.rows[0] });
     } catch (error) {
-        if (error.code === '23505') {
-            return next(new CustomError('Member email already exists', 409));
+        if (error.code === '23505') { // unique_violation
+            return next(new CustomError('Member email must be unique', 409));
         }
         next(error);
     }
@@ -35,18 +63,33 @@ const createMember = async (req, res, next) => {
 const updateMember = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { name, prefix, designation, department_id, office_id, email } = req.body;
+        const { name, prefix, designation, department_id, office_id, email, member_type } = req.body;
+
+        // Convert empty strings to null for UUID and unique fields
+        const processedDeptId = (department_id === "" || department_id === undefined) ? null : department_id;
+        const processedOfficeId = (office_id === "" || office_id === undefined) ? null : office_id;
+        const processedEmail = (email === "" || email === undefined) ? null : email;
 
         const result = await db.query(
             `UPDATE members 
              SET name = COALESCE($1, name), 
-                 prefix = COALESCE($2, prefix),
-                 designation = COALESCE($3, designation),
-                 department_id = COALESCE($4, department_id),
-                 office_id = COALESCE($5, office_id),
-                 email = COALESCE($6, email)
-             WHERE id = $7 RETURNING *`,
-            [name, prefix, designation, department_id, office_id, email, id]
+                 prefix = COALESCE($2, prefix), 
+                 designation = COALESCE($3, designation), 
+                 department_id = $4,
+                 office_id = $5,
+                 email = COALESCE($6, email),
+                 member_type = COALESCE($7, member_type)
+             WHERE id = $8 RETURNING *`,
+            [
+                name !== undefined ? name : null, 
+                prefix !== undefined ? prefix : null, 
+                designation !== undefined ? designation : null, 
+                processedDeptId, 
+                processedOfficeId, 
+                processedEmail, 
+                member_type !== undefined ? member_type : null, 
+                id
+            ]
         );
 
         if (result.rows.length === 0) {
@@ -56,7 +99,7 @@ const updateMember = async (req, res, next) => {
         res.status(200).json({ success: true, message: 'Member updated', data: result.rows[0] });
     } catch (error) {
         if (error.code === '23505') {
-            return next(new CustomError('Email already in use', 409));
+            return next(new CustomError('Member email must be unique', 409));
         }
         next(error);
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "../../../lib/api";
 import api from "../../../lib/api";
@@ -7,6 +8,14 @@ import DataTable from "../../../components/DataTable";
 
 export default function ManageOfficesPage() {
   const { data: response, error, mutate } = useSWR('/offices', fetcher);
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [newOffice, setNewOffice] = useState({
+    name_bangla: "",
+    name_english: ""
+  });
 
   const columns = [
     { key: "serial", label: "Serial No" },
@@ -43,6 +52,43 @@ export default function ManageOfficesPage() {
     window.location.href = `${api.defaults.baseURL}/offices/download-csv`;
   };
 
+  const handleEdit = (office: any) => {
+    setIsEditMode(true);
+    setEditingId(office.id);
+    setNewOffice({ name_bangla: office.name_bangla, name_english: office.name_english });
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = async (office: any) => {
+    if (window.confirm("Are you sure you want to delete this office?")) {
+      try {
+        await api.delete(`/offices/${office.id}`);
+        mutate();
+      } catch (err) {
+        console.error(err);
+        alert('Failed to delete office');
+      }
+    }
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (isEditMode && editingId) {
+        await api.put(`/offices/${editingId}`, newOffice);
+      } else {
+        await api.post('/offices', newOffice);
+      }
+      setIsModalOpen(false);
+      setIsEditMode(false);
+      setEditingId(null);
+      setNewOffice({ name_bangla: "", name_english: "" });
+      mutate();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to save office');
+    }
+  };
+
   if (error) return <div className="p-8">Failed to load offices</div>;
   if (!response) return <div className="p-8">Loading...</div>;
 
@@ -55,7 +101,41 @@ export default function ManageOfficesPage() {
         onReorder={handleReorder}
         onUploadCsv={handleUploadCsv}
         onDownloadCsv={handleDownloadCsv} 
+        onAdd={() => {
+          setIsEditMode(false);
+          setEditingId(null);
+          setNewOffice({ name_bangla: "", name_english: "" });
+          setIsModalOpen(true);
+        }}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
       />
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-card w-full max-w-md rounded-lg shadow-xl border border-border p-6 relative">
+            <h3 className="text-lg font-semibold mb-4">{isEditMode ? "Edit Office" : "Add New Office"}</h3>
+            <form onSubmit={handleAddSubmit} className="space-y-4">
+              
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Name (Bangla)</label>
+                <input required value={newOffice.name_bangla} onChange={e => setNewOffice({...newOffice, name_bangla: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Name (English)</label>
+                <input required value={newOffice.name_english} onChange={e => setNewOffice({...newOffice, name_english: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80">Cancel</button>
+                <button type="submit" className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">{isEditMode ? "Update Office" : "Save Office"}</button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

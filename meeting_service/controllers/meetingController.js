@@ -1,20 +1,40 @@
 const CustomError = require('../errors/CustomError');
 const db = require('../db');
+const { generateAgendaPdf, generateResolutionPdf, generateAttendanceSheet } = require('../utils/pdfGenerator');
+
+const getMeetings = async (req, res, next) => {
+    try {
+        const result = await db.query(`
+            SELECT *, 
+                   ROW_NUMBER() OVER (ORDER BY created_at ASC) as serial 
+            FROM meetings 
+            ORDER BY created_at DESC
+        `);
+        
+        // Format dates correctly for the frontend
+        const data = result.rows.map(meeting => ({
+            ...meeting,
+            date: new Date(meeting.meeting_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+        }));
+
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
 
 const createMeeting = async (req, res, next) => {
     try {
-        const { title, meeting_date, type, meeting_link } = req.body;
-
+        const { title, meeting_date, type, status } = req.body;
         if (!title || !meeting_date || !type) {
-            return next(new CustomError('Title, meeting_date, and type are required', 400));
+            return next(new CustomError('Title, date, and type are required', 400));
         }
 
         const result = await db.query(
-            'INSERT INTO meetings (title, meeting_date, type, meeting_link) VALUES ($1, $2, $3, $4) RETURNING *',
-            [title, meeting_date, type, meeting_link]
+            'INSERT INTO meetings (title, meeting_date, type, status) VALUES ($1, $2, $3, $4) RETURNING *',
+            [title, meeting_date, type, status || 'draft']
         );
-
-        res.status(201).json({ success: true, message: 'Meeting created successfully', data: result.rows[0] });
+        res.status(201).json({ success: true, message: 'Meeting created', data: result.rows[0] });
     } catch (error) {
         next(error);
     }
@@ -23,24 +43,21 @@ const createMeeting = async (req, res, next) => {
 const updateMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { title, meeting_date, type, meeting_link, status } = req.body;
+        const { title, meeting_date, type, status, meeting_link } = req.body;
 
         const result = await db.query(
             `UPDATE meetings 
              SET title = COALESCE($1, title), 
-                 meeting_date = COALESCE($2, meeting_date),
-                 type = COALESCE($3, type),
-                 meeting_link = COALESCE($4, meeting_link),
-                 status = COALESCE($5, status)
+                 meeting_date = COALESCE($2, meeting_date), 
+                 type = COALESCE($3, type), 
+                 status = COALESCE($4, status),
+                 meeting_link = COALESCE($5, meeting_link)
              WHERE id = $6 RETURNING *`,
-            [title, meeting_date, type, meeting_link, status, id]
+            [title, meeting_date, type, status, meeting_link, id]
         );
 
-        if (result.rows.length === 0) {
-            return next(new CustomError('Meeting not found', 404));
-        }
-
-        res.status(200).json({ success: true, message: 'Meeting updated successfully', data: result.rows[0] });
+        if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        res.status(200).json({ success: true, message: 'Meeting updated', data: result.rows[0] });
     } catch (error) {
         next(error);
     }
@@ -49,32 +66,9 @@ const updateMeeting = async (req, res, next) => {
 const deleteMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
-        
-        // Cascading deletion is handled by Postgres ON DELETE CASCADE constraints
-        // (e.g. for agenda, invitees, presentees)
         const result = await db.query('DELETE FROM meetings WHERE id = $1 RETURNING *', [id]);
-
-        if (result.rows.length === 0) {
-            return next(new CustomError('Meeting not found', 404));
-        }
-
-        res.status(200).json({ success: true, message: 'Meeting deleted successfully' });
-    } catch (error) {
-        next(error);
-    }
-};
-
-const addAgendamToMeeting = async (req, res, next) => {
-    try {
-        const meeting_id = req.params.id;
-        const { agenda_serial } = req.body;
-
-        const result = await db.query(
-            'INSERT INTO agenda (meeting_id, agenda_serial) VALUES ($1, $2) RETURNING *',
-            [meeting_id, agenda_serial]
-        );
-
-        res.status(201).json({ success: true, message: 'Agendam added to meeting', data: result.rows[0] });
+        if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        res.status(200).json({ success: true, message: 'Meeting deleted' });
     } catch (error) {
         next(error);
     }
@@ -82,30 +76,27 @@ const addAgendamToMeeting = async (req, res, next) => {
 
 const addInvitees = async (req, res, next) => {
     try {
-        const meeting_id = req.params.id;
-        const { invitees } = req.body; // Expecting an array of invitees
+        const { id } = req.params;
+        const { invitees } = req.body; // array of invitee objects
+        if (!invitees || !Array.isArray(invitees)) return next(new CustomError('Invitees array is required', 400));
 
-        if (!Array.isArray(invitees) || invitees.length === 0) {
-            return next(new CustomError('Invitees array is required', 400));
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const invitee of invitees) {
+                await client.query(
+                    'INSERT INTO invitees (name, email, designation, department_id, office_id, meeting_id) VALUES ($1, $2, $3, $4, $5, $6)',
+                    [invitee.name, invitee.email, invitee.designation, invitee.department_id, invitee.office_id, id]
+                );
+            }
+            await client.query('COMMIT');
+            res.status(201).json({ success: true, message: 'Invitees added' });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
         }
-
-        const values = [];
-        const placeholders = [];
-        let counter = 1;
-
-        invitees.forEach(invitee => {
-            placeholders.push(`($${counter++}, $${counter++}, $${counter++}, $${counter++}, $${counter++}, $${counter++})`);
-            values.push(invitee.name, invitee.email, invitee.designation, invitee.department_id || null, invitee.office_id || null, meeting_id);
-        });
-
-        const query = `
-            INSERT INTO invitees (name, email, designation, department_id, office_id, meeting_id) 
-            VALUES ${placeholders.join(', ')} RETURNING *
-        `;
-
-        const result = await db.query(query, values);
-
-        res.status(201).json({ success: true, message: 'Invitees added', data: result.rows });
     } catch (error) {
         next(error);
     }
@@ -113,91 +104,65 @@ const addInvitees = async (req, res, next) => {
 
 const addPresentees = async (req, res, next) => {
     try {
-        const meeting_id = req.params.id;
-        const { presentees } = req.body; // Expecting an array of presentees
+        const { id } = req.params;
+        const { presentees } = req.body; // array of presentee objects
+        if (!presentees || !Array.isArray(presentees)) return next(new CustomError('Presentees array is required', 400));
 
-        if (!Array.isArray(presentees) || presentees.length === 0) {
-            return next(new CustomError('Presentees array is required', 400));
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (const presentee of presentees) {
+                await client.query(
+                    'INSERT INTO presentees (name, designation, department_id, office_id, meeting_id) VALUES ($1, $2, $3, $4, $5)',
+                    [presentee.name, presentee.designation, presentee.department_id, presentee.office_id, id]
+                );
+            }
+            await client.query('COMMIT');
+            res.status(201).json({ success: true, message: 'Presentees added' });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        next(error);
+    }
+};
+
+const generatePdf = async (req, res, next) => {
+    try {
+        const { id, type } = req.params; // type = agenda, resolution, attendance
+        let pdfBuffer;
+        
+        // Basic check if meeting exists
+        const meetingCheck = await db.query('SELECT * FROM meetings WHERE id = $1', [id]);
+        if (meetingCheck.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+
+        if (type === 'agenda') {
+            pdfBuffer = await generateAgendaPdf(id);
+        } else if (type === 'resolution') {
+            pdfBuffer = await generateResolutionPdf(id);
+        } else if (type === 'attendance') {
+            pdfBuffer = await generateAttendanceSheet(id);
+        } else {
+            return next(new CustomError('Invalid pdf type requested', 400));
         }
 
-        const values = [];
-        const placeholders = [];
-        let counter = 1;
-
-        presentees.forEach(presentee => {
-            placeholders.push(`($${counter++}, $${counter++}, $${counter++}, $${counter++}, $${counter++})`);
-            values.push(presentee.name, presentee.designation, presentee.department_id || null, presentee.office_id || null, meeting_id);
-        });
-
-        const query = `
-            INSERT INTO presentees (name, designation, department_id, office_id, meeting_id) 
-            VALUES ${placeholders.join(', ')} RETURNING *
-        `;
-
-        const result = await db.query(query, values);
-
-        res.status(201).json({ success: true, message: 'Presentees added', data: result.rows });
-    } catch (error) {
-        next(error);
-    }
-};
-
-// PDF Generators
-const { generateAgendaPdf, generateResolutionPdf, generateAttendanceSheet } = require('../utils/pdfGenerator');
-
-const handleGenerateAgendaPdf = async (req, res, next) => {
-    try {
-        const meeting_id = req.params.id;
-        const meeting = await db.query('SELECT * FROM meetings WHERE id = $1', [meeting_id]);
-        if (meeting.rows.length === 0) return next(new CustomError('Meeting not found', 404));
-
-        const pdfData = await generateAgendaPdf(meeting.rows[0]);
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=agenda_${meeting_id}.pdf`);
-        res.send(pdfData);
-    } catch (error) {
-        next(error);
-    }
-};
-
-const handleGenerateResolutionPdf = async (req, res, next) => {
-    try {
-        const meeting_id = req.params.id;
-        const meeting = await db.query('SELECT * FROM meetings WHERE id = $1', [meeting_id]);
-        if (meeting.rows.length === 0) return next(new CustomError('Meeting not found', 404));
-
-        const pdfData = await generateResolutionPdf({ details: 'Resolution for ' + meeting.rows[0].title });
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=resolution_${meeting_id}.pdf`);
-        res.send(pdfData);
-    } catch (error) {
-        next(error);
-    }
-};
-
-const handleGenerateAttendanceSheet = async (req, res, next) => {
-    try {
-        const meeting_id = req.params.id;
-        const meeting = await db.query('SELECT * FROM meetings WHERE id = $1', [meeting_id]);
-        if (meeting.rows.length === 0) return next(new CustomError('Meeting not found', 404));
-
-        const pdfData = await generateAttendanceSheet(meeting.rows[0]);
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename=attendance_${meeting_id}.pdf`);
-        res.send(pdfData);
+        res.setHeader('Content-Disposition', `attachment; filename=${type}-${id}.pdf`);
+        res.send(pdfBuffer);
     } catch (error) {
         next(error);
     }
 };
 
 module.exports = {
+    getMeetings,
     createMeeting,
     updateMeeting,
     deleteMeeting,
-    addAgendamToMeeting,
     addInvitees,
     addPresentees,
-    generateAgendaPdf: handleGenerateAgendaPdf,
-    generateResolutionPdf: handleGenerateResolutionPdf,
-    generateAttendanceSheet: handleGenerateAttendanceSheet
+    generatePdf
 };

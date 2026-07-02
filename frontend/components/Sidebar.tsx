@@ -13,6 +13,7 @@ export default function Sidebar({ type = 'admin' }: SidebarProps) {
 
   const adminLinks = [
     { name: 'Meetings', href: '/admin/meetings', icon: Calendar },
+    { name: 'Members', href: '/admin/members', icon: Users },
     { name: 'Faculties', href: '/admin/faculties', icon: Building2 },
     { name: 'Departments', href: '/admin/departments', icon: Briefcase },
     { name: 'Offices', href: '/admin/offices', icon: Building2 },

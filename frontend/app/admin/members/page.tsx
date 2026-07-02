@@ -1,0 +1,215 @@
+"use client";
+
+import { useState } from "react";
+import useSWR from "swr";
+import api, { fetcher } from "../../../lib/api";
+import DataTable from "../../../components/DataTable";
+import SearchableSelect from "../../../components/SearchableSelect";
+
+export default function ManageMembersPage() {
+  const [filter, setFilter] = useState("all");
+  const { data: response, error, mutate } = useSWR(`/members${filter !== 'all' ? `?type=${filter}` : ''}`, fetcher);
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [newMember, setNewMember] = useState({
+    name: "",
+    prefix: "",
+    designation: "",
+    department_id: "",
+    office_id: "",
+    email: "",
+    member_type: "academic"
+  });
+
+  // Fetch departments and offices for the dropdowns
+  const { data: deptRes } = useSWR('/departments', fetcher);
+  const { data: officeRes } = useSWR('/offices', fetcher);
+
+  const departments = [{ value: "", label: "None" }, ...(deptRes?.data?.map((d: any) => ({ value: d.id, label: d.name_english })) || [])];
+  const offices = [{ value: "", label: "None" }, ...(officeRes?.data?.map((o: any) => ({ value: o.id, label: o.name_bangla })) || [])];
+
+  const columns = [
+    { key: "name", label: "Name" },
+    { key: "designation", label: "Designation" },
+    { key: "department_name", label: "Department" },
+    { key: "office_name", label: "Office" },
+    { key: "member_type", label: "Type" }
+  ];
+
+  const handleEdit = (member: any) => {
+    setIsEditMode(true);
+    setEditingId(member.id);
+    setNewMember({
+      name: member.name || "",
+      prefix: member.prefix || "",
+      designation: member.designation || "",
+      department_id: member.department_id || "",
+      office_id: member.office_id || "",
+      email: member.email || "",
+      member_type: member.member_type || "academic"
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = async (member: any) => {
+    if (window.confirm("Are you sure you want to delete this member?")) {
+      try {
+        await api.delete(`/members/${member.id}`);
+        mutate();
+      } catch (err) {
+        console.error(err);
+        alert('Failed to delete member');
+      }
+    }
+  };
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (isEditMode && editingId) {
+        await api.put(`/members/${editingId}`, newMember);
+      } else {
+        await api.post('/members', newMember);
+      }
+      setIsModalOpen(false);
+      setIsEditMode(false);
+      setEditingId(null);
+      setNewMember({ name: "", prefix: "", designation: "", department_id: "", office_id: "", email: "", member_type: "academic" });
+      mutate();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to save member');
+    }
+  };
+
+  const handleAddNewOffice = async (officeNameBangla: string) => {
+    try {
+      const res = await api.post('/offices', { 
+        name_bangla: officeNameBangla,
+        name_english: officeNameBangla // fallback
+      });
+      const newOfficeId = res.data.data.id;
+      setNewMember({ ...newMember, office_id: newOfficeId });
+      // Revalidate offices globally if SWR mutate was available, but it will sync eventually
+    } catch (err: any) {
+      alert('Failed to add new office');
+    }
+  };
+
+  if (error) return <div className="p-8">Failed to load members</div>;
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6">
+      
+      <div className="flex items-center space-x-4">
+        <label className="text-sm font-medium">Filter by Type:</label>
+        <select 
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="bg-card border border-border rounded-md px-3 py-1.5 text-sm"
+        >
+          <option value="all">All</option>
+          <option value="academic">Academic</option>
+          <option value="syndicate">Syndicate</option>
+        </select>
+      </div>
+
+      <DataTable 
+        columns={columns} 
+        data={response?.data || []} 
+        title="Manage Members"
+        onAdd={() => {
+          setIsEditMode(false);
+          setEditingId(null);
+          setNewMember({ name: "", prefix: "", designation: "", department_id: "", office_id: "", email: "", member_type: "academic" });
+          setIsModalOpen(true);
+        }}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+      />
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6 relative max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">{isEditMode ? "Edit Member" : "Add New Member"}</h3>
+            <form onSubmit={handleAddSubmit} className="space-y-4">
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Name</label>
+                  <input required value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Prefix</label>
+                  <input value={newMember.prefix} onChange={e => setNewMember({...newMember, prefix: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Email</label>
+                  <input type="email" value={newMember.email} onChange={e => setNewMember({...newMember, email: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Designation</label>
+                  <SearchableSelect 
+                    options={[
+                      { value: "Professor", label: "Professor" },
+                      { value: "Associate Professor", label: "Associate Professor" },
+                      { value: "Assistant Professor", label: "Assistant Professor" },
+                      { value: "Lecturer", label: "Lecturer" }
+                    ]}
+                    value={newMember.designation}
+                    onChange={(val) => setNewMember({...newMember, designation: val})}
+                    placeholder="Select..."
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Type</label>
+                <SearchableSelect 
+                  options={[
+                    { value: "academic", label: "Academic" },
+                    { value: "syndicate", label: "Syndicate" },
+                    { value: "none", label: "None" }
+                  ]}
+                  value={newMember.member_type}
+                  onChange={(val) => setNewMember({...newMember, member_type: val})}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Department</label>
+                <SearchableSelect 
+                  options={departments} 
+                  value={newMember.department_id} 
+                  onChange={(val) => setNewMember({...newMember, department_id: val})} 
+                  placeholder="Select Department..." 
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Office (Bangla)</label>
+                <SearchableSelect 
+                  options={offices} 
+                  value={newMember.office_id} 
+                  onChange={(val) => setNewMember({...newMember, office_id: val})} 
+                  onAddNew={handleAddNewOffice}
+                  placeholder="Search Office or add new..." 
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80">Cancel</button>
+                <button type="submit" className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">{isEditMode ? "Update Member" : "Save Member"}</button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

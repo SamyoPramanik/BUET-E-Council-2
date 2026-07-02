@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef } from 'react';
-import { GripVertical, Pencil, Trash2, Upload, Download } from 'lucide-react';
+import { useState, useRef, useMemo } from 'react';
+import { GripVertical, Pencil, Trash2, Upload, Download, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface Column {
   key: string;
   label: string;
+  sortable?: boolean;
 }
 
 interface DataTableProps {
@@ -32,6 +33,7 @@ export default function DataTable({
   onDelete
 }: DataTableProps) {
   const [data, setData] = useState(initialData);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Update local state when initialData changes (from SWR)
@@ -40,6 +42,32 @@ export default function DataTable({
   if (data.length !== initialData.length) {
       setData(initialData);
   }
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    } else if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') {
+      // Third click removes sorting
+      setSortConfig(null);
+      return;
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedData = useMemo(() => {
+    if (!sortConfig) return data;
+    
+    return [...data].sort((a, b) => {
+      if (a[sortConfig.key] < b[sortConfig.key]) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (a[sortConfig.key] > b[sortConfig.key]) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [data, sortConfig]);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     e.dataTransfer.setData('text/plain', index.toString());
@@ -121,13 +149,29 @@ export default function DataTable({
               <tr className="bg-muted text-muted-foreground text-sm border-b border-border">
                 {onReorder && <th className="px-4 py-3 w-12 text-center"></th>}
                 {columns.map(col => (
-                  <th key={col.key} className="px-6 py-3 font-semibold">{col.label}</th>
+                  <th key={col.key} className="px-6 py-3 font-semibold">
+                    <div 
+                      className={`flex items-center space-x-1 ${col.sortable !== false ? 'cursor-pointer hover:text-foreground select-none' : ''}`}
+                      onClick={() => col.sortable !== false && handleSort(col.key)}
+                    >
+                      <span>{col.label}</span>
+                      {col.sortable !== false && (
+                        <span className="text-muted-foreground/50">
+                          {sortConfig?.key === col.key ? (
+                            sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 opacity-50" />
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </th>
                 ))}
                 <th className="px-6 py-3 font-semibold text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {data.map((row, index) => (
+              {sortedData.map((row, index) => (
                 <tr 
                   key={row.id || index}
                   draggable={!!onReorder}
@@ -170,7 +214,7 @@ export default function DataTable({
                 </tr>
               ))}
               
-              {data.length === 0 && (
+              {sortedData.length === 0 && (
                 <tr>
                   <td colSpan={columns.length + (onReorder ? 2 : 1)} className="px-6 py-8 text-center text-muted-foreground">
                     No data found.

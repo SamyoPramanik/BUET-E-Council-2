@@ -26,9 +26,15 @@ const createDepartment = async (req, res, next) => {
             return next(new CustomError('All fields (names, aliases, faculty_id) are required', 400));
         }
 
+        let assignedSerial = serial;
+        if (!assignedSerial) {
+            const maxSerialResult = await db.query('SELECT MAX(serial) as max_serial FROM departments');
+            assignedSerial = (maxSerialResult.rows[0].max_serial || 0) + 1;
+        }
+
         const result = await db.query(
             'INSERT INTO departments (name_bangla, name_english, alias_bangla, alias_english, faculty_id, serial) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [name_bangla, name_english, alias_bangla, alias_english, faculty_id, serial || null]
+            [name_bangla, name_english, alias_bangla, alias_english, faculty_id, assignedSerial]
         );
 
         res.status(201).json({ success: true, message: 'Department created', data: result.rows[0] });

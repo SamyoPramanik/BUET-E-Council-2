@@ -23,6 +23,29 @@ const getMeetings = async (req, res, next) => {
     }
 };
 
+const getMeetingById = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query(`
+            SELECT m.*, 
+            (SELECT COUNT(*) FROM meetings m2 WHERE m2.created_at <= m.created_at) as serial 
+            FROM meetings m
+            WHERE m.id = $1
+        `, [id]);
+        
+        if (result.rows.length === 0) {
+            return next(new CustomError('Meeting not found', 404));
+        }
+
+        const meeting = result.rows[0];
+        meeting.date = new Date(meeting.meeting_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+        res.status(200).json({ success: true, data: meeting });
+    } catch (error) {
+        next(error);
+    }
+};
+
 const createMeeting = async (req, res, next) => {
     try {
         const { title, meeting_date, type, status } = req.body;
@@ -159,6 +182,7 @@ const generatePdf = async (req, res, next) => {
 
 module.exports = {
     getMeetings,
+    getMeetingById,
     createMeeting,
     updateMeeting,
     deleteMeeting,

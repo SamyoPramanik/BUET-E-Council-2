@@ -137,6 +137,24 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     }
   };
 
+  const handleAddNewOffice = async (officeNameBangla: string, isEdit: boolean = false) => {
+    try {
+      const res = await api.post('/offices', {
+        name_bangla: officeNameBangla,
+        name_english: officeNameBangla // fallback
+      });
+      const newOfficeId = res.data.data.id;
+      if (isEdit) {
+        setEditForm(prev => ({ ...prev, office_id: newOfficeId }));
+      } else {
+        setCustomForm(prev => ({ ...prev, office_id: newOfficeId }));
+      }
+      toast.success('Office added successfully');
+    } catch (err: any) {
+      toast.error('Failed to add new office');
+    }
+  };
+
   const handleAddPresentees = async () => {
     setIsSavingPresentees(true);
     try {
@@ -507,6 +525,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                   />
                 </div>
               </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-medium">Designation</label>
                 <SearchableSelect 
@@ -519,22 +538,25 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                   placeholder="Select Designation..."
                 />
               </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-medium">Department</label>
                 <SearchableSelect
-                  options={departments.map((d: any) => ({ value: d.id, label: d.name_bangla }))}
+                  options={[{ value: "", label: "None" }, ...departments.map((d: any) => ({ value: d.id, label: d.name_english || d.name_bangla }))]}
                   value={customForm.department_id || ''}
                   onChange={(val) => setCustomForm(prev => ({ ...prev, department_id: val }))}
                   placeholder="Select Department..."
                 />
               </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-medium">Office (Bangla)</label>
                 <SearchableSelect
-                  options={offices.map((o: any) => ({ value: o.id, label: o.name_bangla }))}
+                  options={[{ value: "", label: "None" }, ...offices.map((o: any) => ({ value: o.id, label: o.name_bangla }))]}
                   value={customForm.office_id || ''}
                   onChange={(val) => setCustomForm(prev => ({ ...prev, office_id: val }))}
-                  placeholder="Select Office..."
+                  onAddNew={handleAddNewOffice}
+                  placeholder="Search Office or add new..."
                 />
               </div>
               <div className="pt-6 shrink-0 flex justify-end gap-3">
@@ -591,19 +613,21 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
               <div className="space-y-1">
                 <label className="text-xs font-medium">Department</label>
                 <SearchableSelect
-                  options={departments.map((d: any) => ({ value: d.id, label: d.name_bangla }))}
+                  options={[{ value: "", label: "None" }, ...departments.map((d: any) => ({ value: d.id, label: d.name_english || d.name_bangla }))]}
                   value={editForm.department_id || ''}
                   onChange={(val) => setEditForm(prev => ({ ...prev, department_id: val }))}
                   placeholder="Select Department..."
                 />
               </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-medium">Office (Bangla)</label>
                 <SearchableSelect
-                  options={offices.map((o: any) => ({ value: o.id, label: o.name_bangla }))}
+                  options={[{ value: "", label: "None" }, ...offices.map((o: any) => ({ value: o.id, label: o.name_bangla }))]}
                   value={editForm.office_id || ''}
                   onChange={(val) => setEditForm(prev => ({ ...prev, office_id: val }))}
-                  placeholder="Select Office..."
+                  onAddNew={(val) => handleAddNewOffice(val, true)}
+                  placeholder="Search Office or add new..."
                 />
               </div>
             </div>

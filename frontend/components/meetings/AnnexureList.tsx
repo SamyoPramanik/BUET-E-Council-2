@@ -17,10 +17,12 @@ interface Annexure {
 interface AnnexureListProps {
   contentId: string;
   type: 'agenda' | 'resolution';
+  isLocked?: boolean;
+  readOnly?: boolean;
 }
 
-export default function AnnexureList({ contentId, type }: AnnexureListProps) {
-  const { data: response, mutate } = useSWR(`/agendas/${contentId}/annexures`, fetcher, { fallbackData: { data: [] } });
+export default function AnnexureList({ contentId, type, isLocked = false, readOnly = false }: AnnexureListProps) {
+  const { data: response, mutate } = useSWR(`/agendas/${contentId}/annexures?type=${type}`, fetcher, { fallbackData: { data: [] } });
   const annexures: Annexure[] = response?.data || [];
   
   const [isUploading, setIsUploading] = useState(false);
@@ -133,14 +135,16 @@ export default function AnnexureList({ contentId, type }: AnnexureListProps) {
             ref={fileInputRef} 
             onChange={handleFileUpload} 
           />
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors disabled:opacity-50"
-          >
-            {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-            Add Annexure
-          </button>
+          {!isLocked && !readOnly && (
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            >
+              {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              Add Annexure
+            </button>
+          )}
         </div>
       </div>
 
@@ -153,16 +157,18 @@ export default function AnnexureList({ contentId, type }: AnnexureListProps) {
           annexures.map((annexure) => (
             <div 
               key={annexure.id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, annexure.id)}
-              onDragEnd={handleDragEnd}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, annexure.id)}
-              className="flex items-center gap-3 p-3 bg-card border border-border rounded-md group hover:border-primary/30 transition-colors shadow-sm cursor-grab active:cursor-grabbing"
+              draggable={!isLocked && !readOnly}
+              onDragStart={(e) => !isLocked && !readOnly && handleDragStart(e, annexure.id)}
+              onDragEnd={(!isLocked && !readOnly) ? handleDragEnd : undefined}
+              onDragOver={(!isLocked && !readOnly) ? handleDragOver : undefined}
+              onDrop={(e) => !isLocked && !readOnly && handleDrop(e, annexure.id)}
+              className={`flex items-center gap-3 p-3 bg-card border border-border rounded-md group hover:border-primary/30 transition-colors shadow-sm ${(!isLocked && !readOnly) ? 'cursor-grab active:cursor-grabbing' : ''}`}
             >
-              <div className="text-muted-foreground/50 group-hover:text-muted-foreground cursor-grab">
-                <GripVertical className="w-4 h-4" />
-              </div>
+              {!isLocked && !readOnly && (
+                <div className="text-muted-foreground/50 group-hover:text-muted-foreground cursor-grab">
+                  <GripVertical className="w-4 h-4" />
+                </div>
+              )}
               <div className="bg-primary/10 p-1.5 rounded text-primary">
                 <File className="w-4 h-4" />
               </div>
@@ -187,13 +193,15 @@ export default function AnnexureList({ contentId, type }: AnnexureListProps) {
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 )}
-                <button 
-                  onClick={() => handleDelete(annexure.id)}
-                  className="p-1.5 text-muted-foreground hover:text-destructive bg-muted rounded-md transition-colors"
-                  title="Delete Annexure"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {!isLocked && !readOnly && (
+                  <button 
+                    onClick={() => handleDelete(annexure.id)}
+                    className="p-1.5 text-muted-foreground hover:text-destructive bg-muted rounded-md transition-colors"
+                    title="Delete Annexure"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           ))

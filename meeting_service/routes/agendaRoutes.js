@@ -1,6 +1,7 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const agendaController = require('../controllers/agendaController');
+const { checkMeetingLock } = require('../middlewares/lockMiddleware');
 const multer = require('multer');
 
 // Configure multer for memory storage
@@ -9,6 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 
 router.use(authMiddleware);
+router.use(checkMeetingLock);
 
 // Agendam routes
 router.get('/', agendaController.getAgendams);

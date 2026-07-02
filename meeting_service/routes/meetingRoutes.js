@@ -1,6 +1,7 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const meetingController = require('../controllers/meetingController');
+const { checkMeetingLock } = require('../middlewares/lockMiddleware');
 const multer = require('multer');
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -8,6 +9,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 
 router.use(authMiddleware);
+router.use(checkMeetingLock);
 
 router.get('/', meetingController.getMeetings);
 router.get('/:id', meetingController.getMeetingById);

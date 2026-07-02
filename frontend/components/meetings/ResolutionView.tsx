@@ -107,6 +107,11 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
               <div className="text-muted-foreground bg-muted/30 p-4 rounded-md border-l-4 border-muted/50 prose prose-sm dark:prose-invert max-w-none">
                 <div dangerouslySetInnerHTML={{ __html: agenda.content || "<p class='italic opacity-50'>Empty agenda...</p>" }} />
               </div>
+
+              {/* Agenda Annexures (Read-Only) */}
+              <div className="border-border/50 pt-2">
+                <AnnexureList contentId={agenda.id} type="agenda" readOnly={true} />
+              </div>
             </div>
 
             {/* Bottom Section (The Resolution) */}
@@ -179,7 +184,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
 
             {/* Annexure List placed underneath the resolution content */}
             {agenda.resolution && (
-              <AnnexureList contentId={agenda.id} type="resolution" />
+              <AnnexureList contentId={agenda.id} type="resolution" isLocked={isLocked} />
             )}
 
             {/* Execution Status (Only for past meetings) */}

@@ -218,7 +218,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               )}
 
               {/* Annexure List placed underneath the agenda content */}
-              <AnnexureList contentId={agenda.id} type="agenda" />
+              <AnnexureList contentId={agenda.id} type="agenda" isLocked={isLocked} />
             </div>
 
             {/* Insertion Strip (UX Magic) */}
@@ -278,11 +278,11 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             {agendas.map((agenda: any, index: number) => (
               <div 
                 key={agenda.id} 
-                draggable
-                onDragStart={(e) => handleDragStart(e, agenda.id)}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, agenda.id)}
-                className="bg-card border border-border p-3 rounded-md flex items-center gap-3 cursor-grab hover:border-primary/50 transition-colors group shadow-sm active:cursor-grabbing"
+                draggable={!isLocked}
+                onDragStart={(e) => !isLocked && handleDragStart(e, agenda.id)}
+                onDragOver={!isLocked ? handleDragOver : undefined}
+                onDrop={(e) => !isLocked && handleDrop(e, agenda.id)}
+                className={`bg-card border border-border p-3 rounded-md flex items-center gap-3 transition-colors group shadow-sm ${!isLocked ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
               >
                 <GripVertical className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                 <span className="font-medium text-sm">

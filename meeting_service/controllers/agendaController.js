@@ -212,10 +212,21 @@ const deleteResolution = async (req, res, next) => {
 const getAnnexures = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const result = await db.query(
-            'SELECT * FROM annexures WHERE content_id = $1 ORDER BY annexure_serial ASC',
-            [id]
-        );
+        let { type } = req.query; // 'agenda' or 'resolution'
+        
+        if (type === 'agenda') type = 'agendaItem';
+
+        let query = 'SELECT * FROM annexures WHERE content_id = $1';
+        let params = [id];
+
+        if (type) {
+            query += ' AND annexure_type = $2';
+            params.push(type);
+        }
+
+        query += ' ORDER BY annexure_serial ASC';
+
+        const result = await db.query(query, params);
         
         // Generate presigned URLs for each file
         const annexures = await Promise.all(result.rows.map(async (annexure) => {

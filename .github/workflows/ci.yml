@@ -1,0 +1,37 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Docker Compose Services
+        run: docker compose build
+
+      - name: Start Services and Wait
+        run: docker compose up -d --wait
+
+      - name: Test API and Database Integration
+        run: curl --fail http://localhost:9001/api/health || exit 1
+
+      - name: Test Next.js Frontend Delivery
+        run: curl --fail http://localhost:9001/ || exit 1
+
+      - name: Show Docker Logs on Failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop Services
+        if: always() # Ensures containers stop even if tests fail
+        run: docker compose down

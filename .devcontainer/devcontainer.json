@@ -1,0 +1,35 @@
+{
+    "name": "BUET E council",
+    "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+    "features": {
+        "ghcr.io/devcontainers/features/python:1": {
+            "version": "3.12",
+            "installTools": true
+        },
+        "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+            "moby": false
+        },
+        "ghcr.io/devcontainers/features/git-lfs:1": {},
+        "ghcr.io/devcontainers-community/npm-features/prettier:1": {},
+        "ghcr.io/devcontainers-extra/features/prettier:1": {}
+    },
+    "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
+    "workspaceFolder": "${localWorkspaceFolder}",
+    "mounts": [
+        "source=/home/samyo-pramanik/.ssh/github_ssh_auth_token.pub,target=/home/samyo-pramanik/.ssh/github_ssh_auth_token.pub,type=bind,readonly"
+    ],
+    "remoteUser": "node",
+    
+    // UPDATED LINE BELOW: Added pip install uv and chmod +x
+    "postCreateCommand": "bash -c 'source /usr/local/share/nvm/nvm.sh && nvm install 22 && sudo apt install nc && pip install uv && cd back-end && uv sync --frozen --no-install-project --no-dev && chmod +x ./entrypoint.sh && ./entrypoint.sh && cd ../front-end && npm install'",
+    
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-azuretools.vscode-docker",
+                "esbenp.prettier-vscode",
+                "ms-python.python"
+            ]
+        }
+    }
+}

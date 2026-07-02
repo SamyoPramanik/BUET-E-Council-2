@@ -1,0 +1,379 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const db = require('./db');
+const { requireAuth } = require('./middleware');
+const { getDeviceInfo } = require('./utils');
+
+const router = express.Router();
+
+/**
+ * @swagger
+ * /signup:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - email
+ *               - password
+ *             properties:
+ *               username:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *               member_type:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: User created successfully
+ *       400:
+ *         description: Missing fields
+ *       409:
+ *         description: Username or email already exists
+ */
+// 1. POST /signup
+router.post('/signup', async (req, res) => {
+    try {
+        const { username, email, password, role = 'member', member_type = 'none' } = req.body;
+
+        if (!username || !email || !password) {
+            return res.status(400).json({ success: false, message: 'Username, Email and password are required' });
+        }
+
+        // Check if user exists
+        const userCheck = await db.query('SELECT id FROM users WHERE username = $1 OR email = $2', [username || '', email]);
+        if (userCheck.rows.length > 0) {
+            return res.status(409).json({ success: false, message: 'Username or email already exists' });
+        }
+
+        // Hash password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Create user
+        const result = await db.query(
+            `INSERT INTO users (username, email, password, role, member_type) 
+             VALUES ($1, $2, $3, $4, $5) RETURNING id, username, email, role, status, created_at`,
+            [username, email, hashedPassword, role, member_type]
+        );
+
+        res.status(201).json({
+            success: true,
+            message: 'User created successfully',
+            data: result.rows[0]
+        });
+    } catch (err) {
+        console.error('Signup error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /signin:
+ *   post:
+ *     summary: Authenticate and create a session
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - password
+ *             properties:
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               location:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login successful, returns session token
+ *       400:
+ *         description: Username and password are required
+ *       401:
+ *         description: Invalid credentials
+ *       403:
+ *         description: Account is inactive
+ */
+// 2. POST /signin
+router.post('/signin', async (req, res) => {
+    try {
+        const { username, password, location } = req.body;
+        const deviceInfo = JSON.stringify(getDeviceInfo(req));
+
+        if (!username || !password) {
+            return res.status(400).json({ success: false, message: 'Username and password are required' });
+        }
+
+        // Find user
+        const userResult = await db.query('SELECT * FROM users WHERE username = $1 OR email = $1', [username]);
+        if (userResult.rows.length === 0) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials', error_code: 'INVALID_CREDENTIALS' });
+        }
+
+        const user = userResult.rows[0];
+
+        if (user.status !== 'active') {
+            return res.status(403).json({ success: false, message: 'Account is inactive' });
+        }
+
+        // Verify password
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Invalid credentials', error_code: 'INVALID_CREDENTIALS' });
+        }
+
+        // Create Session Token
+        const sessionToken = crypto.randomBytes(64).toString('hex');
+        const ipAddress = req.ip || req.connection.remoteAddress;
+
+        // Expiration (30 days)
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30);
+
+        // Store session in DB
+        const sessionResult = await db.query(
+            `INSERT INTO sessions (user_id, session_token, device_info, ip_address, signin_location, expires_at) 
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`,
+            [user.id, sessionToken, deviceInfo, ipAddress, location || 'Unknown', expiresAt]
+        );
+
+        // Set HttpOnly, Secure Cookie
+        res.cookie('session_token', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+            sameSite: 'strict',
+            expires: expiresAt
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Signin successful',
+            data: {
+                token: sessionToken,
+                session_id: sessionResult.rows[0].id,
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    role: user.role
+                }
+            }
+        });
+    } catch (err) {
+        console.error('Signin error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error', error: err.message, stack: err.stack });
+    }
+});
+
+/**
+ * @swagger
+ * /signout:
+ *   post:
+ *     summary: Invalidate the current session
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ *       401:
+ *         description: Unauthorized
+ */
+// 3. POST /signout
+router.post('/signout', requireAuth, async (req, res) => {
+    try {
+        await db.query('UPDATE sessions SET is_active = FALSE WHERE session_token = $1', [req.session.token]);
+        res.clearCookie('session_token');
+        res.status(200).json({ success: true, message: 'Logged out successfully' });
+    } catch (err) {
+        console.error('Signout error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /signout-all:
+ *   post:
+ *     summary: Invalidate all sessions for the current user
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Logged out from all devices successfully
+ *       401:
+ *         description: Unauthorized
+ */
+// 4. POST /signout-all
+router.post('/signout-all', requireAuth, async (req, res) => {
+    try {
+        await db.query('UPDATE sessions SET is_active = FALSE WHERE user_id = $1', [req.user.id]);
+        res.clearCookie('session_token');
+        res.status(200).json({ success: true, message: 'Logged out from all devices successfully' });
+    } catch (err) {
+        console.error('Signout all error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /sessions:
+ *   get:
+ *     summary: List all active sessions
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Returns an array of active sessions
+ *       401:
+ *         description: Unauthorized
+ */
+// 5. GET /sessions
+router.get('/sessions', requireAuth, async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT id, device_info, ip_address, signin_location, created_at, is_active 
+             FROM sessions 
+             WHERE user_id = $1 AND is_active = TRUE AND expires_at > NOW()
+             ORDER BY created_at DESC`,
+            [req.user.id]
+        );
+
+        const sessions = result.rows.map(session => ({
+            ...session,
+            is_current: session.id === req.session.id
+        }));
+
+        res.status(200).json({
+            success: true,
+            data: {
+                sessions: sessions
+            }
+        });
+    } catch (err) {
+        console.error('Get sessions error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /sessions/{sessionId}:
+ *   delete:
+ *     summary: Terminate a specific session
+ *     tags: [Auth]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID of the session to terminate
+ *     responses:
+ *       200:
+ *         description: Session terminated successfully
+ *       404:
+ *         description: Session not found or already inactive
+ *       401:
+ *         description: Unauthorized
+ */
+// 6. DELETE /sessions/:sessionId
+router.delete('/sessions/:sessionId', requireAuth, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+
+        if (sessionId === req.session.id) {
+            return res.status(403).json({ success: false, message: 'Cannot remove current session using this endpoint. Use /signout instead.' });
+        }
+
+        // Terminate specific session by setting is_active = FALSE
+        const result = await db.query(
+            'UPDATE sessions SET is_active = FALSE WHERE id = $1 AND user_id = $2 RETURNING id',
+            [sessionId, req.user.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Session not found or already inactive' });
+        }
+
+        res.status(200).json({ success: true, message: 'Session terminated successfully' });
+    } catch (err) {
+        console.error('Terminate session error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /me:
+ *   get:
+ *     summary: Get information about the currently active user
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Returns user profile information
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ */
+// 7. GET /me (Get user info)
+router.get('/me', requireAuth, async (req, res) => {
+    try {
+        const result = await db.query(
+            'SELECT id, username, email, role, member_type, status, created_at FROM users WHERE id = $1',
+            [req.user.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: result.rows[0]
+        });
+    } catch (err) {
+        console.error('Get user info error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /secure-test:
+ *   get:
+ *     summary: Example endpoint to test the secure middleware
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Returns a success message and user details
+ *       401:
+ *         description: Unauthorized
+ */
+// 8. GET /secure-test (Example of how to protect an endpoint)
+router.get('/secure-test', requireAuth, (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'This is a secure endpoint!',
+        user: req.user
+    });
+});
+
+module.exports = router;

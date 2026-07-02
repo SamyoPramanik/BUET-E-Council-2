@@ -1,0 +1,64 @@
+name: Deploy to Azure VM
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"] # Must match the 'name' in ci.yml exactly
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  deploy:
+    # CRITICAL: This condition ensures deployment ONLY happens if CI passed.
+    # Without this, it would trigger even if the CI workflow failed.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy project files to Azure VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          source: "."
+          target: "/home/${{ secrets.VM_USER }}/buet_ecouncil"
+
+      - name: Execute deployment commands on VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            cd /home/${{ secrets.VM_USER }}/buet_ecouncil
+
+            # --- NEW ADDITION: INJECT ENVIRONMENT VARIABLES ---
+            # This creates (or overwrites) the .env file directly on your Azure VM
+            # using the variables and secrets stored in your GitHub UI.
+            echo "Generating .env file from GitHub Secrets and Variables..."
+            cat <<EOF > .env
+            BACKEND_URL=${{ vars.BACKEND_URL }}
+            FRONTEND_URL=${{ vars.FRONTEND_URL }}
+            # Add any other variables your docker-compose.yml expects below:
+            # DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            # GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+            EOF
+            # --------------------------------------------------
+
+            # Pull any new base images
+            docker compose pull
+
+            # Shut down existing containers
+            docker compose down
+
+            # Build and spin up the new containers
+            # Docker compose will automatically detect and use the .env file we just created
+            docker compose up -d --build --wait
+
+            # Clean up old images to keep the Azure VM disk clean
+            docker system prune -f

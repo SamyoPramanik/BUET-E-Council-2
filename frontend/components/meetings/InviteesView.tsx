@@ -30,6 +30,9 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const [editingPresentee, setEditingPresentee] = useState<any>(null);
   const [editForm, setEditForm] = useState({ name: '', designation: '', department_id: '', office_id: '' });
   const [isUpdatingPresentee, setIsUpdatingPresentee] = useState(false);
+  const [isCreatingCustom, setIsCreatingCustom] = useState(false);
+  const [customForm, setCustomForm] = useState({ name: '', prefix: '', designation: '', department_id: '', office_id: '' });
+  const [isSavingCustom, setIsSavingCustom] = useState(false);
 
   const { data: departmentsRes } = useSWR('/departments', fetcher);
   const { data: officesRes } = useSWR('/offices', fetcher);
@@ -145,15 +148,42 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
             office_id: m.office_id
         }));
 
-      await api.post(`/meetings/${meeting.id}/presentees`, { presentees: presenteesToAdd });
-      toast.success("Presentees added successfully");
-      setIsAddPresenteeModalOpen(false);
-      setSelectedMembers([]);
-      mutateInvitees();
+      if (presenteesToAdd.length > 0) {
+        await api.post(`/meetings/${meeting.id}/presentees`, { presentees: presenteesToAdd });
+        toast.success("Presentees added successfully");
+        setIsAddPresenteeModalOpen(false);
+        setSelectedMembers([]);
+        mutateInvitees();
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to add presentees");
     } finally {
       setIsSavingPresentees(false);
+    }
+  };
+
+  const handleCreateCustomPresentee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingCustom(true);
+    try {
+      const nameWithPrefix = customForm.prefix ? `${customForm.prefix} ${customForm.name}` : customForm.name;
+      const presenteeToAdd = {
+        name: nameWithPrefix,
+        designation: customForm.designation,
+        department_id: customForm.department_id || null,
+        office_id: customForm.office_id || null
+      };
+      
+      await api.post(`/meetings/${meeting.id}/presentees`, { presentees: [presenteeToAdd] });
+      toast.success("Custom presentee added successfully");
+      setIsCreatingCustom(false);
+      setIsAddPresenteeModalOpen(false);
+      setCustomForm({ name: '', prefix: '', designation: '', department_id: '', office_id: '' });
+      mutateInvitees();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to add custom presentee");
+    } finally {
+      setIsSavingCustom(false);
     }
   };
 
@@ -251,7 +281,6 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         <DataTable
           columns={columns}
           data={invitees}
-          title={`${displayType} List`}
           onEdit={isPast ? handleEditClick : undefined}
           onDelete={(row) => handleRemove(row.id)}
         />
@@ -350,50 +379,153 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
             </div>
             <div className="p-6 overflow-y-auto flex-1">
               <div className="space-y-2">
-                {filteredMembers.map((member: any) => (
-                  <label key={member.id} className="flex items-center gap-3 p-3 rounded-md border border-border hover:bg-muted/30 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 rounded border-input"
-                      checked={selectedMembers.includes(member.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedMembers(prev => [...prev, member.id]);
-                        } else {
-                          setSelectedMembers(prev => prev.filter(id => id !== member.id));
-                        }
-                      }}
-                    />
-                    <div>
-                      <div className="font-medium text-sm">{member.name}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {member.designation} 
-                        {member.department_name ? ` • ${member.department_name}` : ''}
-                        {member.office_name ? ` • ${member.office_name}` : ''}
+                {filteredMembers.map((member: any) => {
+                  const isAlreadyAdded = invitees.some((p: any) => p.name === member.name && p.designation === member.designation);
+                  return (
+                    <label key={member.id} className={`flex items-center gap-3 p-3 rounded-md border border-border ${isAlreadyAdded ? 'opacity-60 bg-muted/50 cursor-not-allowed' : 'hover:bg-muted/30 cursor-pointer'}`}>
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded border-input"
+                        checked={isAlreadyAdded || selectedMembers.includes(member.id)}
+                        disabled={isAlreadyAdded}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedMembers(prev => [...prev, member.id]);
+                          } else {
+                            setSelectedMembers(prev => prev.filter(id => id !== member.id));
+                          }
+                        }}
+                      />
+                      <div>
+                        <div className="font-medium text-sm flex items-center gap-2">
+                          {member.name}
+                          {isAlreadyAdded && <span className="text-[10px] uppercase font-bold tracking-wider bg-primary/10 text-primary px-1.5 py-0.5 rounded">Added</span>}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {member.designation} 
+                          {member.department_name ? ` • ${member.department_name}` : ''}
+                          {member.office_name ? ` • ${member.office_name}` : ''}
+                        </div>
                       </div>
-                    </div>
-                  </label>
-                ))}
+                    </label>
+                  );
+                })}
                 {filteredMembers.length === 0 && (
-                  <div className="text-center text-sm text-muted-foreground py-8">No members match the filters.</div>
+                  <div className="text-center text-sm text-muted-foreground py-8">
+                    <p className="mb-4">No members match the filters.</p>
+                    <button 
+                      onClick={() => setIsCreatingCustom(true)}
+                      className="bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium text-sm hover:opacity-90 transition-opacity flex items-center gap-2 mx-auto"
+                    >
+                      <Plus className="w-4 h-4" /> Create Custom Presentee
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
-            <div className="p-6 border-t border-border shrink-0 flex justify-end gap-3">
-              <button 
-                onClick={() => setIsAddPresenteeModalOpen(false)} 
-                className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleAddPresentees}
-                disabled={isSavingPresentees || selectedMembers.length === 0}
-                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
-              >
-                {isSavingPresentees ? "Adding..." : `Add Selected (${selectedMembers.length})`}
-              </button>
-            </div>
+            {filteredMembers.length > 0 && (
+              <div className="p-6 border-t border-border shrink-0 flex justify-between items-center gap-3">
+                <button 
+                  onClick={() => setIsCreatingCustom(true)}
+                  className="text-sm font-medium text-primary hover:underline flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" /> Create Custom
+                </button>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setIsAddPresenteeModalOpen(false)} 
+                    className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleAddPresentees}
+                    disabled={isSavingPresentees || selectedMembers.length === 0}
+                    className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
+                  >
+                    {isSavingPresentees ? "Adding..." : `Add Selected (${selectedMembers.length})`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Create Custom Presentee Modal */}
+      {isCreatingCustom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6 relative max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Create Custom Presentee</h3>
+            <form onSubmit={handleCreateCustomPresentee} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Name</label>
+                  <input 
+                    required
+                    type="text" 
+                    value={customForm.name}
+                    onChange={(e) => setCustomForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Prefix</label>
+                  <input 
+                    type="text" 
+                    value={customForm.prefix}
+                    onChange={(e) => setCustomForm(prev => ({ ...prev, prefix: e.target.value }))}
+                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Designation</label>
+                <SearchableSelect 
+                  options={[
+                    { value: "অধ্যাপক", label: "অধ্যাপক" },
+                    { value: "সহযোগী অধ্যাপক", label: "সহযোগী অধ্যাপক" },
+                  ]}
+                  value={customForm.designation}
+                  onChange={(val) => setCustomForm(prev => ({ ...prev, designation: val }))}
+                  placeholder="Select Designation..."
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Department</label>
+                <SearchableSelect
+                  options={departments.map((d: any) => ({ value: d.id, label: d.name_bangla }))}
+                  value={customForm.department_id || ''}
+                  onChange={(val) => setCustomForm(prev => ({ ...prev, department_id: val }))}
+                  placeholder="Select Department..."
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Office (Bangla)</label>
+                <SearchableSelect
+                  options={offices.map((o: any) => ({ value: o.id, label: o.name_bangla }))}
+                  value={customForm.office_id || ''}
+                  onChange={(val) => setCustomForm(prev => ({ ...prev, office_id: val }))}
+                  placeholder="Select Office..."
+                />
+              </div>
+              <div className="pt-6 shrink-0 flex justify-end gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsCreatingCustom(false)} 
+                  className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isSavingCustom || !customForm.name}
+                  className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
+                >
+                  {isSavingCustom ? "Saving..." : "Create & Add"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

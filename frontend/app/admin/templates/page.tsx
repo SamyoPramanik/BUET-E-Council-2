@@ -18,7 +18,7 @@ export default function ManageTemplatesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
+
   const [formData, setFormData] = useState({
     text_content: "",
     type: "agendam",
@@ -45,7 +45,7 @@ export default function ManageTemplatesPage() {
   ];
 
   const templates = response?.data || [];
-  
+
   const tableData = templates.map((t: any) => ({
     ...t,
     typeDisplay: t.type.charAt(0).toUpperCase() + t.type.slice(1),
@@ -119,7 +119,7 @@ export default function ManageTemplatesPage() {
           <h1 className="text-3xl font-bold tracking-tight">Manage Templates</h1>
           <p className="text-muted-foreground mt-1 text-lg">Create reusable content templates for agendas, resolutions, and more.</p>
         </div>
-        <button 
+        <button
           onClick={handleOpenCreate}
           className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium transition-colors shadow-sm flex items-center gap-2"
         >
@@ -127,11 +127,11 @@ export default function ManageTemplatesPage() {
         </button>
       </div>
 
-      <DataTable 
-        title="Templates"
-        columns={columns} 
-        data={tableData} 
-        onEdit={handleEdit} 
+      <DataTable
+        // title="Templates"
+        columns={columns}
+        data={tableData}
+        onEdit={handleEdit}
         onDelete={handleDelete}
       />
 
@@ -140,30 +140,30 @@ export default function ManageTemplatesPage() {
           <div className="bg-card w-full max-w-3xl rounded-lg shadow-xl border border-border flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-border shrink-0 flex justify-between items-center">
               <h2 className="text-2xl font-bold">{isEditMode ? "Edit Template" : "Add New Template"}</h2>
-              <button 
+              <button
                 onClick={() => setIsModalOpen(false)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 &times;
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto space-y-6 flex-1">
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Template Type</label>
-                  <CustomSelect 
+                  <CustomSelect
                     options={typeOptions}
                     value={formData.type}
-                    onChange={(value) => setFormData({...formData, type: value})}
+                    onChange={(value) => setFormData({ ...formData, type: value })}
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Visibility</label>
-                  <CustomSelect 
+                  <CustomSelect
                     options={visibilityOptions}
                     value={formData.visibility}
-                    onChange={(value) => setFormData({...formData, visibility: value})}
+                    onChange={(value) => setFormData({ ...formData, visibility: value })}
                   />
                 </div>
               </div>
@@ -171,9 +171,9 @@ export default function ManageTemplatesPage() {
               <div className="space-y-2 flex-1 flex flex-col min-h-[300px]">
                 <label className="text-sm font-medium">Content</label>
                 <div className="border border-input rounded-md flex-1 overflow-hidden">
-                  <RichTextEditor 
+                  <RichTextEditor
                     content={formData.text_content}
-                    onChange={(html) => setFormData({...formData, text_content: html})}
+                    onChange={(html) => setFormData({ ...formData, text_content: html })}
                     className="p-4"
                   />
                 </div>
@@ -181,13 +181,13 @@ export default function ManageTemplatesPage() {
             </div>
 
             <div className="p-6 border-t border-border shrink-0 flex justify-end gap-3 bg-muted/30">
-              <button 
+              <button
                 onClick={() => setIsModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground rounded-md transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleSave}
                 className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium rounded-md shadow-sm transition-colors"
               >

@@ -12,7 +12,7 @@ interface Column {
 interface DataTableProps {
   columns: Column[];
   data: any[];
-  title: string;
+  title?: string;
   onReorder?: (newOrder: any[]) => void;
   onUploadCsv?: (file: File) => void;
   onDownloadCsv?: () => void;
@@ -117,39 +117,43 @@ export default function DataTable({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold text-foreground tracking-tight">{title}</h2>
-        
-        <div className="flex space-x-2">
-          {onDownloadCsv && (
-            <button onClick={onDownloadCsv} className="flex items-center bg-accent text-accent-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium text-sm transition-opacity shadow-sm">
-              <Download className="w-4 h-4 mr-2" />
-              Download CSV
-            </button>
-          )}
+      {(title || onDownloadCsv || onUploadCsv || onFetchApi || onAdd) && (
+        <div className="flex items-center justify-between">
+          {title && <h2 className="text-2xl font-semibold text-foreground tracking-tight">{title}</h2>}
           
-          {onUploadCsv && (
-            <>
-              <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
-              <button onClick={() => fileInputRef.current?.click()} className="flex items-center bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium text-sm transition-opacity shadow-sm">
-                <Upload className="w-4 h-4 mr-2" />
-                Upload CSV
+          <div className="flex space-x-2">
+            {onDownloadCsv && (
+              <button onClick={onDownloadCsv} className="flex items-center bg-accent text-accent-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium text-sm transition-opacity shadow-sm">
+                <Download className="w-4 h-4 mr-2" />
+                Download CSV
               </button>
-            </>
-          )}
+            )}
+            
+            {onUploadCsv && (
+              <>
+                <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+                <button onClick={() => fileInputRef.current?.click()} className="flex items-center bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium text-sm transition-opacity shadow-sm">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload CSV
+                </button>
+              </>
+            )}
 
-          {onFetchApi && (
-            <button onClick={onFetchApi} className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-md hover:opacity-90 font-medium text-sm transition-opacity shadow-sm">
-              <Upload className="w-4 h-4 mr-2" />
-              Fetch API
-            </button>
-          )}
+            {onFetchApi && (
+              <button onClick={onFetchApi} className="flex items-center bg-blue-600 text-white px-4 py-2 rounded-md hover:opacity-90 font-medium text-sm transition-opacity shadow-sm">
+                <Upload className="w-4 h-4 mr-2" />
+                Fetch API
+              </button>
+            )}
 
-          <button onClick={onAdd} className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium text-sm transition-opacity shadow-sm">
-            Add New
-          </button>
+            {onAdd && (
+              <button onClick={onAdd} className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:opacity-90 font-medium text-sm transition-opacity shadow-sm">
+                Add New
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
         <div className="overflow-x-auto">

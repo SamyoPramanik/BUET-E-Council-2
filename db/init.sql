@@ -121,7 +121,7 @@ CREATE TABLE agenda (
     embedding vector (1536),
     resolution TEXT,
     resolution_embedding vector (1536),
-    is_executed execution_bool DEFAULT 'no',
+    is_executed BOOLEAN DEFAULT false,
     execution_status TEXT, -- Detailed status description
     agenda_serial INTEGER, -- e.g., "Ag-1", "Res-5"
     meeting_id UUID REFERENCES meetings (id) ON DELETE CASCADE,

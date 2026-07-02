@@ -33,7 +33,6 @@ export default function ManageMeetingsPage() {
     { value: "draft", label: "Draft" },
     { value: "ongoing", label: "Ongoing" },
     { value: "past", label: "Past" },
-    { value: "locked", label: "Locked" }
   ];
 
   const columns = [
@@ -67,9 +66,9 @@ export default function ManageMeetingsPage() {
         ...newMeeting,
         meeting_date: new Date(newMeeting.meeting_date).toISOString() // Convert to ISO for Postgres
       };
-      
+
       await api.post('/meetings', payload);
-      
+
       setIsModalOpen(false);
       setNewMeeting({ title: "", meeting_title: "", meeting_date: "", type: "syndicate", status: "draft" });
       mutate();
@@ -85,10 +84,10 @@ export default function ManageMeetingsPage() {
   return (
     <div className="max-w-6xl mx-auto">
       <ConfirmModal />
-      <DataTable 
-        columns={columns} 
-        data={response.data || []} 
-        title="Manage Meetings" 
+      <DataTable
+        columns={columns}
+        data={response.data || []}
+        title="Manage Meetings"
         onAdd={() => {
           setNewMeeting({ title: "", meeting_title: "", meeting_date: "", type: "syndicate", status: "draft" });
           setIsModalOpen(true);
@@ -102,37 +101,37 @@ export default function ManageMeetingsPage() {
           <div className="bg-card w-full max-w-md rounded-lg shadow-xl border border-border p-6 relative">
             <h3 className="text-lg font-semibold mb-4">Add New Meeting</h3>
             <form onSubmit={handleAddSubmit} className="space-y-4">
-              
+
               <div className="space-y-1">
                 <label className="text-xs font-medium">Meeting Serial Number (e.g., "304th")</label>
-                <input required value={newMeeting.title} onChange={e => setNewMeeting({...newMeeting, title: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                <input required value={newMeeting.title} onChange={e => setNewMeeting({ ...newMeeting, title: e.target.value })} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs font-medium">Meeting Title</label>
-                <input required value={newMeeting.meeting_title} onChange={e => setNewMeeting({...newMeeting, meeting_title: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" placeholder="e.g. Disciplinary Committee Meeting" />
+                <input required value={newMeeting.meeting_title} onChange={e => setNewMeeting({ ...newMeeting, meeting_title: e.target.value })} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" placeholder="e.g. Disciplinary Committee Meeting" />
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs font-medium">Meeting Date</label>
-                <input required type="date" value={newMeeting.meeting_date} onChange={e => setNewMeeting({...newMeeting, meeting_date: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                <input required type="date" value={newMeeting.meeting_date} onChange={e => setNewMeeting({ ...newMeeting, meeting_date: e.target.value })} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Type</label>
-                  <SearchableSelect 
+                  <SearchableSelect
                     options={typeOptions}
                     value={newMeeting.type}
-                    onChange={(val) => setNewMeeting({...newMeeting, type: val})}
+                    onChange={(val) => setNewMeeting({ ...newMeeting, type: val })}
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Status</label>
-                  <SearchableSelect 
+                  <SearchableSelect
                     options={statusOptions}
                     value={newMeeting.status}
-                    onChange={(val) => setNewMeeting({...newMeeting, status: val})}
+                    onChange={(val) => setNewMeeting({ ...newMeeting, status: val })}
                   />
                 </div>
               </div>

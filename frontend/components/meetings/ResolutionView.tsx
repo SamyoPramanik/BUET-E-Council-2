@@ -50,7 +50,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
 
   const handleToggleExecuted = async (agenda: any) => {
     try {
-      await api.put(`/resolutions/${agenda.id}/execution`, {
+      await api.put(`/agendas/resolutions/${agenda.id}/execution`, {
         is_executed: !agenda.is_executed,
         execution_status: agenda.execution_status || ""
       });
@@ -64,7 +64,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
   const handleSaveExecution = async (agendaId: string) => {
     setIsSavingExecution(true);
     try {
-      await api.put(`/resolutions/${agendaId}/execution`, {
+      await api.put(`/agendas/resolutions/${agendaId}/execution`, {
         is_executed: true,
         execution_status: executionContent
       });

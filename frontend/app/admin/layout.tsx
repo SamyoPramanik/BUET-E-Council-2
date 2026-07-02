@@ -1,0 +1,20 @@
+import Header from "../../components/Header";
+import Sidebar from "../../components/Sidebar";
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <Header />
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar type="admin" />
+        <main className="flex-1 overflow-y-auto p-8 bg-background">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}

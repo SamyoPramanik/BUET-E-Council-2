@@ -11,18 +11,60 @@ import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 
 export default function InviteesView({ meeting, type, mutate }: { meeting: any, type: string, mutate: any }) {
+  const isPast = meeting.status === 'past';
+  const displayType = isPast ? 'Presentees' : 'Invitees';
+
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddPresenteeModalOpen, setIsAddPresenteeModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'search' | 'custom'>('search');
   const [isTakingAttendance, setIsTakingAttendance] = useState(false);
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
   const { confirm, ConfirmModal } = useConfirm();
 
-  // This would fetch actual invitees for this meeting
-  // For now we will mock it or leave it empty if the API is not fully set up for fetching invitees
-  const { data: inviteesRes, mutate: mutateInvitees } = useSWR(`/meetings/${meeting.id}/invitees`, fetcher, { fallbackData: { data: [] } });
+  // Fetch members for the Add Presentee modal
+  const { data: membersRes } = useSWR('/members', fetcher);
+  const allMembers = membersRes?.data || [];
+
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [isSavingPresentees, setIsSavingPresentees] = useState(false);
+  const [editingPresentee, setEditingPresentee] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ name: '', designation: '', department_id: '', office_id: '' });
+  const [isUpdatingPresentee, setIsUpdatingPresentee] = useState(false);
+
+  const { data: departmentsRes } = useSWR('/departments', fetcher);
+  const { data: officesRes } = useSWR('/offices', fetcher);
+  const departments = departmentsRes?.data || [];
+  const offices = officesRes?.data || [];
+
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterDesignation, setFilterDesignation] = useState("");
+  const [filterDepartment, setFilterDepartment] = useState("");
+  const [filterOffice, setFilterOffice] = useState("");
+
+  const uniqueDesignations = Array.from(new Set(allMembers.map((m: any) => m.designation).filter(Boolean)));
+  const uniqueDepartments = Array.from(new Set(allMembers.map((m: any) => m.department_name).filter(Boolean)));
+  const uniqueOffices = Array.from(new Set(allMembers.map((m: any) => m.office_name).filter(Boolean)));
+
+  const filteredMembers = allMembers.filter((m: any) => {
+    const matchesSearch = (m.name?.toLowerCase().includes(searchQuery.toLowerCase()) || m.designation?.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesDesignation = filterDesignation ? m.designation === filterDesignation : true;
+    const matchesDepartment = filterDepartment ? m.department_name === filterDepartment : true;
+    const matchesOffice = filterOffice ? m.office_name === filterOffice : true;
+    return matchesSearch && matchesDesignation && matchesDepartment && matchesOffice;
+  });
+
+  // Dynamically fetch invitees or presentees
+  const fetchUrl = isPast ? `/meetings/${meeting.id}/presentees` : `/meetings/${meeting.id}/invitees`;
+  const { data: inviteesRes, mutate: mutateInvitees } = useSWR(fetchUrl, fetcher, { fallbackData: { data: [] } });
   const invitees = inviteesRes?.data || [];
 
-  const columns = [
+  const columns = isPast ? [
+    { key: "name", label: "Name" },
+    { key: "designation", label: "Designation" },
+    { key: "department_name", label: "Department" },
+    { key: "office_name", label: "Office" }
+  ] : [
     { key: "name", label: "Name" },
     { key: "designation", label: "Designation" },
     { key: "department_name", label: "Department" },
@@ -45,13 +87,19 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const [isFetching, setIsFetching] = useState(false);
 
   const handleRemove = (inviteeId: string) => {
-    confirm("Remove Invitee", "Are you sure you want to remove this invitee?", async () => {
+    confirm("Remove Entry", "Are you sure you want to remove this entry?", async () => {
       try {
-        await api.delete(`/meetings/${meeting.id}/invitees/${inviteeId}`);
-        mutateInvitees();
-        toast.success("Invitee removed successfully");
+        if (isPast) {
+            await api.delete(`/meetings/${meeting.id}/presentees/${inviteeId}`);
+            mutateInvitees();
+            toast.success("Presentee removed successfully");
+        } else {
+            await api.delete(`/meetings/${meeting.id}/invitees/${inviteeId}`);
+            mutateInvitees();
+            toast.success("Invitee removed successfully");
+        }
       } catch (err) {
-        toast.error("Failed to remove invitee");
+        toast.error("Failed to remove");
       }
     });
   };
@@ -85,6 +133,54 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     }
   };
 
+  const handleAddPresentees = async () => {
+    setIsSavingPresentees(true);
+    try {
+      const presenteesToAdd = allMembers
+        .filter((m: any) => selectedMembers.includes(m.id))
+        .map((m: any) => ({
+            name: m.name,
+            designation: m.designation,
+            department_id: m.department_id,
+            office_id: m.office_id
+        }));
+
+      await api.post(`/meetings/${meeting.id}/presentees`, { presentees: presenteesToAdd });
+      toast.success("Presentees added successfully");
+      setIsAddPresenteeModalOpen(false);
+      setSelectedMembers([]);
+      mutateInvitees();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to add presentees");
+    } finally {
+      setIsSavingPresentees(false);
+    }
+  };
+
+  const handleUpdatePresentee = async () => {
+    setIsUpdatingPresentee(true);
+    try {
+      await api.put(`/meetings/${meeting.id}/presentees/${editingPresentee.id}`, editForm);
+      toast.success("Presentee updated successfully");
+      setEditingPresentee(null);
+      mutateInvitees();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to update presentee");
+    } finally {
+      setIsUpdatingPresentee(false);
+    }
+  };
+
+  const handleEditClick = (row: any) => {
+    setEditingPresentee(row);
+    setEditForm({
+      name: row.name || '',
+      designation: row.designation || '',
+      department_id: row.department_id || '',
+      office_id: row.office_id || ''
+    });
+  };
+
   if (isTakingAttendance) {
     return (
       <TakeAttendanceView 
@@ -100,50 +196,63 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
       <ConfirmModal />
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold capitalize">{type}</h2>
+        <h2 className="text-2xl font-bold capitalize">{displayType}</h2>
 
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => setIsTakingAttendance(true)}
-            className="border border-primary text-primary px-4 py-2 text-sm font-medium rounded-md hover:bg-primary/5 transition-colors"
-          >
-            Take Attendance
-          </button>
-          <div className="flex gap-2">
+          {!isPast ? (
+            <>
+              <button 
+                onClick={() => setIsTakingAttendance(true)}
+                className="border border-primary text-primary px-4 py-2 text-sm font-medium rounded-md hover:bg-primary/5 transition-colors"
+              >
+                Take Attendance
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleBulkFetch}
+                  disabled={isFetching}
+                  className="bg-accent text-accent-foreground border border-border px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:bg-accent/80 transition-opacity disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  {isFetching ? "Fetching..." : "Fetch From Members"}
+                </button>
+                <button className="bg-secondary text-secondary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity">
+                  <Mail className="w-4 h-4" />
+                  Send Agenda
+                </button>
+                <button
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="bg-primary text-primary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Invitee
+                </button>
+              </div>
+            </>
+          ) : (
             <button
-              onClick={handleBulkFetch}
-              disabled={isFetching}
-              className="bg-accent text-accent-foreground border border-border px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:bg-accent/80 transition-opacity disabled:opacity-50"
-            >
-              <Plus className="w-4 h-4" />
-              {isFetching ? "Fetching..." : "Fetch From Members"}
-            </button>
-            <button className="bg-secondary text-secondary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity">
-              <Mail className="w-4 h-4" />
-              Send Agenda
-            </button>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={() => setIsAddPresenteeModalOpen(true)}
               className="bg-primary text-primary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
             >
               <Plus className="w-4 h-4" />
-              Add Invitee
+              Add Presentee
             </button>
-          </div>
+          )}
         </div>
       </div>
 
       {invitees.length === 0 ? (
         <div className="text-center py-16 bg-card border border-border rounded-lg shadow-sm">
           <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-          <h3 className="text-lg font-medium text-foreground">No {type} added yet</h3>
+          <h3 className="text-lg font-medium text-foreground">No {displayType} added yet</h3>
           <p className="text-muted-foreground mt-1">Click the add button above to include participants.</p>
         </div>
       ) : (
         <DataTable
           columns={columns}
           data={invitees}
-          title="Invitees List"
+          title={`${displayType} List`}
+          onEdit={isPast ? handleEditClick : undefined}
           onDelete={(row) => handleRemove(row.id)}
         />
       )}
@@ -186,6 +295,172 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                 <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80">Cancel</button>
                 <button className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add to Meeting</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Presentee Modal */}
+      {isAddPresenteeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-card w-full max-w-2xl max-h-[90vh] rounded-lg shadow-xl border border-border flex flex-col">
+            <div className="p-6 border-b border-border flex justify-between items-center shrink-0">
+              <h2 className="text-xl font-bold">Add Presentees</h2>
+              <button onClick={() => setIsAddPresenteeModalOpen(false)} className="text-muted-foreground hover:text-foreground">
+                &times;
+              </button>
+            </div>
+            <div className="p-4 border-b border-border flex flex-col gap-3 shrink-0 bg-muted/20">
+              <input 
+                type="text" 
+                placeholder="Search by name or designation..." 
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm"
+              />
+              <div className="grid grid-cols-3 gap-3">
+                <SearchableSelect 
+                  options={[
+                    { value: "", label: "All Designations" },
+                    ...uniqueDesignations.map((des: any) => ({ value: des, label: des }))
+                  ]}
+                  value={filterDesignation} 
+                  onChange={setFilterDesignation}
+                  placeholder="Filter Designation"
+                />
+                <SearchableSelect 
+                  options={[
+                    { value: "", label: "All Departments" },
+                    ...uniqueDepartments.map((dep: any) => ({ value: dep, label: dep }))
+                  ]}
+                  value={filterDepartment} 
+                  onChange={setFilterDepartment}
+                  placeholder="Filter Department"
+                />
+                <SearchableSelect 
+                  options={[
+                    { value: "", label: "All Offices" },
+                    ...uniqueOffices.map((off: any) => ({ value: off, label: off }))
+                  ]}
+                  value={filterOffice} 
+                  onChange={setFilterOffice}
+                  placeholder="Filter Office"
+                />
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="space-y-2">
+                {filteredMembers.map((member: any) => (
+                  <label key={member.id} className="flex items-center gap-3 p-3 rounded-md border border-border hover:bg-muted/30 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-input"
+                      checked={selectedMembers.includes(member.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedMembers(prev => [...prev, member.id]);
+                        } else {
+                          setSelectedMembers(prev => prev.filter(id => id !== member.id));
+                        }
+                      }}
+                    />
+                    <div>
+                      <div className="font-medium text-sm">{member.name}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {member.designation} 
+                        {member.department_name ? ` • ${member.department_name}` : ''}
+                        {member.office_name ? ` • ${member.office_name}` : ''}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+                {filteredMembers.length === 0 && (
+                  <div className="text-center text-sm text-muted-foreground py-8">No members match the filters.</div>
+                )}
+              </div>
+            </div>
+            <div className="p-6 border-t border-border shrink-0 flex justify-end gap-3">
+              <button 
+                onClick={() => setIsAddPresenteeModalOpen(false)} 
+                className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleAddPresentees}
+                disabled={isSavingPresentees || selectedMembers.length === 0}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
+              >
+                {isSavingPresentees ? "Adding..." : `Add Selected (${selectedMembers.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Presentee Modal */}
+      {editingPresentee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6 relative max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Edit Presentee</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Name</label>
+                  <input 
+                    required
+                    type="text" 
+                    value={editForm.name}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Designation</label>
+                  <SearchableSelect 
+                    options={[
+                      { value: "অধ্যাপক", label: "অধ্যাপক" },
+                      { value: "সহযোগী অধ্যাপক", label: "সহযোগী অধ্যাপক" },
+                    ]}
+                    value={editForm.designation}
+                    onChange={(val) => setEditForm(prev => ({ ...prev, designation: val }))}
+                    placeholder="Select Designation..."
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Department</label>
+                <SearchableSelect
+                  options={departments.map((d: any) => ({ value: d.id, label: d.name_bangla }))}
+                  value={editForm.department_id || ''}
+                  onChange={(val) => setEditForm(prev => ({ ...prev, department_id: val }))}
+                  placeholder="Select Department..."
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Office (Bangla)</label>
+                <SearchableSelect
+                  options={offices.map((o: any) => ({ value: o.id, label: o.name_bangla }))}
+                  value={editForm.office_id || ''}
+                  onChange={(val) => setEditForm(prev => ({ ...prev, office_id: val }))}
+                  placeholder="Select Office..."
+                />
+              </div>
+            </div>
+            <div className="pt-6 shrink-0 flex justify-end gap-3">
+              <button 
+                onClick={() => setEditingPresentee(null)} 
+                className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleUpdatePresentee}
+                disabled={isUpdatingPresentee || !editForm.name}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
+              >
+                {isUpdatingPresentee ? "Saving..." : "Save Changes"}
+              </button>
             </div>
           </div>
         </div>

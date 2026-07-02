@@ -247,6 +247,23 @@ const removeInvitee = async (req, res, next) => {
     }
 };
 
+const getPresentees = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query(`
+            SELECT p.*, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
+            FROM presentees p
+            LEFT JOIN departments d ON p.department_id = d.id
+            LEFT JOIN offices o ON p.office_id = o.id
+            WHERE p.meeting_id = $1
+        `, [id]);
+
+        res.status(200).json({ success: true, data: result.rows });
+    } catch (error) {
+        next(error);
+    }
+};
+
 const addPresentees = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -270,6 +287,43 @@ const addPresentees = async (req, res, next) => {
         } finally {
             client.release();
         }
+    } catch (error) {
+        next(error);
+    }
+};
+
+const updatePresentee = async (req, res, next) => {
+    try {
+        const { id, presenteeId } = req.params;
+        const { name, designation, department_id, office_id } = req.body;
+        const result = await db.query(
+            'UPDATE presentees SET name = $1, designation = $2, department_id = $3, office_id = $4 WHERE id = $5 AND meeting_id = $6 RETURNING *',
+            [name, designation, department_id, office_id, presenteeId, id]
+        );
+
+        if (result.rows.length === 0) {
+            return next(new CustomError('Presentee not found', 404));
+        }
+
+        res.status(200).json({ success: true, message: 'Presentee updated', data: result.rows[0] });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const removePresentee = async (req, res, next) => {
+    try {
+        const { id, presenteeId } = req.params;
+        const result = await db.query(
+            'DELETE FROM presentees WHERE id = $1 AND meeting_id = $2 RETURNING *',
+            [presenteeId, id]
+        );
+
+        if (result.rows.length === 0) {
+            return next(new CustomError('Presentee not found', 404));
+        }
+
+        res.status(200).json({ success: true, message: 'Presentee removed' });
     } catch (error) {
         next(error);
     }
@@ -343,7 +397,10 @@ module.exports = {
     bulkFetchInvitees,
     getInvitees,
     removeInvitee,
+    getPresentees,
     addPresentees,
+    updatePresentee,
+    removePresentee,
     saveAttendance,
     generatePdf,
     completeMeeting

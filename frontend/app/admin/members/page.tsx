@@ -12,7 +12,7 @@ export default function ManageMembersPage() {
   const [filter, setFilter] = useState("all");
   const { data: response, error, mutate } = useSWR(`/members${filter !== 'all' ? `?type=${filter}` : ''}`, fetcher);
   const { confirm, ConfirmModal } = useConfirm();
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -104,7 +104,7 @@ export default function ManageMembersPage() {
 
   const handleAddNewOffice = async (officeNameBangla: string) => {
     try {
-      const res = await api.post('/offices', { 
+      const res = await api.post('/offices', {
         name_bangla: officeNameBangla,
         name_english: officeNameBangla // fallback
       });
@@ -124,7 +124,7 @@ export default function ManageMembersPage() {
       <ConfirmModal />
       <div className="flex items-center space-x-4">
         <label className="text-sm font-medium">Filter by Type:</label>
-        <select 
+        <select
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           className="bg-card border border-border rounded-md px-3 py-1.5 text-sm"
@@ -135,9 +135,9 @@ export default function ManageMembersPage() {
         </select>
       </div>
 
-      <DataTable 
-        columns={columns} 
-        data={response?.data || []} 
+      <DataTable
+        columns={columns}
+        data={response?.data || []}
         title="Manage Members"
         onAdd={() => {
           setIsEditMode(false);
@@ -155,34 +155,32 @@ export default function ManageMembersPage() {
           <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6 relative max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4">{isEditMode ? "Edit Member" : "Add New Member"}</h3>
             <form onSubmit={handleAddSubmit} className="space-y-4">
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Name</label>
-                  <input required value={newMember.name} onChange={e => setNewMember({...newMember, name: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                  <input required value={newMember.name} onChange={e => setNewMember({ ...newMember, name: e.target.value })} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Prefix</label>
-                  <input value={newMember.prefix} onChange={e => setNewMember({...newMember, prefix: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                  <input value={newMember.prefix} onChange={e => setNewMember({ ...newMember, prefix: e.target.value })} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Email</label>
-                  <input type="email" value={newMember.email} onChange={e => setNewMember({...newMember, email: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                  <input type="email" value={newMember.email} onChange={e => setNewMember({ ...newMember, email: e.target.value })} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Designation</label>
-                  <SearchableSelect 
+                  <SearchableSelect
                     options={[
-                      { value: "Professor", label: "Professor" },
-                      { value: "Associate Professor", label: "Associate Professor" },
-                      { value: "Assistant Professor", label: "Assistant Professor" },
-                      { value: "Lecturer", label: "Lecturer" }
+                      { value: "অধ্যাপক", label: "অধ্যাপক" },
+                      { value: "সহযোগী অধ্যাপক", label: "সহযোগী অধ্যাপক" },
                     ]}
                     value={newMember.designation}
-                    onChange={(val) => setNewMember({...newMember, designation: val})}
+                    onChange={(val) => setNewMember({ ...newMember, designation: val })}
                     placeholder="Select..."
                   />
                 </div>
@@ -190,35 +188,35 @@ export default function ManageMembersPage() {
 
               <div className="space-y-1">
                 <label className="text-xs font-medium">Type</label>
-                <SearchableSelect 
+                <SearchableSelect
                   options={[
                     { value: "academic", label: "Academic" },
                     { value: "syndicate", label: "Syndicate" },
                     { value: "none", label: "None" }
                   ]}
                   value={newMember.member_type}
-                  onChange={(val) => setNewMember({...newMember, member_type: val})}
+                  onChange={(val) => setNewMember({ ...newMember, member_type: val })}
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs font-medium">Department</label>
-                <SearchableSelect 
-                  options={departments} 
-                  value={newMember.department_id} 
-                  onChange={(val) => setNewMember({...newMember, department_id: val})} 
-                  placeholder="Select Department..." 
+                <SearchableSelect
+                  options={departments}
+                  value={newMember.department_id}
+                  onChange={(val) => setNewMember({ ...newMember, department_id: val })}
+                  placeholder="Select Department..."
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs font-medium">Office (Bangla)</label>
-                <SearchableSelect 
-                  options={offices} 
-                  value={newMember.office_id} 
-                  onChange={(val) => setNewMember({...newMember, office_id: val})} 
+                <SearchableSelect
+                  options={offices}
+                  value={newMember.office_id}
+                  onChange={(val) => setNewMember({ ...newMember, office_id: val })}
                   onAddNew={handleAddNewOffice}
-                  placeholder="Search Office or add new..." 
+                  placeholder="Search Office or add new..."
                 />
               </div>
 

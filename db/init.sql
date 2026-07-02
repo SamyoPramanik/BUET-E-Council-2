@@ -57,6 +57,7 @@ CREATE TABLE sessions (
 
 CREATE TABLE faculties (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    serial INTEGER,
     name_bangla VARCHAR(255) NOT NULL UNIQUE,
     name_english VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -64,6 +65,7 @@ CREATE TABLE faculties (
 
 CREATE TABLE offices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    serial INTEGER,
     name_bangla VARCHAR(255) NOT NULL UNIQUE,
     name_english VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -71,6 +73,7 @@ CREATE TABLE offices (
 
 CREATE TABLE departments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    serial INTEGER,
     name_bangla VARCHAR(255) NOT NULL UNIQUE,
     name_english VARCHAR(255) NOT NULL UNIQUE,
     alias_bangla VARCHAR(255) NOT NULL UNIQUE,
@@ -175,4 +178,19 @@ CREATE TABLE annexures (
     upload_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO users (username, email, password, role, status) VALUES ('admin', 'admin@buet.ac.bd', '$2b$10$BaqfwMRoqUJ2hAAd8Y4jvenpMOIl2n4R65VVz2yzaIDG.01pFnU/y', 'admin', 'active') ON CONFLICT DO NOTHING;
+INSERT INTO
+    users (
+        username,
+        email,
+        password,
+        role,
+        status
+    )
+VALUES (
+        'admin',
+        'admin@buet.ac.bd',
+        '$2b$10$BaqfwMRoqUJ2hAAd8Y4jvenpMOIl2n4R65VVz2yzaIDG.01pFnU/y',
+        'admin',
+        'active'
+    )
+ON CONFLICT DO NOTHING;

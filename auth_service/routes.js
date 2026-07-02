@@ -1,11 +1,16 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const multer = require('multer');
+const csv = require('csv-parser');
+const { Parser } = require('json2csv');
+const { Readable } = require('stream');
 const db = require('./db');
 const { requireAuth } = require('./middleware');
 const { getDeviceInfo } = require('./utils');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 /**
  * @swagger
@@ -374,6 +379,97 @@ router.get('/secure-test', requireAuth, (req, res) => {
         message: 'This is a secure endpoint!',
         user: req.user
     });
+});
+
+// 9. GET /users
+router.get('/users', requireAuth, async (req, res) => {
+    try {
+        const result = await db.query('SELECT id, username, email, role, member_type, status, created_at FROM users ORDER BY created_at DESC');
+        res.status(200).json({ success: true, data: result.rows });
+    } catch (err) {
+        console.error('Get users error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// 10. PUT /users/:id/role
+router.put('/users/:id/role', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { role } = req.body;
+        if (!role) return res.status(400).json({ success: false, message: 'Role is required' });
+
+        const result = await db.query('UPDATE users SET role = $1 WHERE id = $2 RETURNING id, username, role', [role, id]);
+        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+        
+        res.status(200).json({ success: true, message: 'Role updated successfully', data: result.rows[0] });
+    } catch (err) {
+        console.error('Update role error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// 11. POST /upload-csv (users)
+router.post('/upload-csv', requireAuth, upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
+
+        const results = [];
+        const stream = Readable.from(req.file.buffer);
+
+        stream
+            .pipe(csv())
+            .on('data', (data) => results.push(data))
+            .on('end', async () => {
+                const client = await db.pool.connect();
+                try {
+                    await client.query('BEGIN');
+                    let count = 0;
+                    for (const row of results) {
+                        if (row.username && row.email && row.password) {
+                            const salt = await bcrypt.genSalt(10);
+                            const hashedPassword = await bcrypt.hash(row.password, salt);
+                            
+                            await client.query(
+                                `INSERT INTO users (username, email, password, role, status) 
+                                 VALUES ($1, $2, $3, $4, $5) 
+                                 ON CONFLICT (username) DO NOTHING`,
+                                [row.username, row.email, hashedPassword, row.role || 'member', row.status || 'active']
+                            );
+                            count++;
+                        }
+                    }
+                    await client.query('COMMIT');
+                    res.status(200).json({ success: true, message: `${count} users uploaded` });
+                } catch (err) {
+                    await client.query('ROLLBACK');
+                    throw err;
+                } finally {
+                    client.release();
+                }
+            });
+    } catch (err) {
+        console.error('Upload CSV error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// 12. GET /download-csv (users)
+router.get('/download-csv', requireAuth, async (req, res) => {
+    try {
+        const result = await db.query('SELECT id, username, email, role, member_type, status, created_at FROM users ORDER BY created_at DESC');
+        if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'No data found' });
+
+        const json2csvParser = new Parser();
+        const csvData = json2csvParser.parse(result.rows);
+
+        res.header('Content-Type', 'text/csv');
+        res.attachment('users.csv');
+        return res.send(csvData);
+    } catch (err) {
+        console.error('Download CSV error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
 });
 
 module.exports = router;

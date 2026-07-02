@@ -15,7 +15,8 @@ export default function Sidebar({ type = 'admin' }: SidebarProps) {
     { name: 'Meetings', href: '/admin/meetings', icon: Calendar },
     { name: 'Faculties', href: '/admin/faculties', icon: Building2 },
     { name: 'Departments', href: '/admin/departments', icon: Briefcase },
-    { name: 'Offices', href: '/admin/offices', icon: Users },
+    { name: 'Offices', href: '/admin/offices', icon: Building2 },
+    { name: 'Users', href: '/admin/users', icon: Users },
   ];
 
   const profileLinks = [

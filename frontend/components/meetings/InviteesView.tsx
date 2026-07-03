@@ -29,10 +29,10 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [isSavingPresentees, setIsSavingPresentees] = useState(false);
   const [editingPresentee, setEditingPresentee] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ name: '', designation: '', department_id: '', office_id: '' });
+  const [editForm, setEditForm] = useState({ name: '', email: '', designation: '', department_id: '', office_id: '' });
   const [isUpdatingPresentee, setIsUpdatingPresentee] = useState(false);
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
-  const [customForm, setCustomForm] = useState({ name: '', prefix: '', designation: '', department_id: '', office_id: '' });
+  const [customForm, setCustomForm] = useState({ name: '', prefix: '', email: '', designation: '', department_id: '', office_id: '' });
   const [isSavingCustom, setIsSavingCustom] = useState(false);
 
   const { data: departmentsRes } = useSWR('/departments', fetcher);
@@ -173,6 +173,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         .filter((m: any) => !invitees.some((p: any) => p.name === m.name && p.designation === m.designation))
         .map((m: any) => ({
             name: m.name,
+            email: m.email || '',
             designation: m.designation,
             department_id: m.department_id,
             office_id: m.office_id
@@ -180,15 +181,23 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
 
       // Delete removed ones
       for (const p of presenteesToRemove) {
-        await api.delete(`/meetings/${meeting.id}/presentees/${p.id}`);
+        if (isPast) {
+            await api.delete(`/meetings/${meeting.id}/presentees/${p.id}`);
+        } else {
+            await api.delete(`/meetings/${meeting.id}/invitees/${p.id}`);
+        }
       }
 
       // Add new ones
       if (presenteesToAdd.length > 0) {
-        await api.post(`/meetings/${meeting.id}/presentees`, { presentees: presenteesToAdd });
+        if (isPast) {
+            await api.post(`/meetings/${meeting.id}/presentees`, { presentees: presenteesToAdd });
+        } else {
+            await api.post(`/meetings/${meeting.id}/invitees`, { invitees: presenteesToAdd });
+        }
       }
 
-      toast.success("Presentees synced successfully");
+      toast.success(`${isPast ? 'Presentees' : 'Invitees'} synced successfully`);
       setIsAddPresenteeModalOpen(false);
       mutateInvitees();
     } catch (err: any) {
@@ -205,16 +214,22 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
       const nameWithPrefix = customForm.prefix ? `${customForm.prefix} ${customForm.name}` : customForm.name;
       const presenteeToAdd = {
         name: nameWithPrefix,
+        email: customForm.email,
         designation: customForm.designation,
         department_id: customForm.department_id || null,
         office_id: customForm.office_id || null
       };
       
-      await api.post(`/meetings/${meeting.id}/presentees`, { presentees: [presenteeToAdd] });
-      toast.success("Custom presentee added successfully");
+      if (isPast) {
+        await api.post(`/meetings/${meeting.id}/presentees`, { presentees: [presenteeToAdd] });
+        toast.success("Custom presentee added successfully");
+      } else {
+        await api.post(`/meetings/${meeting.id}/invitees`, { invitees: [presenteeToAdd] });
+        toast.success("Custom invitee added successfully");
+      }
       setIsCreatingCustom(false);
       setIsAddPresenteeModalOpen(false);
-      setCustomForm({ name: '', prefix: '', designation: '', department_id: '', office_id: '' });
+      setCustomForm({ name: '', prefix: '', email: '', designation: '', department_id: '', office_id: '' });
       mutateInvitees();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to add custom presentee");
@@ -226,8 +241,13 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const handleUpdatePresentee = async () => {
     setIsUpdatingPresentee(true);
     try {
-      await api.put(`/meetings/${meeting.id}/presentees/${editingPresentee.id}`, editForm);
-      toast.success("Presentee updated successfully");
+      if (isPast) {
+        await api.put(`/meetings/${meeting.id}/presentees/${editingPresentee.id}`, editForm);
+        toast.success("Presentee updated successfully");
+      } else {
+        await api.put(`/meetings/${meeting.id}/invitees/${editingPresentee.id}`, editForm);
+        toast.success("Invitee updated successfully");
+      }
       setEditingPresentee(null);
       mutateInvitees();
     } catch (err: any) {
@@ -241,6 +261,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     setEditingPresentee(row);
     setEditForm({
       name: row.name || '',
+      email: row.email || '',
       designation: row.designation || '',
       department_id: row.department_id || '',
       office_id: row.office_id || ''
@@ -288,7 +309,13 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                     Send Agenda
                   </button>
                   <button
-                    onClick={() => setIsAddModalOpen(true)}
+                    onClick={() => {
+                      const initiallySelected = allMembers
+                        .filter((m: any) => invitees.some((p: any) => p.name === m.name && p.designation === m.designation))
+                        .map((m: any) => m.id);
+                      setSelectedMembers(initiallySelected);
+                      setIsAddPresenteeModalOpen(true);
+                    }}
                     className="bg-primary text-primary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
                   >
                     <Plus className="w-4 h-4" />
@@ -328,52 +355,9 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         <DataTable
           columns={columns}
           data={invitees}
-          onEdit={!isLocked && isPast ? handleEditClick : undefined}
+          onEdit={!isLocked ? handleEditClick : undefined}
           onDelete={!isLocked ? (row) => handleRemove(row.id) : undefined}
         />
-      )}
-
-      {/* Add Modal Placeholder */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border overflow-hidden">
-            <div className="flex border-b border-border">
-              <button
-                className={`flex-1 py-3 text-sm font-medium ${activeTab === 'search' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
-                onClick={() => setActiveTab('search')}
-              >
-                Search Members
-              </button>
-              <button
-                className={`flex-1 py-3 text-sm font-medium ${activeTab === 'custom' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
-                onClick={() => setActiveTab('custom')}
-              >
-                Create Custom
-              </button>
-            </div>
-
-            <div className="p-6">
-              {activeTab === 'search' ? (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">Search and select an existing member from the database.</p>
-                  <SearchableSelect options={[]} value="" onChange={() => { }} placeholder="Search members by name..." />
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">Add an external guest manually.</p>
-                  <input placeholder="Full Name" className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm" />
-                  <input placeholder="Email Address" type="email" className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm" />
-                  <input placeholder="Designation" className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm" />
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 mt-6">
-                <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80">Cancel</button>
-                <button className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add to Meeting</button>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Add Presentee Modal */}
@@ -381,7 +365,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-card w-full max-w-2xl max-h-[90vh] rounded-lg shadow-xl border border-border flex flex-col">
             <div className="p-6 border-b border-border flex justify-between items-center shrink-0">
-              <h2 className="text-xl font-bold">Add Presentees</h2>
+              <h2 className="text-xl font-bold">Add {isPast ? 'Presentees' : 'Invitees'}</h2>
               <button onClick={() => setIsAddPresenteeModalOpen(false)} className="text-muted-foreground hover:text-foreground">
                 &times;
               </button>
@@ -463,7 +447,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                       onClick={() => setIsCreatingCustom(true)}
                       className="bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium text-sm hover:opacity-90 transition-opacity flex items-center gap-2 mx-auto"
                     >
-                      <Plus className="w-4 h-4" /> Create Custom Presentee
+                      <Plus className="w-4 h-4" /> Create Custom {isPast ? 'Presentee' : 'Invitee'}
                     </button>
                   </div>
                 )}
@@ -498,11 +482,11 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         </div>
       )}
 
-      {/* Create Custom Presentee Modal */}
+      {/* Create Custom {isPast ? 'Presentee' : 'Invitee'} Modal */}
       {isCreatingCustom && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6 relative max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Create Custom Presentee</h3>
+            <h3 className="text-lg font-semibold mb-4">Create Custom {isPast ? 'Presentee' : 'Invitee'}</h3>
             <form onSubmit={handleCreateCustomPresentee} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -524,6 +508,16 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                     className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
                   />
                 </div>
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Email (for Invitees)</label>
+                <input 
+                  type="email" 
+                  value={customForm.email}
+                  onChange={(e) => setCustomForm(prev => ({ ...prev, email: e.target.value }))}
+                  className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                />
               </div>
 
               <div className="space-y-1">
@@ -584,7 +578,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
       {editingPresentee && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6 relative max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Edit Presentee</h3>
+            <h3 className="text-lg font-semibold mb-4">Edit {isPast ? 'Presentee' : 'Invitee'}</h3>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -597,6 +591,17 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                     className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
                   />
                 </div>
+                {!isPast && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Email</label>
+                    <input 
+                      type="email" 
+                      value={editForm.email}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                      className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Designation</label>
                   <SearchableSelect 

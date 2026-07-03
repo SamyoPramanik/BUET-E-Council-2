@@ -249,6 +249,25 @@ const removeInvitee = async (req, res, next) => {
     }
 };
 
+const updateInvitee = async (req, res, next) => {
+    try {
+        const { id, inviteeId } = req.params;
+        const { name, email, designation, department_id, office_id } = req.body;
+        const result = await db.query(
+            'UPDATE invitees SET name = $1, email = $2, designation = $3, department_id = $4, office_id = $5 WHERE id = $6 AND meeting_id = $7 RETURNING *',
+            [name, email, designation, department_id || null, office_id || null, inviteeId, id]
+        );
+
+        if (result.rows.length === 0) {
+            return next(new CustomError('Invitee not found', 404));
+        }
+
+        res.status(200).json({ success: true, message: 'Invitee updated', data: result.rows[0] });
+    } catch (error) {
+        next(error);
+    }
+};
+
 const getPresentees = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -543,6 +562,7 @@ module.exports = {
     addInvitees,
     bulkFetchInvitees,
     getInvitees,
+    updateInvitee,
     removeInvitee,
     getPresentees,
     addPresentees,

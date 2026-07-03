@@ -23,6 +23,7 @@ router.put('/:id/lock', meetingController.toggleLock);
 router.post('/:id/invitees', meetingController.addInvitees);
 router.get('/:id/invitees', meetingController.getInvitees);
 router.delete('/:id/invitees/:inviteeId', meetingController.removeInvitee);
+router.put('/:id/invitees/:inviteeId', meetingController.updateInvitee);
 router.post('/:id/invitees/bulk-fetch', meetingController.bulkFetchInvitees);
 router.get('/:id/presentees', meetingController.getPresentees);
 router.post('/:id/presentees', meetingController.addPresentees);

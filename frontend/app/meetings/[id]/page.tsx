@@ -118,7 +118,7 @@ export default function PublicMeetingView() {
 
       if (isVC) {
         p.department_name = 'সভাপতি';
-        p.office_name = '';
+        p.office_name = 'উপাচার্য, বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা';
         adminGroup.unshift(p);
       } else if (isProVC) {
         adminGroup.push(p);
@@ -153,6 +153,11 @@ export default function PublicMeetingView() {
       {(p.office_name || p.department_name) && (
         <div className="text-xs text-muted-foreground mt-1">
           {p.office_name ? p.office_name : p.department_name}
+        </div>
+      )}
+      {p.department_name == "সভাপতি" && (
+        <div className="text-xs text-muted-foreground mt-1">
+          {p.department_name}
         </div>
       )}
     </div>

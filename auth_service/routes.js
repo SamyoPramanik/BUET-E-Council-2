@@ -6,7 +6,7 @@ const csv = require('csv-parser');
 const { Parser } = require('json2csv');
 const { Readable } = require('stream');
 const db = require('./db');
-const { requireAuth, requireAdminOrModerator } = require('./middleware');
+const { requireAuth, requireAdmin } = require('./middleware');
 const { getDeviceInfo } = require('./utils');
 
 const router = express.Router();
@@ -48,13 +48,20 @@ const upload = multer({ storage: multer.memoryStorage() });
  *       409:
  *         description: Username or email already exists
  */
-// 1. POST /signup
-router.post('/signup', async (req, res) => {
+// 1. POST /signup (admin-only: creating other users' accounts)
+router.post('/signup', requireAuth, requireAdmin, async (req, res) => {
     try {
-        const { username, email, password, role = 'member', member_type = 'none' } = req.body;
+        const { username, email, role = 'viewer', member_type = 'none' } = req.body;
+        let { password } = req.body;
 
-        if (!username || !email || !password) {
-            return res.status(400).json({ success: false, message: 'Username, Email and password are required' });
+        if (!username || !email) {
+            return res.status(400).json({ success: false, message: 'Username and Email are required' });
+        }
+
+        let generatedPassword = null;
+        if (!password) {
+            generatedPassword = crypto.randomBytes(9).toString('base64url'); // 12-char random password
+            password = generatedPassword;
         }
 
         // Check if user exists
@@ -69,7 +76,7 @@ router.post('/signup', async (req, res) => {
 
         // Create user
         const result = await db.query(
-            `INSERT INTO users (username, email, password, role, member_type) 
+            `INSERT INTO users (username, email, password, role, member_type)
              VALUES ($1, $2, $3, $4, $5) RETURNING id, username, email, role, status, created_at`,
             [username, email, hashedPassword, role, member_type]
         );
@@ -77,7 +84,8 @@ router.post('/signup', async (req, res) => {
         res.status(201).json({
             success: true,
             message: 'User created successfully',
-            data: result.rows[0]
+            data: result.rows[0],
+            generated_password: generatedPassword
         });
     } catch (err) {
         console.error('Signup error:', err);
@@ -382,7 +390,7 @@ router.get('/secure-test', requireAuth, (req, res) => {
 });
 
 // 9. GET /users
-router.get('/users', requireAuth, requireAdminOrModerator, async (req, res) => {
+router.get('/users', requireAuth, requireAdmin, async (req, res) => {
     try {
         const result = await db.query('SELECT id, username, email, role, member_type, status, created_at FROM users ORDER BY created_at DESC');
         res.status(200).json({ success: true, data: result.rows });
@@ -393,7 +401,7 @@ router.get('/users', requireAuth, requireAdminOrModerator, async (req, res) => {
 });
 
 // 10. PUT /users/:id
-router.put('/users/:id', requireAuth, requireAdminOrModerator, async (req, res) => {
+router.put('/users/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
         const { id } = req.params;
         const { username, email, password, role, member_type, status } = req.body;
@@ -435,7 +443,7 @@ router.put('/users/:id', requireAuth, requireAdminOrModerator, async (req, res) 
 });
 
 // 11. POST /upload-csv (users)
-router.post('/upload-csv', requireAuth, requireAdminOrModerator, upload.single('file'), async (req, res) => {
+router.post('/upload-csv', requireAuth, requireAdmin, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
 
@@ -459,7 +467,7 @@ router.post('/upload-csv', requireAuth, requireAdminOrModerator, upload.single('
                                 `INSERT INTO users (username, email, password, role, status) 
                                  VALUES ($1, $2, $3, $4, $5) 
                                  ON CONFLICT (username) DO NOTHING`,
-                                [row.username, row.email, hashedPassword, row.role || 'member', row.status || 'active']
+                                [row.username, row.email, hashedPassword, row.role || 'viewer', row.status || 'active']
                             );
                             count++;
                         }
@@ -480,7 +488,7 @@ router.post('/upload-csv', requireAuth, requireAdminOrModerator, upload.single('
 });
 
 // 12. GET /download-csv (users)
-router.get('/download-csv', requireAuth, async (req, res) => {
+router.get('/download-csv', requireAuth, requireAdmin, async (req, res) => {
     try {
         const result = await db.query('SELECT id, username, email, role, member_type, status, created_at FROM users ORDER BY created_at DESC');
         if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'No data found' });

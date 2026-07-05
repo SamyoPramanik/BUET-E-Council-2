@@ -7,8 +7,10 @@ import api from "../../../lib/api";
 import DataTable from "../../../components/DataTable";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
+import { useAuth } from "../../../hooks/useAuth";
 
 export default function ManageFacultiesPage() {
+  const { canEdit } = useAuth();
   const { data: response, error, mutate } = useSWR('/faculties', fetcher);
   const { confirm, ConfirmModal } = useConfirm();
   
@@ -106,17 +108,17 @@ export default function ManageFacultiesPage() {
         title="Manage Faculties"
         searchable
         searchPlaceholder="Search faculties..."
-        onReorder={handleReorder}
-        onUploadCsv={handleUploadCsv}
+        onReorder={canEdit ? handleReorder : undefined}
+        onUploadCsv={canEdit ? handleUploadCsv : undefined}
         onDownloadCsv={handleDownloadCsv}
-        onAdd={() => {
+        onAdd={canEdit ? () => {
           setIsEditMode(false);
           setEditingId(null);
           setNewFaculty({ name_bangla: "", name_english: "" });
           setIsModalOpen(true);
-        }}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
+        } : undefined}
+        onEdit={canEdit ? handleEdit : undefined}
+        onDelete={canEdit ? handleDelete : undefined}
       />
 
       {isModalOpen && (

@@ -2,16 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  Users, Building2, Briefcase, Calendar, 
+import {
+  Users, Building2, Briefcase, Calendar,
   Settings, Shield, LogOut, LayoutGrid, FileText
 } from 'lucide-react';
+import type { Role } from '../hooks/useAuth';
 
 interface SidebarProps {
   type?: 'admin' | 'profile';
+  role?: Role | null;
 }
 
-export default function Sidebar({ type = 'admin' }: SidebarProps) {
+export default function Sidebar({ type = 'admin', role }: SidebarProps) {
   const pathname = usePathname();
 
   const adminLinks = [
@@ -21,7 +23,8 @@ export default function Sidebar({ type = 'admin' }: SidebarProps) {
     { name: 'Faculties', href: '/admin/faculties', icon: Building2 },
     { name: 'Departments', href: '/admin/departments', icon: Briefcase },
     { name: 'Offices', href: '/admin/offices', icon: Building2 },
-    { name: 'Users', href: '/admin/users', icon: Users },
+    // User management is admin-only.
+    ...(role === 'admin' ? [{ name: 'Users', href: '/admin/users', icon: Users }] : []),
   ];
 
   const profileLinks = [
@@ -37,14 +40,14 @@ export default function Sidebar({ type = 'admin' }: SidebarProps) {
         {links.map((link) => {
           const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
           const Icon = link.icon;
-          
+
           return (
             <Link
               key={link.name}
               href={link.href}
               className={`flex items-center space-x-3 px-3 py-2 rounded-md transition-colors ${
-                isActive 
-                  ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium' 
+                isActive
+                  ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium'
                   : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
               }`}
             >

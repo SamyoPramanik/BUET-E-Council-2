@@ -1,28 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import api, { fetcher } from "../../../lib/api";
 import DataTable from "../../../components/DataTable";
 import SearchableSelect from "../../../components/SearchableSelect";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
+import { useAuth } from "../../../hooks/useAuth";
 
 export default function ManageUsersPage() {
-  const { data: response, error, mutate } = useSWR('/auth/users', fetcher);
+  const router = useRouter();
+  const { isAdmin, isLoading: authLoading } = useAuth();
+  const { data: response, error, mutate } = useSWR(isAdmin ? '/auth/users' : null, fetcher);
   const { confirm, ConfirmModal } = useConfirm();
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [generatePassword, setGeneratePassword] = useState(true);
   const [newUser, setNewUser] = useState({
     username: "",
     email: "",
     password: "",
-    role: "member",
+    role: "viewer",
     member_type: "none",
     status: "active"
   });
+
+  useEffect(() => {
+    // User management is admin-only; bounce anyone else back to the dashboard.
+    if (!authLoading && !isAdmin) {
+      router.replace('/admin');
+    }
+  }, [authLoading, isAdmin, router]);
 
   const columns = [
     { key: "username", label: "Username" },
@@ -30,6 +42,11 @@ export default function ManageUsersPage() {
     { key: "role", label: "Role" },
     { key: "status", label: "Status" },
   ];
+
+  const resetForm = () => {
+    setGeneratePassword(true);
+    setNewUser({ username: "", email: "", password: "", role: "viewer", member_type: "none", status: "active" });
+  };
 
   const handleUploadCsv = async (file: File) => {
     const formData = new FormData();
@@ -53,11 +70,12 @@ export default function ManageUsersPage() {
   const handleEdit = (user: any) => {
     setIsEditMode(true);
     setEditingId(user.id);
+    setGeneratePassword(false);
     setNewUser({
       username: user.username || "",
       email: user.email || "",
       password: "", // Usually blank out password on edit
-      role: user.role || "member",
+      role: user.role || "viewer",
       member_type: user.member_type || "none",
       status: user.status || "active"
     });
@@ -82,36 +100,49 @@ export default function ManageUsersPage() {
     try {
       if (isEditMode && editingId) {
         await api.put(`/auth/users/${editingId}`, newUser);
+        toast.success('User updated successfully');
       } else {
-        await api.post('/auth/signup', newUser);
+        const payload = generatePassword ? { ...newUser, password: undefined } : newUser;
+        const res = await api.post('/auth/signup', payload);
+        const generated = res.data?.generated_password;
+        if (generated) {
+          try {
+            await navigator.clipboard.writeText(generated);
+            toast.success(`User created. Password (copied to clipboard): ${generated}`, { duration: 15000 });
+          } catch {
+            toast.success(`User created. Password: ${generated}`, { duration: 15000 });
+          }
+        } else {
+          toast.success('User created successfully');
+        }
       }
       setIsModalOpen(false);
       setIsEditMode(false);
       setEditingId(null);
-      setNewUser({ username: "", email: "", password: "", role: "member", member_type: "none", status: "active" });
+      resetForm();
       mutate();
-      toast.success(isEditMode ? 'User updated successfully' : 'User created successfully');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save user');
     }
   };
 
+  if (authLoading || !isAdmin) return <div className="p-8">Loading...</div>;
   if (error) return <div className="p-8">Failed to load users</div>;
   if (!response) return <div className="p-8">Loading...</div>;
 
   return (
     <div className="max-w-6xl mx-auto">
       <ConfirmModal />
-      <DataTable 
-        columns={columns} 
-        data={response.data || []} 
+      <DataTable
+        columns={columns}
+        data={response.data || []}
         title="Manage Users"
         onUploadCsv={handleUploadCsv}
         onDownloadCsv={handleDownloadCsv}
         onAdd={() => {
           setIsEditMode(false);
           setEditingId(null);
-          setNewUser({ username: "", email: "", password: "", role: "member", member_type: "none", status: "active" });
+          resetForm();
           setIsModalOpen(true);
         }}
         onEdit={handleEdit}
@@ -123,28 +154,43 @@ export default function ManageUsersPage() {
           <div className="bg-card w-full max-w-md rounded-lg shadow-xl border border-border p-6 relative">
             <h3 className="text-lg font-semibold mb-4">{isEditMode ? "Edit User" : "Add New User"}</h3>
             <form onSubmit={handleAddSubmit} className="space-y-4">
-              
+
               <div className="space-y-1">
                 <label className="text-xs font-medium">Username</label>
                 <input required value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
               </div>
-              
+
               <div className="space-y-1">
                 <label className="text-xs font-medium">Email</label>
                 <input required type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
               </div>
-              
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Password {isEditMode ? "(Leave blank to keep unchanged)" : ""}</label>
-                <input type="password" required={!isEditMode} value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
-              </div>
-              
+
+              {!isEditMode && (
+                <div className="flex items-center space-x-4 text-xs">
+                  <label className="flex items-center space-x-1.5 cursor-pointer">
+                    <input type="radio" checked={generatePassword} onChange={() => setGeneratePassword(true)} />
+                    <span>Generate password randomly</span>
+                  </label>
+                  <label className="flex items-center space-x-1.5 cursor-pointer">
+                    <input type="radio" checked={!generatePassword} onChange={() => setGeneratePassword(false)} />
+                    <span>Enter manually</span>
+                  </label>
+                </div>
+              )}
+
+              {(isEditMode || !generatePassword) && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Password {isEditMode ? "(Leave blank to keep unchanged)" : ""}</label>
+                  <input type="password" required={!isEditMode} value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Role</label>
-                  <SearchableSelect 
+                  <SearchableSelect
                     options={[
-                      { value: "member", label: "Member" },
+                      { value: "viewer", label: "Viewer" },
                       { value: "moderator", label: "Moderator" },
                       { value: "admin", label: "Admin" }
                     ]}
@@ -154,7 +200,7 @@ export default function ManageUsersPage() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Member Type</label>
-                  <SearchableSelect 
+                  <SearchableSelect
                     options={[
                       { value: "none", label: "None" },
                       { value: "academic", label: "Academic" },
@@ -166,7 +212,7 @@ export default function ManageUsersPage() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Status</label>
-                  <SearchableSelect 
+                  <SearchableSelect
                     options={[
                       { value: "active", label: "Active" },
                       { value: "inactive", label: "Inactive" }

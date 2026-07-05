@@ -10,8 +10,10 @@ import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
 import JsonImportDialog from "../../../components/meetings/JsonImportDialog";
 import { FileJson } from "lucide-react";
+import { useAuth } from "../../../hooks/useAuth";
 
 export default function ManageMeetingsPage() {
+  const { canEdit } = useAuth();
   const router = useRouter();
   const { data: response, error, mutate } = useSWR('/meetings', fetcher);
   const { confirm, ConfirmModal } = useConfirm();
@@ -91,21 +93,23 @@ export default function ManageMeetingsPage() {
         columns={columns}
         data={response.data || []}
         title="Manage Meetings"
-        onAdd={() => {
+        onAdd={canEdit ? () => {
           setNewMeeting({ title: "", meeting_title: "", meeting_date: "", type: "syndicate", status: "draft" });
           setIsModalOpen(true);
-        }}
+        } : undefined}
         onEdit={handleEdit}
-        onDelete={handleDelete}
+        onDelete={canEdit ? handleDelete : undefined}
         onView={(meeting) => window.open(`/meetings/${meeting.id}`, '_blank')}
         customActions={
-          <button
-            onClick={() => setIsJsonModalOpen(true)}
-            className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/80 transition-colors text-sm font-medium"
-          >
-            <FileJson className="w-4 h-4" />
-            + Create Meeting with JSON
-          </button>
+          canEdit && (
+            <button
+              onClick={() => setIsJsonModalOpen(true)}
+              className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/80 transition-colors text-sm font-medium"
+            >
+              <FileJson className="w-4 h-4" />
+              + Create Meeting with JSON
+            </button>
+          )
         }
       />
 

@@ -10,11 +10,14 @@ import DataTable from "../DataTable";
 import TakeAttendanceView from "./TakeAttendanceView";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
+import { useAuth } from "../../hooks/useAuth";
 
 export default function InviteesView({ meeting, type, mutate }: { meeting: any, type: string, mutate: any }) {
+  const { canEdit } = useAuth();
   const isPast = meeting.status === 'past';
   const displayType = isPast ? 'Presentees' : 'Invitees';
   const isLocked = meeting.is_locked;
+  const readOnly = isLocked || !canEdit;
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAddPresenteeModalOpen, setIsAddPresenteeModalOpen] = useState(false);
@@ -303,7 +306,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
 
         <div className="flex items-center gap-4">
           {!isPast ? (
-            !isLocked && (
+            !readOnly && (
               <>
                 <button 
                   onClick={() => setIsTakingAttendance(true)}
@@ -341,7 +344,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
               </>
             )
           ) : (
-            !isLocked && (
+            !readOnly && (
               <button
                 onClick={() => {
                   // Initialize selectedMembers with already added presentees
@@ -408,8 +411,8 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
               </div>
             </>
           }
-          onEdit={!isLocked ? handleEditClick : undefined}
-          onDelete={!isLocked ? (row) => handleRemove(row.id) : undefined}
+          onEdit={!readOnly ? handleEditClick : undefined}
+          onDelete={!readOnly ? (row) => handleRemove(row.id) : undefined}
         />
       )}
 

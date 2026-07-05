@@ -34,6 +34,7 @@ export default function ManageMembersPage() {
   const offices = [{ value: "", label: "None" }, ...(officeRes?.data?.map((o: any) => ({ value: o.id, label: o.name_bangla })) || [])];
 
   const columns = [
+    { key: "serial", label: "Serial No" },
     { key: "name", label: "Name" },
     { key: "designation", label: "Designation" },
     { key: "department_name", label: "Department" },

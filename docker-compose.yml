@@ -26,7 +26,7 @@ services:
       - "8000:8000"
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_healthy # FIX: Wait until PostgreSQL is fully initialized
 
   meeting_service:
     build:
@@ -44,20 +44,14 @@ services:
       - "8001:8001"
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_healthy # FIX: Wait until PostgreSQL is fully initialized
       minio:
-        condition: service_healthy
+        condition: service_healthy # FIX: Wait until MinIO is fully initialized
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: ${BACKEND_URL}/api
-        VITE_API_INTERNAL_URL: http://auth_service:8000
-    environment:
-      VITE_API_BASE_URL: ${BACKEND_URL}/api
-      VITE_API_INTERNAL_URL: http://auth_service:8000
     ports:
       - "3000:3000"
 

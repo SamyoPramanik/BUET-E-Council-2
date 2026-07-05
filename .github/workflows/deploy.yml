@@ -35,7 +35,6 @@ jobs:
           script: |
             cd /home/${{ secrets.VM_USER }}/buet_ecouncil
 
-            # --- UPDATED: COMPREHENSIVE VARIABLE INJECTION ---
             echo "Generating .env file from GitHub Secrets and Variables..."
             cat <<EOF > .env
             POSTGRES_USER=${{ vars.POSTGRES_USER }}
@@ -52,7 +51,6 @@ jobs:
             R3_BUCKET_NAME=${{ vars.R3_BUCKET_NAME }}
             BACKEND_URL=${{ vars.BACKEND_URL }}
             EOF
-            # -------------------------------------------------
 
             docker compose pull
             docker compose down

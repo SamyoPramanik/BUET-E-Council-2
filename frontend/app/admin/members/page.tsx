@@ -8,8 +8,10 @@ import SearchableSelect from "../../../components/SearchableSelect";
 import CustomSelect from "../../../components/CustomSelect";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
+import { useAuth } from "../../../hooks/useAuth";
 
 export default function ManageMembersPage() {
+  const { canEdit } = useAuth();
   const [designationFilter, setDesignationFilter] = useState("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [officeFilter, setOfficeFilter] = useState("all");
@@ -192,15 +194,15 @@ export default function ManageMembersPage() {
             </div>
           </>
         }
-        onAdd={() => {
+        onAdd={canEdit ? () => {
           setIsEditMode(false);
           setEditingId(null);
           setNewMember({ name: "", prefix: "", designation: "", department_id: "", office_id: "", email: "", member_type: "academic" });
           setIsModalOpen(true);
-        }}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onFetchApi={handleFetchApi}
+        } : undefined}
+        onEdit={canEdit ? handleEdit : undefined}
+        onDelete={canEdit ? handleDelete : undefined}
+        onFetchApi={canEdit ? handleFetchApi : undefined}
       />
 
       {isModalOpen && (

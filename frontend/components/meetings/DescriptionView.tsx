@@ -6,8 +6,10 @@ import RichTextEditor from "../RichTextEditor";
 import api from "../../lib/api";
 import { toast } from "sonner";
 import TemplateDrawer from "../TemplateDrawer";
+import { useAuth } from "../../hooks/useAuth";
 
 export default function DescriptionView({ meeting, type, mutate }: { meeting: any, type: string, mutate: any }) {
+  const { canEdit } = useAuth();
   const [content, setContent] = useState("");
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -16,7 +18,7 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
   const title = type === 'description' ? 'Meeting Description' : 'Meeting Conclusion';
   const dbField = type === 'description' ? 'description' : 'conclusion';
   const templateType = type === 'description' ? 'description' : 'conclusion';
-  const isLocked = meeting.is_locked;
+  const readOnly = meeting.is_locked || !canEdit;
 
   // Re-initialize content when switching between Description and Conclusion
   useEffect(() => {
@@ -45,9 +47,9 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
       </div>
 
       <div className="flex-1 flex flex-col bg-card border border-border rounded-lg shadow-sm overflow-hidden relative">
-        <RichTextEditor 
+        <RichTextEditor
           content={content}
-          editable={!isLocked}
+          editable={!readOnly}
           onChange={(html) => {
             setContent(html);
             setIsDirty(true);
@@ -56,7 +58,7 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
         />
 
         {/* Action Area */}
-        {!isLocked && (
+        {!readOnly && (
           <div className="bg-muted/30 border-t border-border p-4 flex justify-between shrink-0">
             <button 
               onClick={() => setIsDrawerOpen(true)}

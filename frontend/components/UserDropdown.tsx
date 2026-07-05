@@ -3,16 +3,14 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { LayoutGrid, User, LogOut } from 'lucide-react';
-import useSWR from 'swr';
-import api, { fetcher } from '../lib/api';
+import api from '../lib/api';
+import { useAuth } from '../hooks/useAuth';
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const { data: response, error } = useSWR('/auth/me', fetcher, {
-    shouldRetryOnError: false
-  });
+  const { user, error } = useAuth();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -41,8 +39,6 @@ export default function UserDropdown() {
     }
   };
 
-  const user = response?.data;
-
   return (
     <div className="relative" ref={dropdownRef}>
       <button
@@ -59,12 +55,10 @@ export default function UserDropdown() {
             <p className="text-xs text-muted-foreground truncate">{user.email}</p>
           </div>
 
-          {user.role !== 'member' && (
-            <Link href="/admin" onClick={() => setIsOpen(false)} className="flex items-center px-4 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors">
-              <LayoutGrid className="w-4 h-4 mr-2" />
-              Dashboard
-            </Link>
-          )}
+          <Link href="/admin" onClick={() => setIsOpen(false)} className="flex items-center px-4 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors">
+            <LayoutGrid className="w-4 h-4 mr-2" />
+            Dashboard
+          </Link>
 
           <Link href="/profile" onClick={() => setIsOpen(false)} className="flex items-center px-4 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors">
             <User className="w-4 h-4 mr-2" />

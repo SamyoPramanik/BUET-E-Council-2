@@ -7,8 +7,10 @@ import api from "../../../lib/api";
 import DataTable from "../../../components/DataTable";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
+import { useAuth } from "../../../hooks/useAuth";
 
 export default function ManageOfficesPage() {
+  const { canEdit } = useAuth();
   const { data: response, error, mutate } = useSWR('/offices', fetcher);
   const { confirm, ConfirmModal } = useConfirm();
 
@@ -106,17 +108,17 @@ export default function ManageOfficesPage() {
         title="Manage Offices"
         searchable
         searchPlaceholder="Search offices..."
-        onReorder={handleReorder}
-        onUploadCsv={handleUploadCsv}
-        onDownloadCsv={handleDownloadCsv} 
-        onAdd={() => {
+        onReorder={canEdit ? handleReorder : undefined}
+        onUploadCsv={canEdit ? handleUploadCsv : undefined}
+        onDownloadCsv={handleDownloadCsv}
+        onAdd={canEdit ? () => {
           setIsEditMode(false);
           setEditingId(null);
           setNewOffice({ name_bangla: "", name_english: "" });
           setIsModalOpen(true);
-        }}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
+        } : undefined}
+        onEdit={canEdit ? handleEdit : undefined}
+        onDelete={canEdit ? handleDelete : undefined}
       />
 
       {isModalOpen && (

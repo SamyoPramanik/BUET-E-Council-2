@@ -1,5 +1,6 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/roleMiddleware');
 const agendaController = require('../controllers/agendaController');
 const { checkMeetingLock } = require('../middlewares/lockMiddleware');
 const multer = require('multer');
@@ -8,27 +9,28 @@ const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
+const canEdit = requireRole('admin', 'moderator');
 
 router.use(authMiddleware);
 router.use(checkMeetingLock);
 
 // Agendam routes
 router.get('/', agendaController.getAgendams);
-router.post('/', agendaController.createAgendam);
-router.put('/:id', agendaController.updateAgendam);
-router.delete('/:id', agendaController.deleteAgendam);
+router.post('/', canEdit, agendaController.createAgendam);
+router.put('/:id', canEdit, agendaController.updateAgendam);
+router.delete('/:id', canEdit, agendaController.deleteAgendam);
 
 // Resolution routes (nested or specific endpoints)
 router.get('/:id/resolutions', agendaController.getResolutions);
-router.post('/:id/resolutions', agendaController.createResolution);
-router.put('/resolutions/:resId', agendaController.updateResolution);
-router.put('/resolutions/:resId/execution', agendaController.updateExecutionStatus);
-router.delete('/resolutions/:resId', agendaController.deleteResolution);
+router.post('/:id/resolutions', canEdit, agendaController.createResolution);
+router.put('/resolutions/:resId', canEdit, agendaController.updateResolution);
+router.put('/resolutions/:resId/execution', canEdit, agendaController.updateExecutionStatus);
+router.delete('/resolutions/:resId', canEdit, agendaController.deleteResolution);
 
 // Annexures
 router.get('/:id/annexures', agendaController.getAnnexures);
-router.post('/:id/annexures', upload.single('file'), agendaController.uploadAnnexure);
-router.put('/annexures/reorder', agendaController.reorderAnnexures);
-router.delete('/annexures/:annexureId', agendaController.deleteAnnexure);
+router.post('/:id/annexures', canEdit, upload.single('file'), agendaController.uploadAnnexure);
+router.put('/annexures/reorder', canEdit, agendaController.reorderAnnexures);
+router.delete('/annexures/:annexureId', canEdit, agendaController.deleteAnnexure);
 
 module.exports = router;

@@ -5,14 +5,16 @@ import { FileText, FileCheck, Users, Loader2, Upload, Download, Eye } from "luci
 import api from "../../lib/api";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
+import { useAuth } from "../../hooks/useAuth";
 
 export default function MaterialsView({ meeting }: { meeting: any }) {
+  const { canEdit } = useAuth();
   const [generating, setGenerating] = useState<string | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadType, setUploadType] = useState<string | null>(null);
   const { mutate } = useSWRConfig();
-  const isLocked = meeting.is_locked;
+  const readOnly = meeting.is_locked || !canEdit;
 
   const handleGenerate = async (type: string, filename: string) => {
     setGenerating(type);
@@ -163,7 +165,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
             ) : (
               <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
             )}
-            {!isLocked && (
+            {!readOnly && (
               <button 
                 onClick={() => triggerUpload('agenda')}
                 disabled={uploading === 'agenda'}
@@ -190,7 +192,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
             ) : (
               <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
             )}
-            {!isLocked && (
+            {!readOnly && (
               <button 
                 onClick={() => triggerUpload('resolution')}
                 disabled={uploading === 'resolution'}
@@ -217,7 +219,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
             ) : (
               <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
             )}
-            {!isLocked && (
+            {!readOnly && (
               <button 
                 onClick={() => triggerUpload('resolution-status')}
                 disabled={uploading === 'resolution-status'}

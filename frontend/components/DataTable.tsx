@@ -261,20 +261,24 @@ export default function DataTable({
                           <Eye className="w-4 h-4" />
                         </button>
                       )}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onEdit && onEdit(row); }}
-                        className="p-1 text-muted-foreground hover:text-primary transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onDelete && onDelete(row); }}
-                        className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {onEdit && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onEdit(row); }}
+                          className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                          title="Edit"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDelete(row); }}
+                          className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -19,7 +19,7 @@ const getMembers = async (req, res, next) => {
             params.push(type);
         }
 
-        query += ' ORDER BY m.created_at DESC';
+        query += ' ORDER BY m.serial ASC NULLS LAST, m.created_at DESC';
 
         const result = await db.query(query, params);
         res.status(200).json({ success: true, data: result.rows });
@@ -38,9 +38,12 @@ const createMember = async (req, res, next) => {
 
         const processedEmail = (email === "" || email === undefined) ? null : email;
 
+        const maxSerialResult = await db.query('SELECT MAX(serial) as max_serial FROM members');
+        const assignedSerial = (maxSerialResult.rows[0].max_serial || 0) + 1;
+
         const result = await db.query(
-            `INSERT INTO members (name, prefix, designation, department_id, office_id, email, member_type) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            `INSERT INTO members (name, prefix, designation, department_id, office_id, email, member_type, serial)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
             [
                 name,
                 prefix !== undefined ? prefix : null,
@@ -48,7 +51,8 @@ const createMember = async (req, res, next) => {
                 (department_id === "" || department_id === undefined) ? null : department_id,
                 (office_id === "" || office_id === undefined) ? null : office_id,
                 processedEmail,
-                member_type || 'none'
+                member_type || 'none',
+                assignedSerial
             ]
         );
 

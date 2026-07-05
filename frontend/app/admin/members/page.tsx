@@ -51,6 +51,7 @@ export default function ManageMembersPage() {
   );
 
   const columns = [
+    { key: "serial", label: "Serial No" },
     { key: "name", label: "Name" },
     { key: "designation", label: "Designation" },
     { key: "department_name", label: "Department" },

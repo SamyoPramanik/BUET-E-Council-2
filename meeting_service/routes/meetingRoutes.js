@@ -24,6 +24,7 @@ router.put('/:id/lock', requireRole('admin'), meetingController.toggleLock);
 
 router.post('/:id/invitees', canEdit, meetingController.addInvitees);
 router.get('/:id/invitees', meetingController.getInvitees);
+router.get('/:id/invitees/emails', meetingController.getInviteesEmails);
 router.delete('/:id/invitees/:inviteeId', canEdit, meetingController.removeInvitee);
 router.put('/:id/invitees/:inviteeId', canEdit, meetingController.updateInvitee);
 router.post('/:id/invitees/bulk-fetch', canEdit, meetingController.bulkFetchInvitees);
@@ -35,6 +36,9 @@ router.put('/:id/attendance', canEdit, meetingController.saveAttendance);
 
 // Unified endpoint for generating PDFs
 router.get('/:id/pdf/:type', meetingController.generatePdf);
+
+// Send agenda (or any ad-hoc message) via email to selected invitees
+router.post('/:id/send-email', canEdit, meetingController.sendAgendaEmail);
 
 // Endpoint for uploading material PDFs
 router.post('/:id/materials/upload', canEdit, upload.single('file'), meetingController.uploadMaterial);

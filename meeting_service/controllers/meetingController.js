@@ -8,10 +8,10 @@ const crypto = require('crypto');
 const getMeetings = async (req, res, next) => {
     try {
         const result = await db.query(`
-            SELECT *, 
-                   ROW_NUMBER() OVER (ORDER BY created_at ASC) as serial 
-            FROM meetings 
-            ORDER BY created_at DESC
+            SELECT *,
+                   ROW_NUMBER() OVER (ORDER BY legacy_meeting_no DESC NULLS FIRST) as serial
+            FROM meetings
+            ORDER BY legacy_meeting_no DESC NULLS FIRST
         `);
 
         // Format dates correctly for the frontend
@@ -30,8 +30,10 @@ const getMeetingById = async (req, res, next) => {
     try {
         const { id } = req.params;
         const result = await db.query(`
-            SELECT m.*, 
-            (SELECT COUNT(*) FROM meetings m2 WHERE m2.created_at <= m.created_at) as serial 
+            SELECT m.*,
+            (SELECT COUNT(*) FROM meetings m2
+             WHERE m2.legacy_meeting_no IS NOT NULL AND m.legacy_meeting_no IS NOT NULL
+               AND m2.legacy_meeting_no <= m.legacy_meeting_no) as serial
             FROM meetings m
             WHERE m.id = $1
         `, [id]);
@@ -406,8 +408,8 @@ const generatePdf = async (req, res, next) => {
         const { id, type } = req.params; // type = agenda, resolution, attendance
         let pdfBuffer;
 
-        // Basic check if meeting exists
-        const meetingCheck = await db.query('SELECT * FROM meetings WHERE id = $1', [id]);
+        // Basic check if meeting exists (the generators fetch the full data themselves).
+        const meetingCheck = await db.query('SELECT id FROM meetings WHERE id = $1', [id]);
         if (meetingCheck.rows.length === 0) return next(new CustomError('Meeting not found', 404));
 
         if (type === 'agenda') {
@@ -417,7 +419,7 @@ const generatePdf = async (req, res, next) => {
         } else if (type === 'attendance') {
             pdfBuffer = await generateAttendanceSheet(id);
         } else if (type === 'resolution-status') {
-            pdfBuffer = await generateMeetingPdf(id, true);
+            pdfBuffer = await generateMeetingPdf(id, true, 'resolution-status');
         } else {
             return next(new CustomError('Invalid pdf type requested', 400));
         }

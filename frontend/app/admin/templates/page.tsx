@@ -10,8 +10,10 @@ import { useConfirm } from "../../../hooks/useConfirm";
 import { Plus } from "lucide-react";
 import RichTextEditor from "../../../components/RichTextEditor";
 import CustomSelect from "../../../components/CustomSelect";
+import { useAuth } from "../../../hooks/useAuth";
 
 export default function ManageTemplatesPage() {
+  const { canEdit } = useAuth();
   const { data: response, error, mutate } = useSWR('/templates', fetcher);
   const { confirm, ConfirmModal } = useConfirm();
 
@@ -119,20 +121,22 @@ export default function ManageTemplatesPage() {
           <h1 className="text-3xl font-bold tracking-tight">Manage Templates</h1>
           <p className="text-muted-foreground mt-1 text-lg">Create reusable content templates for agendas, resolutions, and more.</p>
         </div>
-        <button
-          onClick={handleOpenCreate}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium transition-colors shadow-sm flex items-center gap-2"
-        >
-          <Plus className="w-5 h-5" /> Add Template
-        </button>
+        {canEdit && (
+          <button
+            onClick={handleOpenCreate}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium transition-colors shadow-sm flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" /> Add Template
+          </button>
+        )}
       </div>
 
       <DataTable
         // title="Templates"
         columns={columns}
         data={tableData}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
+        onEdit={canEdit ? handleEdit : undefined}
+        onDelete={canEdit ? handleDelete : undefined}
       />
 
       {isModalOpen && (

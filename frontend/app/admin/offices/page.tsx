@@ -7,8 +7,10 @@ import api from "../../../lib/api";
 import DataTable from "../../../components/DataTable";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
+import { useAuth } from "../../../hooks/useAuth";
 
 export default function ManageOfficesPage() {
+  const { canEdit } = useAuth();
   const { data: response, error, mutate } = useSWR('/offices', fetcher);
   const { confirm, ConfirmModal } = useConfirm();
 
@@ -100,21 +102,23 @@ export default function ManageOfficesPage() {
   return (
     <div className="max-w-6xl mx-auto">
       <ConfirmModal />
-      <DataTable 
-        columns={columns} 
-        data={response.data || []} 
+      <DataTable
+        columns={columns}
+        data={response.data || []}
         title="Manage Offices"
-        onReorder={handleReorder}
-        onUploadCsv={handleUploadCsv}
-        onDownloadCsv={handleDownloadCsv} 
-        onAdd={() => {
+        searchable
+        searchPlaceholder="Search offices..."
+        onReorder={canEdit ? handleReorder : undefined}
+        onUploadCsv={canEdit ? handleUploadCsv : undefined}
+        onDownloadCsv={handleDownloadCsv}
+        onAdd={canEdit ? () => {
           setIsEditMode(false);
           setEditingId(null);
           setNewOffice({ name_bangla: "", name_english: "" });
           setIsModalOpen(true);
-        }}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
+        } : undefined}
+        onEdit={canEdit ? handleEdit : undefined}
+        onDelete={canEdit ? handleDelete : undefined}
       />
 
       {isModalOpen && (

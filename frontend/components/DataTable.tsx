@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useMemo } from 'react';
-import { GripVertical, Pencil, Trash2, Upload, Download, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { GripVertical, Pencil, Trash2, Eye, Upload, Download, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
 
 interface Column {
   key: string;
@@ -19,13 +19,17 @@ interface DataTableProps {
   onAdd?: () => void;
   onEdit?: (row: any) => void;
   onDelete?: (row: any) => void;
+  onView?: (row: any) => void;
   onFetchApi?: () => void;
   customActions?: React.ReactNode;
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  filters?: React.ReactNode;
 }
 
-export default function DataTable({ 
-  columns, 
-  data: initialData, 
+export default function DataTable({
+  columns,
+  data: initialData,
   title,
   onReorder,
   onUploadCsv,
@@ -33,11 +37,16 @@ export default function DataTable({
   onAdd,
   onEdit,
   onDelete,
+  onView,
   onFetchApi,
-  customActions
+  customActions,
+  searchable,
+  searchPlaceholder,
+  filters
 }: DataTableProps) {
   const [data, setData] = useState(initialData);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [query, setQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Update local state when initialData changes (from SWR)
@@ -72,6 +81,15 @@ export default function DataTable({
       return 0;
     });
   }, [data, sortConfig]);
+
+  // Client-side search across the visible columns (opt-in via `searchable`).
+  const filteredData = useMemo(() => {
+    if (!searchable || !query.trim()) return sortedData;
+    const q = query.trim().toLowerCase();
+    return sortedData.filter(row =>
+      columns.some(col => String(row[col.key] ?? '').toLowerCase().includes(q))
+    );
+  }, [sortedData, query, searchable, columns]);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     e.dataTransfer.setData('text/plain', index.toString());
@@ -158,6 +176,28 @@ export default function DataTable({
         </div>
       )}
 
+      {(searchable || filters) && (
+        <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
+          {searchable && (
+            <div className="relative flex-1 md:min-w-56">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={searchPlaceholder || 'Search...'}
+                className="w-full pl-9 pr-3 py-2.5 bg-input/20 border border-input rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          )}
+          {filters && (
+            <div className="flex flex-wrap items-center gap-3">
+              {filters}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -187,7 +227,7 @@ export default function DataTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {sortedData.map((row, index) => (
+              {filteredData.map((row, index) => (
                 <tr 
                   key={row.id || index}
                   draggable={!!onReorder}
@@ -195,42 +235,56 @@ export default function DataTable({
                   onDragEnd={handleDragEnd}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, index)}
-                  className="hover:bg-accent/50 transition-colors bg-card"
+                  onClick={() => onEdit && onEdit(row)}
+                  className={`hover:bg-accent/50 transition-colors bg-card ${onEdit ? 'cursor-pointer' : ''}`}
                 >
                   {onReorder && (
                     <td className="px-4 py-4 cursor-grab active:cursor-grabbing text-muted-foreground flex items-center justify-center">
                       <GripVertical className="w-4 h-4 opacity-50 hover:opacity-100" />
                     </td>
                   )}
-                  
+
                   {columns.map(col => (
                     <td key={col.key} className="px-6 py-4 text-sm text-foreground">
                       {row[col.key]}
                     </td>
                   ))}
-                  
+
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end space-x-2">
-                      <button 
-                        onClick={() => onEdit && onEdit(row)}
-                        className="p-1 text-muted-foreground hover:text-primary transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => onDelete && onDelete(row)}
-                        className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {onView && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onView(row); }}
+                          className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                          title="View"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      )}
+                      {onEdit && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onEdit(row); }}
+                          className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                          title="Edit"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDelete(row); }}
+                          className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
               ))}
               
-              {sortedData.length === 0 && (
+              {filteredData.length === 0 && (
                 <tr>
                   <td colSpan={columns.length + (onReorder ? 2 : 1)} className="px-6 py-8 text-center text-muted-foreground">
                     No data found.

@@ -8,9 +8,11 @@ import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
+import { useAuth } from "../../hooks/useAuth";
 import TemplateDrawer from "../TemplateDrawer";
 
 export default function AgendaView({ meeting, type }: { meeting: any, type: string }) {
+  const { canEdit } = useAuth();
   const isSuppliView = type === 'suppli-agenda';
   const { data: response, mutate } = useSWR(`/agendas?meeting_id=${meeting.id}&is_suppli=${isSuppliView}`, fetcher, { fallbackData: { data: [] } });
   const agendas = response?.data || [];
@@ -25,6 +27,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
   const title = type === 'suppli-agenda' ? 'Supplementary Agenda' : 'Agenda Items';
   const isLocked = meeting.is_locked;
+  const readOnly = isLocked || !canEdit;
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -149,7 +152,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               <h3 className="text-lg font-semibold text-primary">No Agendas Found</h3>
               <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are currently no agendas for this meeting. Create a new agenda to get started.</p>
             </div>
-            {!isLocked && (
+            {!readOnly && (
               <div className="flex gap-4 mt-4">
                 <button 
                   onClick={handleStartCreate} 
@@ -176,7 +179,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 <h3 className="font-semibold text-lg text-primary">
                   {agenda.is_suppli ? 'Suppli Ag-' : 'Ag-'}{agenda.agenda_serial || index + 1}
                 </h3>
-                {!isLocked && (
+                {!readOnly && (
                   <div className="flex gap-2">
                     <button 
                       onClick={() => handleEditClick(agenda)}
@@ -218,11 +221,11 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               )}
 
               {/* Annexure List placed underneath the agenda content */}
-              <AnnexureList contentId={agenda.id} type="agenda" isLocked={isLocked} />
+              <AnnexureList contentId={agenda.id} type="agenda" isLocked={isLocked} readOnly={!canEdit} />
             </div>
 
             {/* Insertion Strip (UX Magic) */}
-            {!isCreating && !isLocked && (
+            {!isCreating && !readOnly && (
               <div className="h-10 my-2 relative group flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t-2 border-dashed border-primary/30"></div>
@@ -241,7 +244,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
         ))}
         
         {/* Create New Agenda Form */}
-        {isCreating && !isLocked && (
+        {isCreating && !readOnly && (
           <div className="bg-card border border-primary/50 rounded-lg relative group shadow-sm hover:shadow-md transition-shadow mt-4">
             <div className="p-6">
               <div className="flex justify-between items-start mb-4">
@@ -278,11 +281,11 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             {agendas.map((agenda: any, index: number) => (
               <div 
                 key={agenda.id} 
-                draggable={!isLocked}
-                onDragStart={(e) => !isLocked && handleDragStart(e, agenda.id)}
-                onDragOver={!isLocked ? handleDragOver : undefined}
-                onDrop={(e) => !isLocked && handleDrop(e, agenda.id)}
-                className={`bg-card border border-border p-3 rounded-md flex items-center gap-3 transition-colors group shadow-sm ${!isLocked ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
+                draggable={!readOnly}
+                onDragStart={(e) => !readOnly && handleDragStart(e, agenda.id)}
+                onDragOver={!readOnly ? handleDragOver : undefined}
+                onDrop={(e) => !readOnly && handleDrop(e, agenda.id)}
+                className={`bg-card border border-border p-3 rounded-md flex items-center gap-3 transition-colors group shadow-sm ${!readOnly ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
               >
                 <GripVertical className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                 <span className="font-medium text-sm">

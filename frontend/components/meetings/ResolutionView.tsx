@@ -8,9 +8,12 @@ import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
 import { toast } from "sonner";
 import TemplateDrawer from "../TemplateDrawer";
+import { useAuth } from "../../hooks/useAuth";
 
 export default function ResolutionView({ meeting }: { meeting: any }) {
+  const { canEdit } = useAuth();
   const isLocked = meeting.is_locked;
+  const readOnly = isLocked || !canEdit;
   const { data: response, mutate } = useSWR(`/agendas?meeting_id=${meeting.id}`, fetcher, { fallbackData: { data: [] } });
 
   // Sort main agendas first, suppli agendas last, then by serial
@@ -145,7 +148,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 </div>
               ) : agenda.resolution ? (
                 <div className="relative group">
-                  {!isLocked && (
+                  {!readOnly && (
                     <button
                       onClick={() => handleEditClick(agenda)}
                       className="absolute top-0 right-0 text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-primary/10 rounded-md hover:bg-primary/20 flex items-center gap-2 text-xs font-medium z-10"
@@ -159,7 +162,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                   />
                 </div>
               ) : (
-                !isLocked && (
+                !readOnly && (
                   <div className="flex gap-3">
                     <button
                       onClick={() => handleEditClick(agenda)}
@@ -184,7 +187,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
 
             {/* Annexure List placed underneath the resolution content */}
             {agenda.resolution && (
-              <AnnexureList contentId={agenda.id} type="resolution" isLocked={isLocked} />
+              <AnnexureList contentId={agenda.id} type="resolution" isLocked={isLocked} readOnly={!canEdit} />
             )}
 
             {/* Execution Status (Only for past meetings) */}
@@ -199,7 +202,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      disabled={isLocked}
+                      disabled={readOnly}
                       className="w-4 h-4 rounded border-input text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
                       checked={agenda.is_executed || false}
                       onChange={() => handleToggleExecuted(agenda)}
@@ -225,7 +228,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                     </div>
                   ) : agenda.execution_status ? (
                     <div className="relative group mb-4">
-                      {!isLocked && (
+                      {!readOnly && (
                         <button
                           onClick={() => { setExecutingId(agenda.id); setExecutionContent(agenda.execution_status); }}
                           className="absolute top-0 right-0 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-emerald-50 rounded-md hover:bg-emerald-100 flex items-center gap-2 text-xs font-medium z-10"
@@ -239,7 +242,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                       />
                     </div>
                   ) : (
-                    !isLocked && (
+                    !readOnly && (
                       <button
                         onClick={() => { setExecutingId(agenda.id); setExecutionContent(""); }}
                         className="bg-background border border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors mb-4"

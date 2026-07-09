@@ -37,13 +37,16 @@ const sendMail = async ({ to, subject, html, text }) => {
     }
 
     try {
-        await client.sendMail({
+        const info = await client.sendMail({
             from: process.env.MAIL_FROM || 'no-reply@buet-ecouncil.local',
             to,
             subject,
             html,
             text
         });
+        // No-op outside of Ethereal test accounts (returns false otherwise).
+        const previewUrl = nodemailer.getTestMessageUrl(info);
+        if (previewUrl) console.log('Preview URL:', previewUrl);
         return true;
     } catch (err) {
         console.error('Failed to send email:', err.message);

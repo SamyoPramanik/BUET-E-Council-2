@@ -39,6 +39,7 @@ CREATE TABLE users (
     role user_role NOT NULL DEFAULT 'viewer',
     member_type member_type_enum NOT NULL DEFAULT 'none',
     status account_status NOT NULL DEFAULT 'active',
+    legacy_username VARCHAR(100) UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -79,12 +80,14 @@ CREATE TABLE departments (
     alias_bangla VARCHAR(255),
     alias_english VARCHAR(255),
     faculty_id UUID REFERENCES faculties (id) ON DELETE SET NULL,
+    legacy_department_id NUMERIC UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Members Table (Base table for people attending meetings)
 CREATE TABLE members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    serial INTEGER,
     name VARCHAR(255) NOT NULL,
     prefix VARCHAR(255),
     designation VARCHAR(255),
@@ -92,6 +95,7 @@ CREATE TABLE members (
     office_id UUID REFERENCES offices (id) ON DELETE SET NULL,
     email VARCHAR(255) UNIQUE,
     member_type member_type_enum NOT NULL DEFAULT 'academic',
+    legacy_member_id NUMERIC UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -112,13 +116,22 @@ CREATE TABLE meetings (
     resolution_pdf_link VARCHAR(255),
     resolution_status_pdf_link VARCHAR(255),
     status meeting_status NOT NULL DEFAULT 'draft',
+    legacy_meeting_no NUMERIC UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Meetings that historically spanned more than one sitting date; meetings.meeting_date
+-- keeps the earliest date, the rest live here so nothing is lost.
+CREATE TABLE meeting_extra_dates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    meeting_id UUID REFERENCES meetings (id) ON DELETE CASCADE,
+    meeting_date TIMESTAMP WITH TIME ZONE NOT NULL
 );
 
 -- Content Table (Stores the core text data and embeddings)
 CREATE TABLE agenda (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-    -- 'vector(1536)' is standard for OpenAI embeddings. 
+    -- 'vector(1536)' is standard for OpenAI embeddings.
     -- Change 1536 to your specific model's dimension if different.
     content TEXT,
     embedding vector (1536),
@@ -128,8 +141,31 @@ CREATE TABLE agenda (
     execution_status TEXT, -- Detailed status description
     agenda_serial INTEGER, -- e.g., "Ag-1", "Res-5"
     meeting_id UUID REFERENCES meetings (id) ON DELETE CASCADE,
+    legacy_agenda_id VARCHAR(20) UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     is_suppli BOOLEAN DEFAULT false
+);
+
+-- Categories/tags carried over from the legacy ACQ schema (agenda topic
+-- classification); kept alongside agenda so legacy imports have somewhere
+-- to land even though the current app doesn't surface these yet.
+CREATE TABLE categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    legacy_category_id NUMERIC UNIQUE,
+    name TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE agenda_categories (
+    agenda_id UUID REFERENCES agenda (id) ON DELETE CASCADE,
+    category_id UUID REFERENCES categories (id) ON DELETE CASCADE,
+    PRIMARY KEY (agenda_id, category_id)
+);
+
+CREATE TABLE agenda_departments (
+    agenda_id UUID REFERENCES agenda (id) ON DELETE CASCADE,
+    department_id UUID REFERENCES departments (id) ON DELETE CASCADE,
+    PRIMARY KEY (agenda_id, department_id)
 );
 
 -- Templates Table

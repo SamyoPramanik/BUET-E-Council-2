@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "vector";
 
 -- 2. Define Enum Types
-CREATE TYPE user_role AS ENUM ('admin', 'moderator', 'member');
+CREATE TYPE user_role AS ENUM ('admin', 'moderator', 'viewer');
 
 CREATE TYPE member_type_enum AS ENUM ('academic', 'syndicate', 'none');
 
@@ -36,7 +36,7 @@ CREATE TABLE users (
     username VARCHAR(255) NOT NULL UNIQUE,
     email VARCHAR(255) UNIQUE,
     password VARCHAR(255) NOT NULL, -- Store hashed passwords only
-    role user_role NOT NULL DEFAULT 'member',
+    role user_role NOT NULL DEFAULT 'viewer',
     member_type member_type_enum NOT NULL DEFAULT 'none',
     status account_status NOT NULL DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

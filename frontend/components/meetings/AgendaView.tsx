@@ -5,7 +5,7 @@ import { Edit3, Plus, FileText, GripVertical, Trash2 } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import AnnexureList from "./AnnexureList";
 import RevisionHistory from "./RevisionHistory";
-import TagMultiSelect from "../TagMultiSelect";
+import TagChipSelector from "../TagChipSelector";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
 import { sanitizeHtml } from "../../lib/sanitize";
@@ -238,25 +238,27 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
               {editingId === agenda.id ? (
                 <div className="border border-primary/50 rounded-md overflow-hidden ring-2 ring-primary/20">
-                  <div className="p-3 border-b border-border bg-muted/30">
-                    <TagMultiSelect
-                      options={allTags}
-                      value={editTagIds}
-                      onChange={setEditTagIds}
-                      onAddNew={(name) => handleAddNewTag(name, "edit")}
-                      placeholder="Add tags..."
-                    />
-                  </div>
                   <RichTextEditor
                     content={editContent}
                     onChange={setEditContent}
                     className="p-4 min-h-[200px]"
                   />
-                  <div className="bg-muted p-2 flex justify-end gap-2 border-t border-border">
-                    <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
-                    <button onClick={handleSave} disabled={isSaving} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md disabled:opacity-50">
-                      {isSaving ? "Saving..." : "Save"}
-                    </button>
+                  <div className="bg-muted p-2 px-3 flex justify-between items-center gap-4 border-t border-border">
+                    <div className="flex-1 min-w-0">
+                      <TagChipSelector
+                        options={allTags}
+                        value={editTagIds}
+                        onChange={setEditTagIds}
+                        onAddNew={(name) => handleAddNewTag(name, "edit")}
+                        placeholder="Add tag"
+                      />
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
+                      <button onClick={handleSave} disabled={isSaving} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md disabled:opacity-50">
+                        {isSaving ? "Saving..." : "Save"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -299,25 +301,27 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 </h3>
               </div>
               <div className="border border-primary/50 rounded-md overflow-hidden ring-2 ring-primary/20">
-                <div className="p-3 border-b border-border bg-muted/30">
-                  <TagMultiSelect
-                    options={allTags}
-                    value={newTagIds}
-                    onChange={setNewTagIds}
-                    onAddNew={(name) => handleAddNewTag(name, "new")}
-                    placeholder="Add tags..."
-                  />
-                </div>
                 <RichTextEditor
                   content={newContent}
                   onChange={setNewContent}
                   className="p-4 min-h-[200px]"
                 />
-                <div className="bg-muted p-3 flex justify-end gap-3 border-t border-border">
-                  <button onClick={() => setIsCreating(false)} className="px-4 py-1.5 text-sm font-medium text-muted-foreground hover:bg-background rounded-md transition-colors">Cancel</button>
-                  <button onClick={handleSaveNew} disabled={isSaving || !newContent} className="px-4 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-50 transition-opacity">
-                    {isSaving ? "Saving..." : "Create Agenda"}
-                  </button>
+                <div className="bg-muted p-3 flex justify-between items-center gap-4 border-t border-border">
+                  <div className="flex-1 min-w-0">
+                    <TagChipSelector
+                      options={allTags}
+                      value={newTagIds}
+                      onChange={setNewTagIds}
+                      onAddNew={(name) => handleAddNewTag(name, "new")}
+                      placeholder="Add tag"
+                    />
+                  </div>
+                  <div className="flex gap-3 shrink-0">
+                    <button onClick={() => setIsCreating(false)} className="px-4 py-1.5 text-sm font-medium text-muted-foreground hover:bg-background rounded-md transition-colors">Cancel</button>
+                    <button onClick={handleSaveNew} disabled={isSaving || !newContent} className="px-4 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-50 transition-opacity">
+                      {isSaving ? "Saving..." : "Create Agenda"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

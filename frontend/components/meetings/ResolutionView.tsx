@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Edit3, FileText, FileCheck, Plus } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import AnnexureList from "./AnnexureList";
+import RevisionHistory from "./RevisionHistory";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
 import { sanitizeHtml } from "../../lib/sanitize";
@@ -101,7 +102,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
         </div>
       ) : (
         agendas.map((agenda: any, index: number) => (
-          <div key={agenda.id} className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm">
+          <div key={agenda.id} className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm group">
 
             {/* Top Section (Read-Only Agenda) */}
             <div className="mb-6">
@@ -120,9 +121,14 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
 
             {/* Bottom Section (The Resolution) */}
             <div>
-              <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-                <FileCheck className="w-4 h-4 text-primary" />
-                Resolution Outcome
+              <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-3 flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2">
+                  <FileCheck className="w-4 h-4 text-primary" />
+                  Resolution Outcome
+                </span>
+                {agenda.resolution && (
+                  <RevisionHistory contentId={agenda.id} contentType="resolutionItem" onRestored={() => mutate()} />
+                )}
               </h4>
 
               {editingId === agenda.id ? (

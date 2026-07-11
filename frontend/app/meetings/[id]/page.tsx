@@ -1,18 +1,36 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "../../../lib/api";
 import { sanitizeHtml } from "../../../lib/sanitize";
 import Header from "../../../components/Header";
 
 // Component to render a single agenda and its annexures
-function AgendaItem({ agenda, meetingStatus }: { agenda: any, meetingStatus: string }) {
+function AgendaItem({ agenda, meetingStatus, highlightId, highlightType }: { agenda: any, meetingStatus: string, highlightId: string | null, highlightType: string | null }) {
   const { data: annexuresRes } = useSWR(`/agendas/${agenda.id}/annexures`, fetcher);
   const annexures = annexuresRes?.data || [];
 
+  const isAgendaHighlight = highlightId === agenda.id && highlightType !== 'resolution';
+  const isResolutionHighlight = highlightId === agenda.id && highlightType === 'resolution';
+  const [showHighlight, setShowHighlight] = useState(isAgendaHighlight || isResolutionHighlight);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showHighlight || !ref.current) return;
+    ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const timeout = setTimeout(() => setShowHighlight(false), 2500);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
-    <div className="border border-border rounded-lg p-6 bg-card">
+    <div
+      id={`agenda-${agenda.id}`}
+      ref={isAgendaHighlight ? ref : undefined}
+      className={`border border-border rounded-lg p-6 bg-card transition-shadow ${isAgendaHighlight && showHighlight ? 'ring-2 ring-primary' : ''}`}
+    >
       <h3 className="font-semibold text-lg mb-4 text-foreground">
         প্রস্তাব নং: {agenda.agenda_serial}
       </h3>
@@ -22,7 +40,11 @@ function AgendaItem({ agenda, meetingStatus }: { agenda: any, meetingStatus: str
       />
 
       {meetingStatus === 'past' && agenda.resolution && (
-        <div className="mt-4 pt-4 border-t border-border">
+        <div
+          id={`resolution-${agenda.id}`}
+          ref={isResolutionHighlight ? ref : undefined}
+          className={`mt-4 pt-4 border-t border-border rounded-md transition-shadow ${isResolutionHighlight && showHighlight ? 'ring-2 ring-primary' : ''}`}
+        >
           <h4 className="font-semibold mb-2 text-foreground">সিদ্ধান্ত:</h4>
           <div
             className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground"
@@ -57,6 +79,9 @@ function AgendaItem({ agenda, meetingStatus }: { agenda: any, meetingStatus: str
 
 export default function PublicMeetingView() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get('highlight');
+  const highlightType = searchParams.get('type');
 
   // Fetch the meeting details
   const { data: meetingRes, error: meetingError } = useSWR(`/meetings/${params.id}`, fetcher);
@@ -255,7 +280,7 @@ export default function PublicMeetingView() {
               <section>
                 <div className="space-y-6">
                   {agendas.map((agenda: any) => (
-                    <AgendaItem key={agenda.id} agenda={agenda} meetingStatus={meeting.status} />
+                    <AgendaItem key={agenda.id} agenda={agenda} meetingStatus={meeting.status} highlightId={highlightId} highlightType={highlightType} />
                   ))}
                 </div>
               </section>

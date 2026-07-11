@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Edit3, Plus, FileText, GripVertical, Trash2 } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import AnnexureList from "./AnnexureList";
+import RevisionHistory from "./RevisionHistory";
+import TagMultiSelect from "../TagMultiSelect";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
 import { sanitizeHtml } from "../../lib/sanitize";
@@ -19,12 +21,29 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   const agendas = response?.data || [];
   const { confirm, ConfirmModal } = useConfirm();
 
+  const { data: tagsResponse, mutate: mutateTags } = useSWR('/tags', fetcher, { fallbackData: { data: [] } });
+  const allTags = tagsResponse?.data || [];
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
+  const [editTagIds, setEditTagIds] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [newContent, setNewContent] = useState("");
+  const [newTagIds, setNewTagIds] = useState<string[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const handleAddNewTag = async (name: string, target: "new" | "edit") => {
+    try {
+      const res = await api.post('/tags', { name });
+      const tag = res.data.data;
+      mutateTags();
+      if (target === "new") setNewTagIds(prev => [...prev, tag.id]);
+      else setEditTagIds(prev => [...prev, tag.id]);
+    } catch (err) {
+      toast.error("Failed to create tag");
+    }
+  };
 
   const title = type === 'suppli-agenda' ? 'Supplementary Agenda' : 'Agenda Items';
   const isLocked = meeting.is_locked;
@@ -33,7 +52,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await api.put(`/agendas/${editingId}`, { content: editContent });
+      await api.put(`/agendas/${editingId}`, { content: editContent, tag_ids: editTagIds });
       mutate();
       setEditingId(null);
       toast.success("Agenda saved successfully");
@@ -94,6 +113,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   const handleStartCreate = () => {
     setIsCreating(true);
     setNewContent("");
+    setNewTagIds([]);
     setEditingId(null);
   };
 
@@ -101,14 +121,16 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     setIsSaving(true);
     const nextSerial = agendas.length > 0 ? Math.max(...agendas.map((a: any) => a.agenda_serial || 0)) + 1 : 1;
     try {
-      await api.post(`/agendas`, { 
+      await api.post(`/agendas`, {
         meeting_id: meeting.id,
         agenda_serial: nextSerial,
         content: newContent,
-        is_suppli: isSuppliView
+        is_suppli: isSuppliView,
+        tag_ids: newTagIds
       });
       mutate();
       setIsCreating(false);
+      setNewTagIds([]);
       toast.success("Agenda created");
     } catch (err: any) {
       toast.error("Failed to create agenda");
@@ -132,6 +154,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   const handleEditClick = (agenda: any) => {
     setEditingId(agenda.id);
     setEditContent(agenda.content || "");
+    setEditTagIds((agenda.tags || []).map((t: any) => t.id));
     setIsCreating(false);
   };
 
@@ -180,29 +203,51 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 <h3 className="font-semibold text-lg text-primary">
                   {agenda.is_suppli ? 'Suppli Ag-' : 'Ag-'}{agenda.agenda_serial || index + 1}
                 </h3>
-                {!readOnly && (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleEditClick(agenda)}
-                      className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
-                      title="Edit Agenda"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(agenda.id)}
-                      className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
-                      title="Delete Agenda"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+                <div className="flex gap-2">
+                  <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} />
+                  {!readOnly && (
+                    <>
+                      <button
+                        onClick={() => handleEditClick(agenda)}
+                        className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
+                        title="Edit Agenda"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(agenda.id)}
+                        className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
+                        title="Delete Agenda"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-              
+
+              {agenda.tags && agenda.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-4 -mt-2">
+                  {agenda.tags.map((tag: any) => (
+                    <span key={tag.id} className="bg-muted text-muted-foreground text-xs font-medium px-2 py-0.5 rounded-full">
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {editingId === agenda.id ? (
                 <div className="border border-primary/50 rounded-md overflow-hidden ring-2 ring-primary/20">
-                  <RichTextEditor 
+                  <div className="p-3 border-b border-border bg-muted/30">
+                    <TagMultiSelect
+                      options={allTags}
+                      value={editTagIds}
+                      onChange={setEditTagIds}
+                      onAddNew={(name) => handleAddNewTag(name, "edit")}
+                      placeholder="Add tags..."
+                    />
+                  </div>
+                  <RichTextEditor
                     content={editContent}
                     onChange={setEditContent}
                     className="p-4 min-h-[200px]"
@@ -215,7 +260,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                   </div>
                 </div>
               ) : (
-                <div 
+                <div
                   className="prose prose-sm dark:prose-invert max-w-none text-foreground"
                   dangerouslySetInnerHTML={{ __html: agenda.content ? sanitizeHtml(agenda.content) : "<p class='text-muted-foreground italic'>Empty content...</p>" }}
                 />
@@ -254,7 +299,16 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 </h3>
               </div>
               <div className="border border-primary/50 rounded-md overflow-hidden ring-2 ring-primary/20">
-                <RichTextEditor 
+                <div className="p-3 border-b border-border bg-muted/30">
+                  <TagMultiSelect
+                    options={allTags}
+                    value={newTagIds}
+                    onChange={setNewTagIds}
+                    onAddNew={(name) => handleAddNewTag(name, "new")}
+                    placeholder="Add tags..."
+                  />
+                </div>
+                <RichTextEditor
                   content={newContent}
                   onChange={setNewContent}
                   className="p-4 min-h-[200px]"

@@ -33,4 +33,8 @@ router.post('/:id/annexures', canEdit, upload.single('file'), agendaController.u
 router.put('/annexures/reorder', canEdit, agendaController.reorderAnnexures);
 router.delete('/annexures/:annexureId', canEdit, agendaController.deleteAnnexure);
 
+// Revision history (agenda content and resolution text)
+router.get('/:id/revisions', agendaController.getRevisions);
+router.post('/:id/revisions/:revisionId/restore', canEdit, agendaController.restoreRevision);
+
 module.exports = router;

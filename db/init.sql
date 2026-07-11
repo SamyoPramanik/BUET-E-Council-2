@@ -3,6 +3,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE EXTENSION IF NOT EXISTS "vector";
 
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
 -- 2. Define Enum Types
 CREATE TYPE user_role AS ENUM ('admin', 'moderator', 'viewer');
 
@@ -120,52 +122,74 @@ CREATE TABLE meetings (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Meetings that historically spanned more than one sitting date; meetings.meeting_date
--- keeps the earliest date, the rest live here so nothing is lost.
-CREATE TABLE meeting_extra_dates (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-    meeting_id UUID REFERENCES meetings (id) ON DELETE CASCADE,
-    meeting_date TIMESTAMP WITH TIME ZONE NOT NULL
-);
-
--- Content Table (Stores the core text data and embeddings)
+-- Content Table (Stores the core text data)
 CREATE TABLE agenda (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-    -- 'vector(1536)' is standard for OpenAI embeddings.
-    -- Change 1536 to your specific model's dimension if different.
     content TEXT,
-    embedding vector (1536),
+    -- Plain-text mirror of `content` (HTML stripped), maintained by the app
+    -- on every save. Backs full-text search (content_tsv) and is chunked for
+    -- semantic embeddings (see agenda_chunks).
+    content_plain TEXT,
     resolution TEXT,
-    resolution_embedding vector (1536),
+    -- Plain-text mirror of `resolution`, same purpose as content_plain.
+    resolution_plain TEXT,
     is_executed BOOLEAN DEFAULT false,
     execution_status TEXT, -- Detailed status description
     agenda_serial INTEGER, -- e.g., "Ag-1", "Res-5"
     meeting_id UUID REFERENCES meetings (id) ON DELETE CASCADE,
     legacy_agenda_id VARCHAR(20) UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    is_suppli BOOLEAN DEFAULT false
+    is_suppli BOOLEAN DEFAULT false,
+    -- Generated full-text search vectors. 'simple' config (no stemming) is
+    -- used because it tokenizes Bangla and English equally well without an
+    -- English-specific stemmer distorting Bangla tokens.
+    content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(content_plain, ''))) STORED,
+    resolution_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(resolution_plain, ''))) STORED
 );
 
--- Categories/tags carried over from the legacy ACQ schema (agenda topic
--- classification); kept alongside agenda so legacy imports have somewhere
--- to land even though the current app doesn't surface these yet.
-CREATE TABLE categories (
+-- Tags Table (user-facing agenda tagging)
+CREATE TABLE tags (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-    legacy_category_id NUMERIC UNIQUE,
-    name TEXT NOT NULL,
+    name VARCHAR(100) NOT NULL UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE agenda_categories (
+CREATE TABLE agenda_tags (
     agenda_id UUID REFERENCES agenda (id) ON DELETE CASCADE,
-    category_id UUID REFERENCES categories (id) ON DELETE CASCADE,
-    PRIMARY KEY (agenda_id, category_id)
+    tag_id UUID REFERENCES tags (id) ON DELETE CASCADE,
+    PRIMARY KEY (agenda_id, tag_id)
 );
 
-CREATE TABLE agenda_departments (
+-- Chunked semantic-search embeddings (sentence-transformers/LaBSE, 768-dim).
+-- Long agenda/resolution text is split into chunks so each embedding stays
+-- within the model's effective input length.
+CREATE TABLE agenda_chunks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
     agenda_id UUID REFERENCES agenda (id) ON DELETE CASCADE,
-    department_id UUID REFERENCES departments (id) ON DELETE CASCADE,
-    PRIMARY KEY (agenda_id, department_id)
+    chunk_index INTEGER NOT NULL,
+    chunk_text TEXT NOT NULL,
+    embedding vector (768),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE resolution_chunks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    agenda_id UUID REFERENCES agenda (id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL,
+    chunk_text TEXT NOT NULL,
+    embedding vector (768),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Search results cache, keyed by a hash of the query + filters. Wiped
+-- whenever agenda/resolution content is re-indexed so results never go
+-- stale; created_at also lets old unused entries be swept periodically.
+CREATE TABLE search_cache (
+    cache_key VARCHAR(64) PRIMARY KEY,
+    query TEXT NOT NULL,
+    filters JSONB,
+    results JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Templates Table
@@ -220,9 +244,38 @@ CREATE TABLE annexures (
     file_path VARCHAR(255),
     summary TEXT,
     annexure_serial INTEGER DEFAULT 1,
-    embedding vector (1536), -- Vector embedding for the annexure summary/content
     upload_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 4. Search indexes
+-- None of these foreign-key columns get an automatic index in Postgres, and
+-- all of them are hit by the search/history queries below.
+CREATE INDEX idx_agenda_meeting_id ON agenda (meeting_id);
+CREATE INDEX idx_agenda_tags_tag_id ON agenda_tags (tag_id);
+CREATE INDEX idx_agenda_chunks_agenda_id ON agenda_chunks (agenda_id);
+CREATE INDEX idx_resolution_chunks_agenda_id ON resolution_chunks (agenda_id);
+CREATE INDEX idx_revisions_content_id ON revisions (content_id);
+
+-- Full-text search over agenda/resolution plain-text mirrors.
+CREATE INDEX idx_agenda_content_tsv ON agenda USING GIN (content_tsv);
+CREATE INDEX idx_agenda_resolution_tsv ON agenda USING GIN (resolution_tsv);
+
+-- Trigram indexes for fuzzy/substring entity matching (department, office,
+-- member search). Kept live against these tables directly, so entity
+-- matching is always current with no separate sync step.
+CREATE INDEX idx_departments_trgm ON departments USING GIN (
+    (
+        name_bangla || ' ' || coalesce(name_english, '') || ' ' || coalesce(alias_bangla, '') || ' ' || coalesce(alias_english, '')
+    ) gin_trgm_ops
+);
+CREATE INDEX idx_offices_trgm ON offices USING GIN (
+    (name_bangla || ' ' || coalesce(name_english, '')) gin_trgm_ops
+);
+CREATE INDEX idx_members_name_trgm ON members USING GIN (name gin_trgm_ops);
+CREATE INDEX idx_faculties_trgm ON faculties USING GIN (
+    (name_bangla || ' ' || coalesce(name_english, '')) gin_trgm_ops
+);
+CREATE INDEX idx_presentees_name_trgm ON presentees USING GIN (name gin_trgm_ops);
 
 INSERT INTO
     users (

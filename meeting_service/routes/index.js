@@ -8,6 +8,8 @@ const departmentRoutes = require('./departmentRoutes');
 const templateRoutes = require('./templateRoutes');
 const agendaRoutes = require('./agendaRoutes');
 const officeRoutes = require('./officeRoutes');
+const tagRoutes = require('./tagRoutes');
+const searchRoutes = require('./searchRoutes');
 
 router.use('/meetings', meetingRoutes);
 router.use('/faculties', facultiesRoutes);
@@ -16,5 +18,7 @@ router.use('/departments', departmentRoutes);
 router.use('/templates', templateRoutes);
 router.use('/agendas', agendaRoutes);
 router.use('/offices', officeRoutes);
+router.use('/tags', tagRoutes);
+router.use('/search', searchRoutes);
 
 module.exports = router;

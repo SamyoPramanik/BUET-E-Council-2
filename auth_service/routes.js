@@ -274,10 +274,22 @@ router.get('/sessions', requireAuth, async (req, res) => {
             [req.user.id]
         );
 
-        const sessions = result.rows.map(session => ({
-            ...session,
-            is_current: session.id === req.session.id
-        }));
+        const sessions = result.rows.map(session => {
+            let type = 'desktop';
+            try {
+                if (session.device_info) {
+                    const parsed = JSON.parse(session.device_info);
+                    if (parsed.type) {
+                        type = parsed.type;
+                    }
+                }
+            } catch (e) {}
+            return {
+                ...session,
+                type,
+                is_current: session.id === req.session.id
+            };
+        });
 
         res.status(200).json({
             success: true,

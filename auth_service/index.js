@@ -8,6 +8,8 @@ const authRoutes = require('./routes');
 const app = express();
 const port = process.env.PORT || 8000;
 
+app.set('trust proxy', true);
+
 app.use(cors({ origin: true, credentials: true })); // Needs credentials for cookies
 app.use(express.json());
 app.use(cookieParser());

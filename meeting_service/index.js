@@ -15,6 +15,8 @@ const { startBackgroundIndexer } = require('./utils/backgroundIndexer');
 const app = express();
 const port = process.env.PORT || 8001; // Using 8001 to distinguish from auth_service (8000)
 
+app.set('trust proxy', true);
+
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

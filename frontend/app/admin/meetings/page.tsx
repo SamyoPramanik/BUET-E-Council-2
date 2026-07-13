@@ -20,6 +20,7 @@ export default function ManageMeetingsPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'academic' | 'syndicate'>('academic');
 
   const [newMeeting, setNewMeeting] = useState({
     title: "",
@@ -41,11 +42,22 @@ export default function ManageMeetingsPage() {
   ];
 
   const columns = [
-    { key: "title", label: "Meeting No." },
+    { key: "meeting_no", label: "Meeting No." },
     { key: "meeting_title", label: "Meeting Title" },
     { key: "status", label: "Status" },
     { key: "date", label: "Date" }
   ];
+
+  // legacy_meeting_no is the clean numeric serial; title is a free-text field
+  // (e.g. "একাডেমিক কাউন্সিল অধিবেশন নং 376") that historically got reused as
+  // the "meeting number" column, so pull the number back out for display.
+  const withMeetingNo = (meeting: any) => ({
+    ...meeting,
+    meeting_no: meeting.legacy_meeting_no ?? String(meeting.title || '').match(/\d+/)?.[0] ?? meeting.title
+  });
+
+  const allMeetings = (response?.data || []).map(withMeetingNo);
+  const filteredMeetings = allMeetings.filter((m: any) => m.type === activeTab);
 
   const handleEdit = (meeting: any) => {
     router.push(`/admin/meetings/${meeting.id}?view=info`);
@@ -87,14 +99,39 @@ export default function ManageMeetingsPage() {
   if (!response) return <div className="p-8">Loading...</div>;
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto space-y-6">
       <ConfirmModal />
+
+      {/* Tabs */}
+      <div className="flex space-x-1 border-b border-border">
+        <button
+          onClick={() => setActiveTab('academic')}
+          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'academic'
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+          }`}
+        >
+          Academic Council
+        </button>
+        <button
+          onClick={() => setActiveTab('syndicate')}
+          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'syndicate'
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+          }`}
+        >
+          Syndicate Council
+        </button>
+      </div>
+
       <DataTable
         columns={columns}
-        data={response.data || []}
-        title="Manage Meetings"
+        data={filteredMeetings}
+        title={activeTab === 'academic' ? 'Academic Meetings' : 'Syndicate Meetings'}
         onAdd={canEdit ? () => {
-          setNewMeeting({ title: "", meeting_title: "", meeting_date: "", type: "syndicate", status: "draft" });
+          setNewMeeting({ title: "", meeting_title: "", meeting_date: "", type: activeTab, status: "draft" });
           setIsModalOpen(true);
         } : undefined}
         onEdit={handleEdit}

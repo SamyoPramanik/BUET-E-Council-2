@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from "react";
 import useSWR from "swr";
+import { useRouter } from "next/navigation";
 import api, { fetcher } from "../../lib/api";
 import { toast } from "sonner";
 
 export default function ProfilePage() {
-  const { data: response, error, mutate } = useSWR('/auth/me', fetcher);
+  const router = useRouter();
+  const { data: response, error } = useSWR('/auth/me', fetcher);
   
   const [formData, setFormData] = useState({
     email: "",
@@ -47,9 +49,9 @@ export default function ProfilePage() {
       }
 
       await api.put('/auth/me', payload);
-      toast.success("Profile updated successfully");
-      setFormData(prev => ({ ...prev, currentPassword: "", newPassword: "", confirmPassword: "" }));
-      mutate();
+      toast.success("Profile updated successfully. Signing you out of all devices...");
+      await api.post('/auth/signout-all');
+      router.push('/login');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to update profile');
     } finally {

@@ -82,8 +82,7 @@ services:
   embedding_worker:
     build:
       context: ./meeting_service
-      dockerfile: Dockerfile
-    command: ["npm", "run", "start:worker"]
+      dockerfile: Dockerfile.worker
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379

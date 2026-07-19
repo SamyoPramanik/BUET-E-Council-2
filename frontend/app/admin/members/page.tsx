@@ -229,30 +229,44 @@ export default function ManageMembersPage() {
             <h3 className="text-lg font-semibold mb-4">{isEditMode ? "Edit Member" : "Add New Member"}</h3>
             <form onSubmit={handleAddSubmit} className="space-y-4">
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Name</label>
-                  <input required value={newMember.name} onChange={e => setNewMember({ ...newMember, name: e.target.value })} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
-                </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Name</label>
+                <input required value={newMember.name} onChange={e => setNewMember({ ...newMember, name: e.target.value })} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+              </div>
+
+              <div className={isEditMode ? "grid grid-cols-1 sm:grid-cols-2 gap-4" : "grid grid-cols-1 sm:grid-cols-3 gap-4"}>
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Prefix</label>
                   <input value={newMember.prefix} onChange={e => setNewMember({ ...newMember, prefix: e.target.value })} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
                 </div>
-              </div>
-
-              {!isEditMode && (
+                {!isEditMode && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Serial No (optional)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={newMember.serial}
+                      onChange={e => setNewMember({ ...newMember, serial: e.target.value })}
+                      placeholder="Add at the end"
+                      className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium">Serial No (optional)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={newMember.serial}
-                    onChange={e => setNewMember({ ...newMember, serial: e.target.value })}
-                    placeholder="Leave blank to add at the end"
-                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                  <label className="text-xs font-medium">Type</label>
+                  <SearchableSelect
+                    options={[
+                      { value: "academic", label: "Academic" },
+                      { value: "syndicate", label: "Syndicate" },
+                      { value: "none", label: "None" }
+                    ]}
+                    value={newMember.member_type}
+                    onChange={(val) => setNewMember({ ...newMember, member_type: val })}
                   />
-                  <p className="text-xs text-muted-foreground">If this position is already taken, existing members from that serial onward shift down by one.</p>
                 </div>
+              </div>
+              {!isEditMode && (
+                <p className="text-xs text-muted-foreground -mt-2">If the chosen serial is already taken, existing members from that serial onward shift down by one.</p>
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -273,19 +287,6 @@ export default function ManageMembersPage() {
                     placeholder="Select..."
                   />
                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Type</label>
-                <SearchableSelect
-                  options={[
-                    { value: "academic", label: "Academic" },
-                    { value: "syndicate", label: "Syndicate" },
-                    { value: "none", label: "None" }
-                  ]}
-                  value={newMember.member_type}
-                  onChange={(val) => setNewMember({ ...newMember, member_type: val })}
-                />
               </div>
 
               <div className="space-y-1">

@@ -173,6 +173,19 @@ const addInvitees = async (req, res, next) => {
                     // Trust the DB, not the client, for the linked member's serial.
                     const memberRes = await client.query('SELECT serial FROM members WHERE id = $1', [invitee.member_id]);
                     serial = memberRes.rows[0]?.serial ?? null;
+                } else if (invitee.serial !== undefined && invitee.serial !== null && invitee.serial !== '') {
+                    const requestedSerial = parseInt(invitee.serial, 10);
+                    if (!Number.isNaN(requestedSerial)) {
+                        // Only push down other custom invitees — member-linked ones must
+                        // keep the serial their member owns, so leave them in place even
+                        // if that means sharing a serial with the new row.
+                        await client.query(
+                            'UPDATE invitees SET serial = serial + 1 WHERE meeting_id = $1 AND member_id IS NULL AND serial >= $2',
+                            [id, requestedSerial]
+                        );
+                        serial = requestedSerial;
+                        nextSerial = Math.max(nextSerial + 1, requestedSerial + 1);
+                    }
                 }
                 if (serial === null) {
                     serial = nextSerial++;
@@ -308,6 +321,60 @@ const updateInvitee = async (req, res, next) => {
     }
 };
 
+const reorderInvitee = async (req, res, next) => {
+    try {
+        const { id, inviteeId } = req.params;
+        const requestedSerial = parseInt(req.body.serial, 10);
+        if (Number.isNaN(requestedSerial)) return next(new CustomError('serial is required', 400));
+
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const inviteeRes = await client.query(
+                'SELECT serial FROM invitees WHERE id = $1 AND meeting_id = $2',
+                [inviteeId, id]
+            );
+            if (inviteeRes.rows.length === 0) {
+                await client.query('ROLLBACK');
+                client.release();
+                return next(new CustomError('Invitee not found', 404));
+            }
+
+            const oldSerial = inviteeRes.rows[0].serial ?? requestedSerial;
+
+            // Meeting-local move only — never touches members.serial, even for
+            // member-linked invitees. This is intentionally decoupled from the
+            // global member order: the sync_invitee_serial trigger still seeds
+            // (and re-syncs) a member-linked invitee's serial whenever that
+            // member's own serial changes elsewhere, but a drag here never
+            // reaches back out to move the member.
+            if (requestedSerial > oldSerial) {
+                await client.query(
+                    'UPDATE invitees SET serial = serial - 1 WHERE meeting_id = $1 AND serial > $2 AND serial <= $3 AND id != $4',
+                    [id, oldSerial, requestedSerial, inviteeId]
+                );
+            } else if (requestedSerial < oldSerial) {
+                await client.query(
+                    'UPDATE invitees SET serial = serial + 1 WHERE meeting_id = $1 AND serial >= $2 AND serial < $3 AND id != $4',
+                    [id, requestedSerial, oldSerial, inviteeId]
+                );
+            }
+            await client.query('UPDATE invitees SET serial = $1 WHERE id = $2', [requestedSerial, inviteeId]);
+
+            await client.query('COMMIT');
+            res.status(200).json({ success: true, message: 'Invitee reordered successfully' });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        next(error);
+    }
+};
+
 const getPresentees = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -347,6 +414,16 @@ const addPresentees = async (req, res, next) => {
                     // Trust the DB, not the client, for the linked member's serial.
                     const memberRes = await client.query('SELECT serial FROM members WHERE id = $1', [presentee.member_id]);
                     serial = memberRes.rows[0]?.serial ?? null;
+                } else if (presentee.serial !== undefined && presentee.serial !== null && presentee.serial !== '') {
+                    const requestedSerial = parseInt(presentee.serial, 10);
+                    if (!Number.isNaN(requestedSerial)) {
+                        await client.query(
+                            'UPDATE presentees SET serial = serial + 1 WHERE meeting_id = $1 AND serial >= $2',
+                            [id, requestedSerial]
+                        );
+                        serial = requestedSerial;
+                        nextSerial = Math.max(nextSerial + 1, requestedSerial + 1);
+                    }
                 }
                 if (serial === null) {
                     serial = nextSerial++;
@@ -711,6 +788,7 @@ module.exports = {
     bulkFetchInvitees,
     getInvitees,
     updateInvitee,
+    reorderInvitee,
     removeInvitee,
     getPresentees,
     addPresentees,

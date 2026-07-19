@@ -44,7 +44,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const [editForm, setEditForm] = useState({ name: '', email: '', designation: '', department_id: '', office_id: '' });
   const [isUpdatingPresentee, setIsUpdatingPresentee] = useState(false);
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
-  const [customForm, setCustomForm] = useState({ name: '', prefix: '', email: '', designation: '', department_id: '', office_id: '' });
+  const [customForm, setCustomForm] = useState({ name: '', prefix: '', serial: '', email: '', designation: '', department_id: '', office_id: '' });
   const [isSavingCustom, setIsSavingCustom] = useState(false);
 
   const { data: departmentsRes } = useSWR('/departments', fetcher);
@@ -89,6 +89,11 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     (tableDepartment === "all" || m.department_name === tableDepartment) &&
     (tableOffice === "all" || m.office_name === tableOffice)
   );
+
+  // Drag-reorder derives a target serial from the dragged row's new neighbors
+  // in this list, so it's only safe while the list isn't narrowed by a filter
+  // — otherwise the "neighbor" wouldn't be the true adjacent invitee.
+  const noTableFiltersActive = tableDesignation === "all" && tableDepartment === "all" && tableOffice === "all";
 
   const columns = isPast ? [
     { key: "serial", label: "Serial No" },
@@ -135,6 +140,33 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         toast.error("Failed to remove");
       }
     });
+  };
+
+  const handleReorderInvitee = async (sourceIndex: number, targetIndex: number) => {
+    const movedInvitee = displayedInvitees[sourceIndex];
+    if (!movedInvitee) return;
+
+    // Neighbors in the post-move arrangement (list with the moved row taken
+    // out first, since that's how DataTable computes targetIndex).
+    const withoutMoved = displayedInvitees.filter((_: any, i: number) => i !== sourceIndex);
+    const nextInvitee = withoutMoved[targetIndex];
+    const prevInvitee = withoutMoved[targetIndex - 1];
+
+    let targetSerial: number;
+    if (nextInvitee) {
+      targetSerial = nextInvitee.serial;
+    } else if (prevInvitee) {
+      targetSerial = (prevInvitee.serial ?? 0) + 1;
+    } else {
+      targetSerial = 1;
+    }
+
+    try {
+      await api.put(`/meetings/${meeting.id}/invitees/${movedInvitee.id}/reorder`, { serial: targetSerial });
+      mutateInvitees();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to reorder invitee");
+    }
   };
 
   const handleBulkFetch = () => {
@@ -227,7 +259,18 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         }
       }
 
-      toast.success(`${isPast ? 'Presentees' : 'Invitees'} synced successfully`);
+      const label = isPast ? 'presentee' : 'invitee';
+      const addedCount = presenteesToAdd.length;
+      const removedCount = presenteesToRemove.length;
+      const plural = (n: number) => `${n} ${label}${n === 1 ? '' : 's'}`;
+
+      if (addedCount > 0 && removedCount === 0) {
+        toast.success(`${plural(addedCount)} added successfully`);
+      } else if (removedCount > 0 && addedCount === 0) {
+        toast.success(`${plural(removedCount)} removed successfully`);
+      } else {
+        toast.success(`${isPast ? 'Presentees' : 'Invitees'} updated successfully`);
+      }
       setIsAddPresenteeModalOpen(false);
       mutateInvitees();
     } catch (err: any) {
@@ -244,12 +287,13 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
       const nameWithPrefix = customForm.prefix ? `${customForm.prefix} ${customForm.name}` : customForm.name;
       const presenteeToAdd = {
         name: nameWithPrefix,
+        serial: customForm.serial,
         email: customForm.email,
         designation: customForm.designation,
         department_id: customForm.department_id || null,
         office_id: customForm.office_id || null
       };
-      
+
       if (isPast) {
         await api.post(`/meetings/${meeting.id}/presentees`, { presentees: [presenteeToAdd] });
         toast.success("Custom presentee added successfully");
@@ -259,7 +303,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
       }
       setIsCreatingCustom(false);
       setIsAddPresenteeModalOpen(false);
-      setCustomForm({ name: '', prefix: '', email: '', designation: '', department_id: '', office_id: '' });
+      setCustomForm({ name: '', prefix: '', serial: '', email: '', designation: '', department_id: '', office_id: '' });
       mutateInvitees();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to add custom presentee");
@@ -391,6 +435,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
           data={displayedInvitees}
           searchable
           searchPlaceholder="Search by name or designation..."
+          onReorderItem={!isPast && !readOnly && noTableFiltersActive ? handleReorderInvitee : undefined}
           filters={
             <>
               <div className="w-44">
@@ -568,50 +613,64 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
           <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6 relative max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4">Create Custom {isPast ? 'Presentee' : 'Invitee'}</h3>
             <form onSubmit={handleCreateCustomPresentee} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Name</label>
+                <input
+                  required
+                  type="text"
+                  value={customForm.name}
+                  onChange={(e) => setCustomForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                />
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium">Name</label>
-                  <input 
-                    required
-                    type="text" 
-                    value={customForm.name}
-                    onChange={(e) => setCustomForm(prev => ({ ...prev, name: e.target.value }))}
-                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
                   <label className="text-xs font-medium">Prefix</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={customForm.prefix}
                     onChange={(e) => setCustomForm(prev => ({ ...prev, prefix: e.target.value }))}
                     className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
                   />
                 </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Serial No (optional)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={customForm.serial}
+                    onChange={(e) => setCustomForm(prev => ({ ...prev, serial: e.target.value }))}
+                    placeholder="Add at the end"
+                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                  />
+                </div>
               </div>
-              
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Email (for Invitees)</label>
-                <input 
-                  type="email" 
-                  value={customForm.email}
-                  onChange={(e) => setCustomForm(prev => ({ ...prev, email: e.target.value }))}
-                  className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
-                />
-              </div>
+              <p className="text-xs text-muted-foreground -mt-2">If the chosen serial is already taken, other custom entries from that serial onward shift down by one.</p>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Designation</label>
-                <SearchableSelect 
-                  options={[
-                    { value: "", label: "None" },
-                    { value: "অধ্যাপক", label: "অধ্যাপক" },
-                    { value: "সহযোগী অধ্যাপক", label: "সহযোগী অধ্যাপক" },
-                  ]}
-                  value={customForm.designation}
-                  onChange={(val) => setCustomForm(prev => ({ ...prev, designation: val }))}
-                  placeholder="Select Designation..."
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Email (for Invitees)</label>
+                  <input
+                    type="email"
+                    value={customForm.email}
+                    onChange={(e) => setCustomForm(prev => ({ ...prev, email: e.target.value }))}
+                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Designation</label>
+                  <SearchableSelect
+                    options={[
+                      { value: "", label: "None" },
+                      { value: "অধ্যাপক", label: "অধ্যাপক" },
+                      { value: "সহযোগী অধ্যাপক", label: "সহযোগী অধ্যাপক" },
+                    ]}
+                    value={customForm.designation}
+                    onChange={(val) => setCustomForm(prev => ({ ...prev, designation: val }))}
+                    placeholder="Select Designation..."
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">

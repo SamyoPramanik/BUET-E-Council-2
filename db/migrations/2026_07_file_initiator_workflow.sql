@@ -30,6 +30,10 @@ ALTER TABLE meetings
     ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES users (id) ON DELETE SET NULL,
     ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP WITH TIME ZONE;
 
+-- 3b. Annexure authorship (Phase 3).
+ALTER TABLE annexures
+    ADD COLUMN IF NOT EXISTS uploaded_by UUID REFERENCES users (id) ON DELETE SET NULL;
+
 -- 4. Drop the superseded columns from earlier iterations, if present.
 --    (approval_status: replaced by stage; is_approved: the removed dummy approve.)
 ALTER TABLE meetings DROP COLUMN IF EXISTS approval_status;

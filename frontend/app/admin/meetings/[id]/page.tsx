@@ -11,6 +11,7 @@ import AgendaView from "../../../../components/meetings/AgendaView";
 import ResolutionView from "../../../../components/meetings/ResolutionView";
 import DescriptionView from "../../../../components/meetings/DescriptionView";
 import MaterialsView from "../../../../components/meetings/MaterialsView";
+import HistoryView from "../../../../components/meetings/HistoryView";
 
 export default function MeetingWorkspace() {
   const params = useParams();
@@ -41,6 +42,8 @@ export default function MeetingWorkspace() {
       return <ResolutionView meeting={meeting} />;
     case 'materials':
       return <MaterialsView meeting={meeting} />;
+    case 'history':
+      return <HistoryView meeting={meeting} />;
     default:
       return (
         <div className="p-8 text-muted-foreground">

@@ -12,6 +12,8 @@ interface Annexure {
   file_name: string;
   url: string | null;
   annexure_serial: number;
+  uploaded_by_username?: string | null;
+  upload_date?: string | null;
 }
 
 interface AnnexureListProps {
@@ -179,6 +181,12 @@ export default function AnnexureList({ contentId, type, isLocked = false, readOn
                   </a>
                 ) : (
                   <p className="text-sm font-medium text-foreground truncate">{annexure.file_name}</p>
+                )}
+                {annexure.uploaded_by_username && (
+                  <p className="text-xs text-muted-foreground truncate">
+                    Uploaded by {annexure.uploaded_by_username}
+                    {annexure.upload_date ? ` · ${new Date(annexure.upload_date).toLocaleDateString()}` : ""}
+                  </p>
                 )}
               </div>
               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

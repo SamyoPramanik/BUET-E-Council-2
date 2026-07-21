@@ -28,6 +28,7 @@ router.get('/', meetingController.getMeetings);
 router.post('/', canCreate, meetingController.createMeeting);
 router.post('/bulk-import', canCreate, meetingController.bulkImportMeeting);
 router.get('/:id', meetingController.getMeetingById);
+router.get('/:id/history', adminOnly, meetingController.getMeetingHistory); // admin/superadmin only
 router.put('/:id', requireMeetingAuthor, meetingController.updateMeeting);
 router.delete('/:id', adminOnly, meetingController.deleteMeeting); // critical - admin-only
 

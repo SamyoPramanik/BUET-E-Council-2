@@ -14,6 +14,15 @@ const auditLog = (entityType) => (req, res, next) => {
         const entityId = req.params.id || req.params.annexureId || req.params.resId
             || req.params.inviteeId || req.params.presenteeId || null;
 
+        // Capture which fields an update touched (e.g. "description", "status")
+        // so the per-meeting history can show *what* changed, not just "updated".
+        // Skip file uploads (multipart bodies carry no useful field list here).
+        let fields;
+        if (action === 'update' && req.body && typeof req.body === 'object' && !req.file) {
+            const keys = Object.keys(req.body);
+            if (keys.length) fields = keys;
+        }
+
         db.query(
             `INSERT INTO audit_logs (user_id, username, action, entity_type, entity_id, details, ip_address)
              VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -23,7 +32,7 @@ const auditLog = (entityType) => (req, res, next) => {
                 action,
                 entityType,
                 entityId,
-                JSON.stringify({ method: req.method, path: req.originalUrl }),
+                JSON.stringify({ method: req.method, path: req.originalUrl, ...(fields ? { fields } : {}) }),
                 req.ip
             ]
         ).catch(err => console.error('[audit] failed to log action:', err.message));

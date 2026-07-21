@@ -58,6 +58,93 @@ const getMeetingById = async (req, res, next) => {
     }
 };
 
+// Consolidated, chronological "who did what" history for a single meeting file
+// (admin/superadmin only, enforced at the route). Merges the creation event,
+// meeting-level audit logs (workflow + meeting-info edits), agenda/resolution
+// content revisions, and annexure uploads.
+const getMeetingHistory = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        const meetingRes = await db.query(
+            `SELECT m.created_at, u.username AS creator_username
+             FROM meetings m LEFT JOIN users u ON u.id = m.created_by WHERE m.id = $1`,
+            [id]
+        );
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+
+        const [auditRes, revisionRes, annexRes] = await Promise.all([
+            db.query(
+                `SELECT username, action, details, created_at FROM audit_logs
+                 WHERE entity_type = 'meeting' AND entity_id = $1 ORDER BY created_at DESC`,
+                [id]
+            ),
+            db.query(
+                `SELECT r.content_type, r.modified_at, u.username, a.agenda_serial, a.is_suppli
+                 FROM revisions r
+                 JOIN agenda a ON a.id = r.content_id
+                 LEFT JOIN users u ON u.id = r.modified_by
+                 WHERE a.meeting_id = $1`,
+                [id]
+            ),
+            db.query(
+                `SELECT an.file_name, an.upload_date, u.username, a.agenda_serial, a.is_suppli
+                 FROM annexures an
+                 JOIN agenda a ON a.id = an.content_id
+                 LEFT JOIN users u ON u.id = an.uploaded_by
+                 WHERE a.meeting_id = $1`,
+                [id]
+            ),
+        ]);
+
+        const agRef = (serial, suppli) => `${suppli ? 'Suppli Ag-' : 'Ag-'}${serial ?? '?'}`;
+
+        const labelForAudit = (log) => {
+            const path = log.details?.path || '';
+            const fields = log.details?.fields;
+            if (path.includes('/submit')) return 'Submitted the file up the chain';
+            if (path.includes('/approve-resolution')) return 'Approved the resolution';
+            if (path.includes('/reopen-resolution')) return 'Reopened the resolution';
+            if (path.includes('/approve')) return 'Approved the file';
+            if (path.includes('/return')) return 'Sent the file back';
+            if (path.includes('/complete')) return 'Marked the meeting completed';
+            if (path.includes('/lock')) return 'Toggled the meeting lock';
+            if (path.includes('/materials')) return 'Uploaded a material PDF';
+            if (path.includes('/attendance')) return 'Saved attendance';
+            if (path.includes('/invitees')) return `${log.action} invitee`;
+            if (path.includes('/presentees')) return `${log.action} presentee`;
+            if (log.action === 'update') {
+                return fields && fields.length ? `Edited meeting info (${fields.join(', ')})` : 'Edited meeting info';
+            }
+            if (log.action === 'delete') return 'Deleted the meeting';
+            return `${log.action} meeting`;
+        };
+
+        const events = [{
+            at: meetingRes.rows[0].created_at,
+            username: meetingRes.rows[0].creator_username || 'Unknown',
+            kind: 'created',
+            label: 'Created the meeting file',
+        }];
+
+        for (const log of auditRes.rows) {
+            events.push({ at: log.created_at, username: log.username || 'Unknown', kind: 'workflow', label: labelForAudit(log) });
+        }
+        for (const r of revisionRes.rows) {
+            const what = r.content_type === 'resolutionItem' ? 'resolution' : 'agenda content';
+            events.push({ at: r.modified_at, username: r.username || 'Unknown', kind: 'content', label: `Edited ${what} of ${agRef(r.agenda_serial, r.is_suppli)}` });
+        }
+        for (const an of annexRes.rows) {
+            events.push({ at: an.upload_date, username: an.username || 'Unknown', kind: 'annexure', label: `Uploaded annexure "${an.file_name}" to ${agRef(an.agenda_serial, an.is_suppli)}` });
+        }
+
+        events.sort((a, b) => new Date(b.at) - new Date(a.at));
+        res.status(200).json({ success: true, data: events });
+    } catch (error) {
+        next(error);
+    }
+};
+
 const createMeeting = async (req, res, next) => {
     try {
         const { title, meeting_title, meeting_date, type, status } = req.body;
@@ -943,6 +1030,7 @@ const bulkImportMeeting = async (req, res, next) => {
 module.exports = {
     getMeetings,
     getMeetingById,
+    getMeetingHistory,
     createMeeting,
     updateMeeting,
     deleteMeeting,

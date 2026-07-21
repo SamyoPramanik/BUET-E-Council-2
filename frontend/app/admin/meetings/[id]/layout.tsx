@@ -3,11 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useParams } from "next/navigation";
-import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers } from "lucide-react";
+import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers, History } from "lucide-react";
 import useSWR from "swr";
 import { fetcher } from "../../../../lib/api";
 import SidebarToggleButton from "../../../../components/SidebarToggleButton";
 import MeetingWorkflowBar from "../../../../components/meetings/MeetingWorkflowBar";
+import { useAuth } from "../../../../hooks/useAuth";
 
 const navigation = [
   { name: 'Meeting Info', view: 'info', icon: Info },
@@ -33,6 +34,12 @@ export default function MeetingWorkspaceLayout({
   const { data: response, mutate } = useSWR(`/meetings/${params.id}`, fetcher);
   const meeting = response?.data;
 
+  // The full activity/edit history is visible to admin/superadmin only.
+  const { isAdmin } = useAuth();
+  const navItems = isAdmin
+    ? [...navigation, { name: 'History', view: 'history', icon: History }]
+    : navigation;
+
   return (
     <div className="flex flex-1 w-full h-full overflow-hidden">
       {/* Backdrop, mobile only, shown while the drawer is open */}
@@ -56,7 +63,7 @@ export default function MeetingWorkspaceLayout({
           </Link>
         </div>
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-          {navigation.map((item) => {
+          {navItems.map((item) => {
             const isActive = currentView === item.view;
             const Icon = item.icon;
 

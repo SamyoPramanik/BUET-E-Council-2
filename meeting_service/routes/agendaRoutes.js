@@ -1,6 +1,6 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
-const { requireRole } = require('../middlewares/roleMiddleware');
+const { requireMeetingAuthor, requireMeetingOperator } = require('../middlewares/meetingWorkflowMiddleware');
 const agendaController = require('../controllers/agendaController');
 const { checkMeetingLock } = require('../middlewares/lockMiddleware');
 const { auditLog } = require('../middlewares/auditMiddleware');
@@ -16,33 +16,35 @@ const upload = multer({
 });
 
 const router = express.Router();
-const canEdit = requireRole('admin', 'moderator');
 
 router.use(authMiddleware);
 router.use(checkMeetingLock);
 router.use(auditLog('agenda'));
 
-// Agendam routes
+// Agendam routes.
+// Agenda *content* is the file the initiator prepares and submits, so it is
+// editable only by its owner while the file is in draft/sent_back (or by admin).
 router.get('/', agendaController.getAgendams);
-router.post('/', canEdit, agendaController.createAgendam);
-router.put('/:id', canEdit, agendaController.updateAgendam);
-router.delete('/:id', canEdit, agendaController.deleteAgendam);
+router.post('/', requireMeetingAuthor, agendaController.createAgendam);
+router.put('/:id', requireMeetingAuthor, agendaController.updateAgendam);
+router.delete('/:id', requireMeetingAuthor, agendaController.deleteAgendam);
 
-// Resolution routes (nested or specific endpoints)
+// Resolution routes. Resolutions/execution are recorded during/after the
+// meeting, so the owner (or admin) may manage them across the file lifecycle.
 router.get('/:id/resolutions', agendaController.getResolutions);
-router.post('/:id/resolutions', canEdit, agendaController.createResolution);
-router.put('/resolutions/:resId', canEdit, agendaController.updateResolution);
-router.put('/resolutions/:resId/execution', canEdit, agendaController.updateExecutionStatus);
-router.delete('/resolutions/:resId', canEdit, agendaController.deleteResolution);
+router.post('/:id/resolutions', requireMeetingOperator, agendaController.createResolution);
+router.put('/resolutions/:resId', requireMeetingOperator, agendaController.updateResolution);
+router.put('/resolutions/:resId/execution', requireMeetingOperator, agendaController.updateExecutionStatus);
+router.delete('/resolutions/:resId', requireMeetingOperator, agendaController.deleteResolution);
 
-// Annexures
+// Annexures (attachments for agenda items or resolutions).
 router.get('/:id/annexures', agendaController.getAnnexures);
-router.post('/:id/annexures', canEdit, upload.single('file'), agendaController.uploadAnnexure);
-router.put('/annexures/reorder', canEdit, agendaController.reorderAnnexures);
-router.delete('/annexures/:annexureId', canEdit, agendaController.deleteAnnexure);
+router.post('/:id/annexures', requireMeetingOperator, upload.single('file'), agendaController.uploadAnnexure);
+router.put('/annexures/reorder', requireMeetingOperator, agendaController.reorderAnnexures);
+router.delete('/annexures/:annexureId', requireMeetingOperator, agendaController.deleteAnnexure);
 
 // Revision history (agenda content and resolution text)
 router.get('/:id/revisions', agendaController.getRevisions);
-router.post('/:id/revisions/:revisionId/restore', canEdit, agendaController.restoreRevision);
+router.post('/:id/revisions/:revisionId/restore', requireMeetingAuthor, agendaController.restoreRevision);
 
 module.exports = router;

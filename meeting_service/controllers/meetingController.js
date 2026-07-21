@@ -9,10 +9,12 @@ const { indexAgendaContent, indexResolutionContent } = require('../utils/searchI
 const getMeetings = async (req, res, next) => {
     try {
         const result = await db.query(`
-            SELECT *,
-                   ROW_NUMBER() OVER (ORDER BY legacy_meeting_no DESC NULLS FIRST) as serial
-            FROM meetings
-            ORDER BY legacy_meeting_no DESC NULLS FIRST
+            SELECT m.*,
+                   u.username AS creator_username,
+                   ROW_NUMBER() OVER (ORDER BY m.legacy_meeting_no DESC NULLS FIRST) as serial
+            FROM meetings m
+            LEFT JOIN users u ON u.id = m.created_by
+            ORDER BY m.legacy_meeting_no DESC NULLS FIRST
         `);
 
         // Format dates correctly for the frontend
@@ -32,10 +34,14 @@ const getMeetingById = async (req, res, next) => {
         const { id } = req.params;
         const result = await db.query(`
             SELECT m.*,
+            u.username AS creator_username,
+            r.username AS reviewer_username,
             (SELECT COUNT(*) FROM meetings m2
              WHERE m2.legacy_meeting_no IS NOT NULL AND m.legacy_meeting_no IS NOT NULL
                AND m2.legacy_meeting_no <= m.legacy_meeting_no) as serial
             FROM meetings m
+            LEFT JOIN users u ON u.id = m.created_by
+            LEFT JOIN users r ON r.id = m.reviewed_by
             WHERE m.id = $1
         `, [id]);
 
@@ -60,8 +66,9 @@ const createMeeting = async (req, res, next) => {
         }
 
         const result = await db.query(
-            'INSERT INTO meetings (title, meeting_title, meeting_date, type, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [title, meeting_title || null, meeting_date, type, status || 'draft']
+            `INSERT INTO meetings (title, meeting_title, meeting_date, type, status, created_by, approval_status)
+             VALUES ($1, $2, $3, $4, $5, $6, 'draft') RETURNING *`,
+            [title, meeting_title || null, meeting_date, type, status || 'draft', req.user?.id || null]
         );
         res.status(201).json({ success: true, message: 'Meeting created', data: result.rows[0] });
     } catch (error) {
@@ -104,6 +111,105 @@ const deleteMeeting = async (req, res, next) => {
         const result = await db.query('DELETE FROM meetings WHERE id = $1 RETURNING *', [id]);
         if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
         res.status(200).json({ success: true, message: 'Meeting deleted' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// --- File approval workflow --------------------------------------------------
+
+const isMeetingOwner = (meeting, user) =>
+    meeting.created_by && user && String(meeting.created_by) === String(user.id);
+
+// Initiator (owner) or admin submits a draft/sent_back file for moderator review.
+const submitMeeting = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const check = await db.query('SELECT created_by, approval_status FROM meetings WHERE id = $1', [id]);
+        if (check.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+
+        const meeting = check.rows[0];
+        const isAdmin = req.user?.role === 'admin';
+        if (!isAdmin && !isMeetingOwner(meeting, req.user)) {
+            return next(new CustomError('Forbidden. Only the file initiator who created this meeting can submit it.', 403));
+        }
+        if (!['draft', 'sent_back'].includes(meeting.approval_status)) {
+            return next(new CustomError(`This file cannot be submitted while it is "${meeting.approval_status}".`, 409));
+        }
+
+        const result = await db.query(
+            `UPDATE meetings
+             SET approval_status = 'submitted', submitted_at = NOW(),
+                 review_note = NULL, reviewed_by = NULL, reviewed_at = NULL
+             WHERE id = $1 RETURNING *`,
+            [id]
+        );
+        res.status(200).json({ success: true, message: 'Meeting file submitted for review', data: result.rows[0] });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Moderator/admin approves a submitted file (finalizes it, locks initiator out).
+const approveMeeting = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const check = await db.query('SELECT approval_status FROM meetings WHERE id = $1', [id]);
+        if (check.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        if (check.rows[0].approval_status !== 'submitted') {
+            return next(new CustomError('Only a submitted file can be approved.', 409));
+        }
+
+        const result = await db.query(
+            `UPDATE meetings
+             SET approval_status = 'approved', review_note = NULL,
+                 reviewed_by = $2, reviewed_at = NOW()
+             WHERE id = $1 RETURNING *`,
+            [id, req.user?.id || null]
+        );
+        res.status(200).json({ success: true, message: 'Meeting file approved', data: result.rows[0] });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Moderator/admin returns a submitted file to the initiator for corrections.
+const sendBackMeeting = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { note } = req.body;
+        const check = await db.query('SELECT approval_status FROM meetings WHERE id = $1', [id]);
+        if (check.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        if (check.rows[0].approval_status !== 'submitted') {
+            return next(new CustomError('Only a submitted file can be sent back.', 409));
+        }
+
+        const result = await db.query(
+            `UPDATE meetings
+             SET approval_status = 'sent_back', review_note = $2,
+                 reviewed_by = $3, reviewed_at = NOW()
+             WHERE id = $1 RETURNING *`,
+            [id, note || null, req.user?.id || null]
+        );
+        res.status(200).json({ success: true, message: 'Meeting file sent back to initiator', data: result.rows[0] });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Admin-only escape hatch: reopen an approved file for further editing.
+const reopenMeeting = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query(
+            `UPDATE meetings
+             SET approval_status = 'sent_back', review_note = $2,
+                 reviewed_by = $3, reviewed_at = NOW()
+             WHERE id = $1 RETURNING *`,
+            [id, req.body?.note || 'Reopened by admin', req.user?.id || null]
+        );
+        if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        res.status(200).json({ success: true, message: 'Meeting file reopened', data: result.rows[0] });
     } catch (error) {
         next(error);
     }
@@ -701,9 +807,9 @@ const bulkImportMeeting = async (req, res, next) => {
 
         // 1. Insert Meeting
         const meetingResult = await client.query(
-            `INSERT INTO meetings 
-            (title, meeting_title, meeting_date, type, status, description, president, conclusion) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+            `INSERT INTO meetings
+            (title, meeting_title, meeting_date, type, status, description, president, conclusion, created_by, approval_status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
             RETURNING id`,
             [
                 meeting.title,
@@ -713,7 +819,8 @@ const bulkImportMeeting = async (req, res, next) => {
                 meeting.status || 'past',
                 meeting.description,
                 meeting.president,
-                meeting.conclusion
+                meeting.conclusion,
+                req.user?.id || null
             ]
         );
         
@@ -784,6 +891,10 @@ module.exports = {
     createMeeting,
     updateMeeting,
     deleteMeeting,
+    submitMeeting,
+    approveMeeting,
+    sendBackMeeting,
+    reopenMeeting,
     addInvitees,
     bulkFetchInvitees,
     getInvitees,

@@ -7,6 +7,7 @@ import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers } fr
 import useSWR from "swr";
 import { fetcher } from "../../../../lib/api";
 import SidebarToggleButton from "../../../../components/SidebarToggleButton";
+import MeetingWorkflowBar from "../../../../components/meetings/MeetingWorkflowBar";
 
 const navigation = [
   { name: 'Meeting Info', view: 'info', icon: Info },
@@ -29,7 +30,7 @@ export default function MeetingWorkspaceLayout({
   const currentView = searchParams.get('view') || 'info';
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const { data: response } = useSWR(`/meetings/${params.id}`, fetcher);
+  const { data: response, mutate } = useSWR(`/meetings/${params.id}`, fetcher);
   const meeting = response?.data;
 
   return (
@@ -86,6 +87,7 @@ export default function MeetingWorkspaceLayout({
       {/* Main Workspace Area */}
       <main className="flex-1 bg-background overflow-y-auto p-4 sm:p-8 relative">
         <SidebarToggleButton onClick={() => setSidebarOpen(true)} />
+        {meeting && <MeetingWorkflowBar meeting={meeting} onChanged={() => mutate()} />}
         {children}
       </main>
     </div>

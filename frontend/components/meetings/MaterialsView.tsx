@@ -6,9 +6,11 @@ import api from "../../lib/api";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { useAuth } from "../../hooks/useAuth";
+import { canOperateMeeting } from "../../lib/meetingAccess";
 
 export default function MaterialsView({ meeting }: { meeting: any }) {
-  const { canEdit } = useAuth();
+  const { user } = useAuth();
+  const canEdit = canOperateMeeting(user, meeting);
   const [generating, setGenerating] = useState<string | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);

@@ -10,16 +10,23 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
 import JsonImportDialog from "../../../components/meetings/JsonImportDialog";
-import { FileJson } from "lucide-react";
+import { FileJson, Bell, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../../hooks/useAuth";
+import {
+  APPROVAL_LABELS,
+  APPROVAL_BADGE_CLASSES,
+  isMeetingOwner,
+  type ApprovalStatus,
+} from "../../../lib/meetingAccess";
 
 export default function ManageMeetingsPage() {
-  const { canEdit, isAdmin } = useAuth();
+  const { canCreateMeeting, isAdmin, canReview, isInitiator, user } = useAuth();
   const router = useRouter();
   const { data: response, error, mutate } = useSWR('/meetings', fetcher);
   const { confirm, ConfirmModal } = useConfirm();
 
   const [typeFilter, setTypeFilter] = useState<'all' | 'academic' | 'syndicate'>('all');
+  const [approvalFilter, setApprovalFilter] = useState<'all' | ApprovalStatus>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
 
@@ -45,6 +52,8 @@ export default function ManageMeetingsPage() {
   const columns = [
     { key: "title", label: "Meeting No." },
     { key: "meeting_title", label: "Meeting Title" },
+    { key: "creator_username", label: "Initiator" },
+    { key: "approval_label", label: "Approval", sortable: false },
     { key: "status", label: "Status" },
     { key: "date", label: "Date" }
   ];
@@ -89,31 +98,100 @@ export default function ManageMeetingsPage() {
   if (!response) return <div className="p-8">Loading...</div>;
 
   const allMeetings = response.data || [];
-  const meetings = allMeetings.filter((m: any) => typeFilter === 'all' || m.type === typeFilter);
+
+  // At-a-glance attention counts, computed from the full (unfiltered) list.
+  const submittedCount = allMeetings.filter(
+    (m: any) => (m.approval_status || 'draft') === 'submitted'
+  ).length;
+  const mySentBackCount = allMeetings.filter(
+    (m: any) => m.approval_status === 'sent_back' && isMeetingOwner(user, m)
+  ).length;
+
+  const meetings = allMeetings
+    .filter((m: any) => typeFilter === 'all' || m.type === typeFilter)
+    .filter((m: any) => approvalFilter === 'all' || (m.approval_status || 'draft') === approvalFilter)
+    .map((m: any) => {
+      const status = (m.approval_status as ApprovalStatus) || 'draft';
+      return {
+        ...m,
+        creator_username: m.creator_username || '—',
+        approval_label: (
+          <span
+            title={status === 'sent_back' && m.review_note ? `Note: ${m.review_note}` : undefined}
+            className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${APPROVAL_BADGE_CLASSES[status]}`}
+          >
+            {APPROVAL_LABELS[status]}
+          </span>
+        ),
+      };
+    });
 
   return (
     <div className="max-w-6xl mx-auto">
       <ConfirmModal />
 
+      {/* Moderator/admin: files waiting to be reviewed. */}
+      {canReview && submittedCount > 0 && (
+        <button
+          onClick={() => setApprovalFilter('submitted')}
+          className="w-full mb-4 flex items-center gap-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-left text-sm text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+        >
+          <Bell className="w-5 h-5 shrink-0" />
+          <span>
+            <span className="font-semibold">{submittedCount}</span> meeting file{submittedCount > 1 ? 's are' : ' is'} awaiting your review.
+            <span className="ml-1 underline">Show them</span>
+          </span>
+        </button>
+      )}
+
+      {/* Initiator: their files that were sent back for corrections. */}
+      {isInitiator && mySentBackCount > 0 && (
+        <button
+          onClick={() => setApprovalFilter('sent_back')}
+          className="w-full mb-4 flex items-center gap-3 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-left text-sm text-red-800 dark:text-red-200 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+        >
+          <AlertTriangle className="w-5 h-5 shrink-0" />
+          <span>
+            <span className="font-semibold">{mySentBackCount}</span> of your file{mySentBackCount > 1 ? 's were' : ' was'} sent back for corrections. Open a file to read the moderator&apos;s note and re-submit.
+            <span className="ml-1 underline">Show them</span>
+          </span>
+        </button>
+      )}
+
       <DataTable
-        key={typeFilter}
+        key={`${typeFilter}-${approvalFilter}`}
         columns={columns}
         data={meetings}
         title="Manage Meetings"
         filters={
-          <div className="w-44">
-            <CustomSelect
-              value={typeFilter}
-              onChange={(val) => setTypeFilter(val as 'all' | 'academic' | 'syndicate')}
-              options={[
-                { value: "all", label: "All Types" },
-                { value: "academic", label: "Academic" },
-                { value: "syndicate", label: "Syndicate" }
-              ]}
-            />
-          </div>
+          <>
+            <div className="w-44">
+              <CustomSelect
+                value={typeFilter}
+                onChange={(val) => setTypeFilter(val as 'all' | 'academic' | 'syndicate')}
+                options={[
+                  { value: "all", label: "All Types" },
+                  { value: "academic", label: "Academic" },
+                  { value: "syndicate", label: "Syndicate" }
+                ]}
+              />
+            </div>
+            <div className="w-52">
+              <CustomSelect
+                value={approvalFilter}
+                onChange={(val) => setApprovalFilter(val as 'all' | ApprovalStatus)}
+                options={[
+                  { value: "all", label: "All Approval States" },
+                  { value: "draft", label: "Draft" },
+                  { value: "submitted", label: "Submitted for review" },
+                  { value: "approved", label: "Approved" },
+                  { value: "sent_back", label: "Sent back" }
+                ]}
+              />
+            </div>
+          </>
         }
-        onAdd={canEdit ? () => {
+        onAdd={canCreateMeeting ? () => {
           setNewMeeting({ title: "", meeting_title: "", meeting_date: "", type: "syndicate", status: "draft" });
           setIsModalOpen(true);
         } : undefined}
@@ -121,7 +199,7 @@ export default function ManageMeetingsPage() {
         onDelete={isAdmin ? handleDelete : undefined}
         onView={(meeting) => window.open(`/meetings/${meeting.id}`, '_blank')}
         customActions={
-          canEdit && (
+          canCreateMeeting && (
             <button
               onClick={() => setIsJsonModalOpen(true)}
               className="flex items-center gap-2 bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/80 transition-colors text-sm font-medium"

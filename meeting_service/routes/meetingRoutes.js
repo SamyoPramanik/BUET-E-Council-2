@@ -1,6 +1,7 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
+const { requireMeetingAuthor, requireMeetingOperator } = require('../middlewares/meetingWorkflowMiddleware');
 const meetingController = require('../controllers/meetingController');
 const { checkMeetingLock } = require('../middlewares/lockMiddleware');
 const { auditLog } = require('../middlewares/auditMiddleware');
@@ -9,42 +10,52 @@ const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
-const canEdit = requireRole('admin', 'moderator');
 const adminOnly = requireRole('admin');
+// File initiators (and admins) own meeting/agenda authoring; moderators only review.
+const canCreate = requireRole('admin', 'file_initiator');
+// Approving / sending back a submitted file is the reviewer's job.
+const canReview = requireRole('admin', 'moderator');
 
 router.use(authMiddleware);
 router.use(checkMeetingLock);
 router.use(auditLog('meeting'));
 
 router.get('/', meetingController.getMeetings);
-router.post('/', canEdit, meetingController.createMeeting);
-router.post('/bulk-import', canEdit, meetingController.bulkImportMeeting);
+router.post('/', canCreate, meetingController.createMeeting);
+router.post('/bulk-import', canCreate, meetingController.bulkImportMeeting);
 router.get('/:id', meetingController.getMeetingById);
-router.put('/:id', canEdit, meetingController.updateMeeting);
+router.put('/:id', requireMeetingAuthor, meetingController.updateMeeting);
 router.delete('/:id', adminOnly, meetingController.deleteMeeting); // critical - admin-only
-router.post('/:id/complete', canEdit, meetingController.completeMeeting);
+
+// Approval workflow
+router.post('/:id/submit', canCreate, meetingController.submitMeeting);
+router.post('/:id/approve', canReview, meetingController.approveMeeting);
+router.post('/:id/send-back', canReview, meetingController.sendBackMeeting);
+router.post('/:id/reopen', adminOnly, meetingController.reopenMeeting);
+
+router.post('/:id/complete', requireMeetingOperator, meetingController.completeMeeting);
 router.put('/:id/lock', requireRole('admin'), meetingController.toggleLock);
 
-router.post('/:id/invitees', canEdit, meetingController.addInvitees);
+router.post('/:id/invitees', requireMeetingOperator, meetingController.addInvitees);
 router.get('/:id/invitees', meetingController.getInvitees);
 router.get('/:id/invitees/emails', meetingController.getInviteesEmails);
-router.delete('/:id/invitees/:inviteeId', canEdit, meetingController.removeInvitee);
-router.put('/:id/invitees/:inviteeId', canEdit, meetingController.updateInvitee);
-router.put('/:id/invitees/:inviteeId/reorder', canEdit, meetingController.reorderInvitee);
-router.post('/:id/invitees/bulk-fetch', canEdit, meetingController.bulkFetchInvitees);
+router.delete('/:id/invitees/:inviteeId', requireMeetingOperator, meetingController.removeInvitee);
+router.put('/:id/invitees/:inviteeId', requireMeetingOperator, meetingController.updateInvitee);
+router.put('/:id/invitees/:inviteeId/reorder', requireMeetingOperator, meetingController.reorderInvitee);
+router.post('/:id/invitees/bulk-fetch', requireMeetingOperator, meetingController.bulkFetchInvitees);
 router.get('/:id/presentees', meetingController.getPresentees);
-router.post('/:id/presentees', canEdit, meetingController.addPresentees);
-router.put('/:id/presentees/:presenteeId', canEdit, meetingController.updatePresentee);
-router.delete('/:id/presentees/:presenteeId', canEdit, meetingController.removePresentee);
-router.put('/:id/attendance', canEdit, meetingController.saveAttendance);
+router.post('/:id/presentees', requireMeetingOperator, meetingController.addPresentees);
+router.put('/:id/presentees/:presenteeId', requireMeetingOperator, meetingController.updatePresentee);
+router.delete('/:id/presentees/:presenteeId', requireMeetingOperator, meetingController.removePresentee);
+router.put('/:id/attendance', requireMeetingOperator, meetingController.saveAttendance);
 
 // Unified endpoint for generating PDFs
 router.get('/:id/pdf/:type', meetingController.generatePdf);
 
 // Send agenda (or any ad-hoc message) via email to selected invitees
-router.post('/:id/send-email', canEdit, meetingController.sendAgendaEmail);
+router.post('/:id/send-email', requireMeetingOperator, meetingController.sendAgendaEmail);
 
 // Endpoint for uploading material PDFs
-router.post('/:id/materials/upload', canEdit, upload.single('file'), meetingController.uploadMaterial);
+router.post('/:id/materials/upload', requireMeetingOperator, upload.single('file'), meetingController.uploadMaterial);
 
 module.exports = router;

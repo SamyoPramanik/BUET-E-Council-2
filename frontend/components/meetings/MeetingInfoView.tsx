@@ -7,6 +7,7 @@ import SearchableSelect from "../SearchableSelect";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
+import { canAuthorMeeting } from "../../lib/meetingAccess";
 import { Lock, Unlock, Trash2 } from "lucide-react";
 
 const typeOptions = [
@@ -29,7 +30,8 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
     status: meeting.status || "draft"
   });
   const { confirm, ConfirmModal } = useConfirm();
-  const { isAdmin, canEdit } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const canEdit = canAuthorMeeting(user, meeting);
   const router = useRouter();
   const isLocked = meeting.is_locked;
   const isPast = formData.status === 'past';

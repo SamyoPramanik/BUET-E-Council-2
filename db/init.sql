@@ -8,10 +8,11 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 -- 2. Define Enum Types
 CREATE TYPE user_role AS ENUM ('admin', 'superadmin', 'moderator', 'file_initiator', 'viewer');
 
--- Approval workflow state of a meeting "file". A file_initiator prepares the
--- file (draft), submits it for review (submitted), and a moderator/admin either
--- approves it (approved) or returns it for corrections (sent_back).
-CREATE TYPE meeting_approval_status AS ENUM ('draft', 'submitted', 'approved', 'sent_back');
+-- Approval escalation stage of a meeting "file". Editing rights follow the
+-- stage: the file climbs initiator -> moderator -> admin, and an admin/superadmin
+-- finally approves it. admin/superadmin can always edit and can hand the file
+-- back down the chain (see moderator_can_return on the meetings table).
+CREATE TYPE meeting_stage AS ENUM ('initiator', 'moderator', 'admin', 'approved');
 
 CREATE TYPE member_type_enum AS ENUM ('academic', 'syndicate', 'none');
 
@@ -116,7 +117,6 @@ CREATE TABLE meetings (
     conclusion TEXT,
     meeting_date TIMESTAMP WITH TIME ZONE NOT NULL,
     is_locked BOOLEAN DEFAULT FALSE,
-    is_approved BOOLEAN DEFAULT FALSE,
     type meeting_type NOT NULL,
     meeting_link VARCHAR(255),
     agenda_pdf_link VARCHAR(255),
@@ -125,10 +125,13 @@ CREATE TABLE meetings (
     resolution_status_pdf_link VARCHAR(255),
     status meeting_status NOT NULL DEFAULT 'draft',
     legacy_meeting_no NUMERIC UNIQUE,
-    -- Approval workflow: the file_initiator who owns/prepares this meeting file,
-    -- its review state, and reviewer bookkeeping.
+    -- Approval workflow: the initiator who created the file, the current
+    -- escalation stage, and reviewer bookkeeping. moderator_can_return is true
+    -- only when an admin handed the file back down to the moderator, which is
+    -- the sole case where a moderator may return it further down to the initiator.
     created_by UUID REFERENCES users (id) ON DELETE SET NULL,
-    approval_status meeting_approval_status NOT NULL DEFAULT 'draft',
+    stage meeting_stage NOT NULL DEFAULT 'initiator',
+    moderator_can_return BOOLEAN NOT NULL DEFAULT FALSE,
     review_note TEXT,
     submitted_at TIMESTAMP WITH TIME ZONE,
     reviewed_by UUID REFERENCES users (id) ON DELETE SET NULL,

@@ -11,10 +11,14 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
 const adminOnly = requireRole('admin', 'superadmin');
-// File initiators (and admins) own meeting/agenda authoring; moderators only review.
-const canCreate = requireRole('admin', 'superadmin', 'file_initiator');
-// Approving / sending back a submitted file is the reviewer's job.
-const canReview = requireRole('admin', 'superadmin', 'moderator');
+// All four workflow roles can create a meeting file.
+const canCreate = requireRole('admin', 'superadmin', 'moderator', 'file_initiator');
+// Move a file through the escalation chain. The controller enforces the exact
+// stage + role rules (who can submit/return from where); these guards only keep
+// read-only viewers out.
+const canWorkflow = requireRole('admin', 'superadmin', 'moderator', 'file_initiator');
+// Only admin/superadmin give final approval.
+const canApprove = requireRole('admin', 'superadmin');
 
 router.use(authMiddleware);
 router.use(checkMeetingLock);
@@ -27,17 +31,13 @@ router.get('/:id', meetingController.getMeetingById);
 router.put('/:id', requireMeetingAuthor, meetingController.updateMeeting);
 router.delete('/:id', adminOnly, meetingController.deleteMeeting); // critical - admin-only
 
-// File approval workflow (initiator submits -> moderator reviews).
-router.post('/:id/submit', canCreate, meetingController.submitMeeting);
-router.post('/:id/approve', canReview, meetingController.reviewApproveMeeting);
-router.post('/:id/send-back', canReview, meetingController.sendBackMeeting);
-router.post('/:id/reopen', adminOnly, meetingController.reopenMeeting);
+// File approval escalation chain: initiator -> moderator -> admin -> approved.
+router.post('/:id/submit', canWorkflow, meetingController.submitMeeting);      // forward one step up
+router.post('/:id/approve', canApprove, meetingController.approveMeeting);     // admin/superadmin finalize
+router.post('/:id/return', canWorkflow, meetingController.returnMeeting);      // hand back down (with note)
 
 router.post('/:id/complete', requireMeetingOperator, meetingController.completeMeeting);
 router.put('/:id/lock', adminOnly, meetingController.toggleLock);
-
-// Super admin "dummy" approval (from PR #32) — flips meetings.is_approved.
-router.put('/:id/approve', requireRole('superadmin'), meetingController.approveMeeting);
 
 router.post('/:id/invitees', requireMeetingOperator, meetingController.addInvitees);
 router.get('/:id/invitees', meetingController.getInvitees);

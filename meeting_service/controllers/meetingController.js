@@ -66,8 +66,8 @@ const createMeeting = async (req, res, next) => {
         }
 
         const result = await db.query(
-            `INSERT INTO meetings (title, meeting_title, meeting_date, type, status, created_by, approval_status)
-             VALUES ($1, $2, $3, $4, $5, $6, 'draft') RETURNING *`,
+            `INSERT INTO meetings (title, meeting_title, meeting_date, type, status, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
             [title, meeting_title || null, meeting_date, type, status || 'draft', req.user?.id || null]
         );
         res.status(201).json({ success: true, message: 'Meeting created', data: result.rows[0] });
@@ -121,50 +121,64 @@ const deleteMeeting = async (req, res, next) => {
 const isMeetingOwner = (meeting, user) =>
     meeting.created_by && user && String(meeting.created_by) === String(user.id);
 
-// Initiator (owner) or admin submits a draft/sent_back file for moderator review.
+const isAdminRole = (user) => user && (user.role === 'admin' || user.role === 'superadmin');
+
+// Forward the file one step UP the escalation chain:
+//   initiator (owner) -> moderator      (submitted for moderator review)
+//   moderator          -> admin         (escalated for admin approval)
+// admin/superadmin may push either step on anyone's behalf.
 const submitMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const check = await db.query('SELECT created_by, approval_status FROM meetings WHERE id = $1', [id]);
+        const check = await db.query('SELECT created_by, stage FROM meetings WHERE id = $1', [id]);
         if (check.rows.length === 0) return next(new CustomError('Meeting not found', 404));
 
         const meeting = check.rows[0];
-        const isAdmin = req.user?.role === 'admin';
-        if (!isAdmin && !isMeetingOwner(meeting, req.user)) {
-            return next(new CustomError('Forbidden. Only the file initiator who created this meeting can submit it.', 403));
-        }
-        if (!['draft', 'sent_back'].includes(meeting.approval_status)) {
-            return next(new CustomError(`This file cannot be submitted while it is "${meeting.approval_status}".`, 409));
+        const admin = isAdminRole(req.user);
+        let nextStage;
+
+        if (meeting.stage === 'initiator') {
+            if (!admin && !isMeetingOwner(meeting, req.user)) {
+                return next(new CustomError('Only the initiator who created this file can submit it to the moderator.', 403));
+            }
+            nextStage = 'moderator';
+        } else if (meeting.stage === 'moderator') {
+            if (!admin && req.user?.role !== 'moderator') {
+                return next(new CustomError('Only a moderator can escalate this file to the admin.', 403));
+            }
+            nextStage = 'admin';
+        } else {
+            return next(new CustomError(`This file cannot be submitted while it is at the "${meeting.stage}" stage.`, 409));
         }
 
         const result = await db.query(
             `UPDATE meetings
-             SET approval_status = 'submitted', submitted_at = NOW(),
-                 review_note = NULL, reviewed_by = NULL, reviewed_at = NULL
+             SET stage = $2, moderator_can_return = FALSE, submitted_at = NOW(),
+                 review_note = NULL, reviewed_by = $3, reviewed_at = NOW()
              WHERE id = $1 RETURNING *`,
-            [id]
+            [id, nextStage, req.user?.id || null]
         );
-        res.status(200).json({ success: true, message: 'Meeting file submitted for review', data: result.rows[0] });
+        const dest = nextStage === 'moderator' ? 'moderator' : 'admin';
+        res.status(200).json({ success: true, message: `Meeting file submitted to the ${dest}`, data: result.rows[0] });
     } catch (error) {
         next(error);
     }
 };
 
-// Moderator/admin approves a submitted file (finalizes it, locks initiator out).
-// Named reviewApproveMeeting to avoid clashing with the separate super_admin
-// "dummy approve" (approveMeeting, which flips meetings.is_approved).
-const reviewApproveMeeting = async (req, res, next) => {
+// admin/superadmin approves a file that has reached the admin stage. Once
+// approved only admin/superadmin can edit it (enforced in the workflow gate).
+const approveMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const check = await db.query('SELECT approval_status FROM meetings WHERE id = $1', [id]);
+        const check = await db.query('SELECT stage FROM meetings WHERE id = $1', [id]);
         if (check.rows.length === 0) return next(new CustomError('Meeting not found', 404));
-        if (check.rows[0].approval_status !== 'submitted') {
-            return next(new CustomError('Only a submitted file can be approved.', 409));
+        if (check.rows[0].stage !== 'admin') {
+            return next(new CustomError('Only a file that has reached the admin stage can be approved.', 409));
         }
 
         const result = await db.query(
             `UPDATE meetings
-             SET approval_status = 'approved', review_note = NULL,
+             SET stage = 'approved', moderator_can_return = FALSE, review_note = NULL,
                  reviewed_by = $2, reviewed_at = NOW()
              WHERE id = $1 RETURNING *`,
             [id, req.user?.id || null]
@@ -175,43 +189,47 @@ const reviewApproveMeeting = async (req, res, next) => {
     }
 };
 
-// Moderator/admin returns a submitted file to the initiator for corrections.
-const sendBackMeeting = async (req, res, next) => {
+// Hand the file back DOWN the chain, with an optional note explaining what to fix.
+//   - admin/superadmin: may return from any stage to 'moderator' or 'initiator'.
+//       Returning to the moderator sets moderator_can_return = TRUE, which is the
+//       ONLY way a moderator later gains the right to return it to the initiator.
+//   - moderator: may return to 'initiator' only while holding the file at the
+//       'moderator' stage AND only if an admin handed it down (moderator_can_return).
+const returnMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { note } = req.body;
-        const check = await db.query('SELECT approval_status FROM meetings WHERE id = $1', [id]);
-        if (check.rows.length === 0) return next(new CustomError('Meeting not found', 404));
-        if (check.rows[0].approval_status !== 'submitted') {
-            return next(new CustomError('Only a submitted file can be sent back.', 409));
+        const target = req.body?.target;
+        if (!['initiator', 'moderator'].includes(target)) {
+            return next(new CustomError("A valid target ('initiator' or 'moderator') is required.", 400));
         }
 
-        const result = await db.query(
-            `UPDATE meetings
-             SET approval_status = 'sent_back', review_note = $2,
-                 reviewed_by = $3, reviewed_at = NOW()
-             WHERE id = $1 RETURNING *`,
-            [id, note || null, req.user?.id || null]
-        );
-        res.status(200).json({ success: true, message: 'Meeting file sent back to initiator', data: result.rows[0] });
-    } catch (error) {
-        next(error);
-    }
-};
+        const check = await db.query('SELECT stage, moderator_can_return FROM meetings WHERE id = $1', [id]);
+        if (check.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = check.rows[0];
 
-// Admin-only escape hatch: reopen an approved file for further editing.
-const reopenMeeting = async (req, res, next) => {
-    try {
-        const { id } = req.params;
+        const admin = isAdminRole(req.user);
+        if (admin) {
+            if (meeting.stage === 'initiator') {
+                return next(new CustomError('This file is already with the initiator.', 409));
+            }
+        } else if (req.user?.role === 'moderator') {
+            if (target !== 'initiator' || meeting.stage !== 'moderator' || !meeting.moderator_can_return) {
+                return next(new CustomError('You can only return this file to the initiator after an admin has handed it back to you.', 403));
+            }
+        } else {
+            return next(new CustomError('You do not have permission to return this file.', 403));
+        }
+
+        const moderatorCanReturn = admin && target === 'moderator';
         const result = await db.query(
             `UPDATE meetings
-             SET approval_status = 'sent_back', review_note = $2,
-                 reviewed_by = $3, reviewed_at = NOW()
+             SET stage = $2, moderator_can_return = $3, review_note = $4,
+                 reviewed_by = $5, reviewed_at = NOW()
              WHERE id = $1 RETURNING *`,
-            [id, req.body?.note || 'Reopened by admin', req.user?.id || null]
+            [id, target, moderatorCanReturn, note || null, req.user?.id || null]
         );
-        if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
-        res.status(200).json({ success: true, message: 'Meeting file reopened', data: result.rows[0] });
+        res.status(200).json({ success: true, message: `Meeting file returned to the ${target}`, data: result.rows[0] });
     } catch (error) {
         next(error);
     }
@@ -796,27 +814,6 @@ const toggleLock = async (req, res, next) => {
     }
 };
 
-const approveMeeting = async (req, res, next) => {
-    try {
-        const { id } = req.params;
-
-        const meetingCheck = await db.query('SELECT status FROM meetings WHERE id = $1', [id]);
-        if (meetingCheck.rows.length === 0) return next(new CustomError('Meeting not found', 404));
-        if (meetingCheck.rows[0].status !== 'draft') {
-            return next(new CustomError('Only draft meetings can be approved', 400));
-        }
-
-        const result = await db.query(
-            'UPDATE meetings SET is_approved = true WHERE id = $1 RETURNING *',
-            [id]
-        );
-
-        res.status(200).json({ success: true, message: 'Meeting approved', data: result.rows[0] });
-    } catch (error) {
-        next(error);
-    }
-};
-
 const bulkImportMeeting = async (req, res, next) => {
     const client = await db.pool.connect();
     try {
@@ -827,8 +824,8 @@ const bulkImportMeeting = async (req, res, next) => {
         // 1. Insert Meeting
         const meetingResult = await client.query(
             `INSERT INTO meetings
-            (title, meeting_title, meeting_date, type, status, description, president, conclusion, created_by, approval_status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
+            (title, meeting_title, meeting_date, type, status, description, president, conclusion, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING id`,
             [
                 meeting.title,
@@ -911,9 +908,8 @@ module.exports = {
     updateMeeting,
     deleteMeeting,
     submitMeeting,
-    reviewApproveMeeting,
-    sendBackMeeting,
-    reopenMeeting,
+    approveMeeting,
+    returnMeeting,
     addInvitees,
     bulkFetchInvitees,
     getInvitees,
@@ -929,7 +925,6 @@ module.exports = {
     completeMeeting,
     uploadMaterial,
     toggleLock,
-    approveMeeting,
     bulkImportMeeting,
     getInviteesEmails,
     sendAgendaEmail

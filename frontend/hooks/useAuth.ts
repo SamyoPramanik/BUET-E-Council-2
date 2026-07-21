@@ -31,9 +31,9 @@ export function useAuth() {
     // authoring is gated separately by ownership + approval status via
     // lib/meetingAccess.ts (canAuthorMeeting / canOperateMeeting).
     canEdit: isAdmin || isModerator,
-    // Who may create a brand-new meeting file: initiators and admins.
-    canCreateMeeting: isAdmin || isInitiator,
-    // Who may review (approve / send back) a submitted file.
+    // Who may create a brand-new meeting file: every workflow role.
+    canCreateMeeting: isAdmin || isModerator || isInitiator,
+    // Who may act as a reviewer somewhere in the escalation chain.
     canReview: isAdmin || isModerator,
   };
 }

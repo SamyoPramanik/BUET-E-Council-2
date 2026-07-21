@@ -13,20 +13,20 @@ import JsonImportDialog from "../../../components/meetings/JsonImportDialog";
 import { FileJson, Bell, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../../hooks/useAuth";
 import {
-  APPROVAL_LABELS,
-  APPROVAL_BADGE_CLASSES,
+  STAGE_LABELS,
+  STAGE_BADGE_CLASSES,
   isMeetingOwner,
-  type ApprovalStatus,
+  type MeetingStage,
 } from "../../../lib/meetingAccess";
 
 export default function ManageMeetingsPage() {
-  const { canCreateMeeting, isAdmin, canReview, isInitiator, user } = useAuth();
+  const { canCreateMeeting, isAdmin, isModerator, isInitiator, user } = useAuth();
   const router = useRouter();
   const { data: response, error, mutate } = useSWR('/meetings', fetcher);
   const { confirm, ConfirmModal } = useConfirm();
 
   const [typeFilter, setTypeFilter] = useState<'all' | 'academic' | 'syndicate'>('all');
-  const [approvalFilter, setApprovalFilter] = useState<'all' | ApprovalStatus>('all');
+  const [stageFilter, setStageFilter] = useState<'all' | MeetingStage>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
 
@@ -53,7 +53,7 @@ export default function ManageMeetingsPage() {
     { key: "title", label: "Meeting No." },
     { key: "meeting_title", label: "Meeting Title" },
     { key: "creator_username", label: "Initiator" },
-    { key: "approval_label", label: "Approval", sortable: false },
+    { key: "stage_label", label: "Stage", sortable: false },
     { key: "status", label: "Status" },
     { key: "date", label: "Date" }
   ];
@@ -100,27 +100,26 @@ export default function ManageMeetingsPage() {
   const allMeetings = response.data || [];
 
   // At-a-glance attention counts, computed from the full (unfiltered) list.
-  const submittedCount = allMeetings.filter(
-    (m: any) => (m.approval_status || 'draft') === 'submitted'
-  ).length;
-  const mySentBackCount = allMeetings.filter(
-    (m: any) => m.approval_status === 'sent_back' && isMeetingOwner(user, m)
+  const awaitingAdminCount = allMeetings.filter((m: any) => m.stage === 'admin').length;
+  const awaitingModeratorCount = allMeetings.filter((m: any) => m.stage === 'moderator').length;
+  const myReturnedCount = allMeetings.filter(
+    (m: any) => (m.stage || 'initiator') === 'initiator' && m.review_note && isMeetingOwner(user, m)
   ).length;
 
   const meetings = allMeetings
     .filter((m: any) => typeFilter === 'all' || m.type === typeFilter)
-    .filter((m: any) => approvalFilter === 'all' || (m.approval_status || 'draft') === approvalFilter)
+    .filter((m: any) => stageFilter === 'all' || (m.stage || 'initiator') === stageFilter)
     .map((m: any) => {
-      const status = (m.approval_status as ApprovalStatus) || 'draft';
+      const stage = (m.stage as MeetingStage) || 'initiator';
       return {
         ...m,
         creator_username: m.creator_username || '—',
-        approval_label: (
+        stage_label: (
           <span
-            title={status === 'sent_back' && m.review_note ? `Note: ${m.review_note}` : undefined}
-            className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${APPROVAL_BADGE_CLASSES[status]}`}
+            title={m.review_note ? `Note: ${m.review_note}` : undefined}
+            className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${STAGE_BADGE_CLASSES[stage]}`}
           >
-            {APPROVAL_LABELS[status]}
+            {STAGE_LABELS[stage]}
           </span>
         ),
       };
@@ -130,36 +129,50 @@ export default function ManageMeetingsPage() {
     <div className="max-w-6xl mx-auto">
       <ConfirmModal />
 
-      {/* Moderator/admin: files waiting to be reviewed. */}
-      {canReview && submittedCount > 0 && (
+      {/* Admin/superadmin: files escalated and awaiting final approval. */}
+      {isAdmin && awaitingAdminCount > 0 && (
         <button
-          onClick={() => setApprovalFilter('submitted')}
+          onClick={() => setStageFilter('admin')}
           className="w-full mb-4 flex items-center gap-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-left text-sm text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
         >
           <Bell className="w-5 h-5 shrink-0" />
           <span>
-            <span className="font-semibold">{submittedCount}</span> meeting file{submittedCount > 1 ? 's are' : ' is'} awaiting your review.
+            <span className="font-semibold">{awaitingAdminCount}</span> meeting file{awaitingAdminCount > 1 ? 's are' : ' is'} awaiting your approval.
             <span className="ml-1 underline">Show them</span>
           </span>
         </button>
       )}
 
-      {/* Initiator: their files that were sent back for corrections. */}
-      {isInitiator && mySentBackCount > 0 && (
+      {/* Moderator: files submitted up to them for review. */}
+      {isModerator && awaitingModeratorCount > 0 && (
         <button
-          onClick={() => setApprovalFilter('sent_back')}
+          onClick={() => setStageFilter('moderator')}
+          className="w-full mb-4 flex items-center gap-3 rounded-lg border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-left text-sm text-blue-800 dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+        >
+          <Bell className="w-5 h-5 shrink-0" />
+          <span>
+            <span className="font-semibold">{awaitingModeratorCount}</span> meeting file{awaitingModeratorCount > 1 ? 's are' : ' is'} with you for review.
+            <span className="ml-1 underline">Show them</span>
+          </span>
+        </button>
+      )}
+
+      {/* Initiator: their files that were handed back for corrections. */}
+      {isInitiator && myReturnedCount > 0 && (
+        <button
+          onClick={() => setStageFilter('initiator')}
           className="w-full mb-4 flex items-center gap-3 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-left text-sm text-red-800 dark:text-red-200 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
         >
           <AlertTriangle className="w-5 h-5 shrink-0" />
           <span>
-            <span className="font-semibold">{mySentBackCount}</span> of your file{mySentBackCount > 1 ? 's were' : ' was'} sent back for corrections. Open a file to read the moderator&apos;s note and re-submit.
+            <span className="font-semibold">{myReturnedCount}</span> of your file{myReturnedCount > 1 ? 's were' : ' was'} sent back for corrections. Open a file to read the note and re-submit.
             <span className="ml-1 underline">Show them</span>
           </span>
         </button>
       )}
 
       <DataTable
-        key={`${typeFilter}-${approvalFilter}`}
+        key={`${typeFilter}-${stageFilter}`}
         columns={columns}
         data={meetings}
         title="Manage Meetings"
@@ -178,14 +191,14 @@ export default function ManageMeetingsPage() {
             </div>
             <div className="w-52">
               <CustomSelect
-                value={approvalFilter}
-                onChange={(val) => setApprovalFilter(val as 'all' | ApprovalStatus)}
+                value={stageFilter}
+                onChange={(val) => setStageFilter(val as 'all' | MeetingStage)}
                 options={[
-                  { value: "all", label: "All Approval States" },
-                  { value: "draft", label: "Draft" },
-                  { value: "submitted", label: "Submitted for review" },
-                  { value: "approved", label: "Approved" },
-                  { value: "sent_back", label: "Sent back" }
+                  { value: "all", label: "All Stages" },
+                  { value: "initiator", label: "With initiator" },
+                  { value: "moderator", label: "With moderator" },
+                  { value: "admin", label: "With admin" },
+                  { value: "approved", label: "Approved" }
                 ]}
               />
             </div>

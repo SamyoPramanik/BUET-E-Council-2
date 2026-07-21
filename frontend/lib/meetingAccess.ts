@@ -1,10 +1,11 @@
-// Client-side mirror of the meeting_service approval-workflow gates
-// (middlewares/meetingWorkflowMiddleware.js). These decide which controls to
-// render; the backend re-enforces every rule, so this is UX only.
+// Client-side mirror of the meeting_service approval-escalation gates
+// (middlewares/meetingWorkflowMiddleware.js + meetingController transitions).
+// These decide which controls to render; the backend re-enforces every rule.
 
 import type { Role } from '../hooks/useAuth';
 
-export type ApprovalStatus = 'draft' | 'submitted' | 'approved' | 'sent_back';
+export type MeetingStage = 'initiator' | 'moderator' | 'admin' | 'approved';
+export type ReturnTarget = 'initiator' | 'moderator';
 
 export interface WorkflowUser {
   id?: string;
@@ -13,60 +14,81 @@ export interface WorkflowUser {
 
 export interface WorkflowMeeting {
   created_by?: string | null;
-  approval_status?: ApprovalStatus | null;
+  stage?: MeetingStage | null;
+  moderator_can_return?: boolean;
   is_locked?: boolean;
 }
 
-const EDITABLE_STATUSES: ApprovalStatus[] = ['draft', 'sent_back'];
+export const isAdminRole = (user?: WorkflowUser | null): boolean =>
+  user?.role === 'admin' || user?.role === 'superadmin';
 
 export const isMeetingOwner = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean =>
   !!(user?.id && meeting?.created_by && String(user.id) === String(meeting.created_by));
 
-// May edit the file's *content* (meeting info, agenda items). Owner-only while
-// the file is draft/sent_back, or admin. Never while locked.
-export const canAuthorMeeting = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
+const stageOf = (meeting?: WorkflowMeeting | null): MeetingStage =>
+  (meeting?.stage ?? 'initiator') as MeetingStage;
+
+// Who currently "holds" the file at its stage may edit it:
+//   initiator stage -> the initiator who created it
+//   moderator stage -> any moderator
+//   admin / approved -> admin/superadmin only
+// admin/superadmin may always edit. Never while locked.
+export const canEditMeeting = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
   if (!user || !meeting || meeting.is_locked) return false;
-  if ((user.role === 'admin' || user.role === 'superadmin')) return true;
-  if (user.role === 'file_initiator' && isMeetingOwner(user, meeting)) {
-    return EDITABLE_STATUSES.includes((meeting.approval_status ?? 'draft') as ApprovalStatus);
-  }
+  if (isAdminRole(user)) return true;
+  const stage = stageOf(meeting);
+  if (stage === 'initiator') return isMeetingOwner(user, meeting);
+  if (stage === 'moderator') return user.role === 'moderator';
   return false;
 };
 
-// May run operational actions across the file's whole lifecycle (invitees,
-// presentees, attendance, resolutions, materials). Owner or admin.
-export const canOperateMeeting = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
-  if (!user || !meeting || meeting.is_locked) return false;
-  if ((user.role === 'admin' || user.role === 'superadmin')) return true;
-  return user.role === 'file_initiator' && isMeetingOwner(user, meeting);
+// Back-compat aliases used by the meeting view components. In Phase 1 authoring
+// and operating share the same stage rules.
+export const canAuthorMeeting = canEditMeeting;
+export const canOperateMeeting = canEditMeeting;
+
+// If the current user can forward the file one step up, returns the destination
+// role label ('moderator' or 'admin'); otherwise null.
+export const submitTarget = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): 'moderator' | 'admin' | null => {
+  if (!user || !meeting || meeting.is_locked) return null;
+  const stage = stageOf(meeting);
+  if (stage === 'initiator' && (isAdminRole(user) || isMeetingOwner(user, meeting))) return 'moderator';
+  if (stage === 'moderator' && (isAdminRole(user) || user.role === 'moderator')) return 'admin';
+  return null;
 };
 
-// May submit the file for review.
-export const canSubmitMeeting = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
-  if (!user || !meeting || meeting.is_locked) return false;
-  const editable = EDITABLE_STATUSES.includes((meeting.approval_status ?? 'draft') as ApprovalStatus);
-  if (!editable) return false;
-  if ((user.role === 'admin' || user.role === 'superadmin')) return true;
-  return user.role === 'file_initiator' && isMeetingOwner(user, meeting);
+// admin/superadmin final approval, only once the file has reached the admin stage.
+export const canApproveMeeting = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean =>
+  !!user && !!meeting && !meeting.is_locked && isAdminRole(user) && stageOf(meeting) === 'admin';
+
+// Which lower stages the current user may hand the file back down to.
+//   admin/superadmin: moderator/initiator from admin & approved; initiator from moderator.
+//   moderator: initiator, only if an admin handed it back (moderator_can_return).
+export const returnTargets = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): ReturnTarget[] => {
+  if (!user || !meeting || meeting.is_locked) return [];
+  const stage = stageOf(meeting);
+  if (isAdminRole(user)) {
+    if (stage === 'moderator') return ['initiator'];
+    if (stage === 'admin' || stage === 'approved') return ['moderator', 'initiator'];
+    return [];
+  }
+  if (user.role === 'moderator' && stage === 'moderator' && meeting.moderator_can_return) {
+    return ['initiator'];
+  }
+  return [];
 };
 
-// May approve / send back a submitted file.
-export const canReviewMeeting = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
-  if (!user || !meeting) return false;
-  return ((user.role === 'admin' || user.role === 'superadmin') || user.role === 'moderator') && meeting.approval_status === 'submitted';
-};
-
-export const APPROVAL_LABELS: Record<ApprovalStatus, string> = {
-  draft: 'Draft',
-  submitted: 'Submitted for review',
+export const STAGE_LABELS: Record<MeetingStage, string> = {
+  initiator: 'Draft — with initiator',
+  moderator: 'With moderator',
+  admin: 'With admin',
   approved: 'Approved',
-  sent_back: 'Sent back for corrections',
 };
 
 // Tailwind classes for a status badge (light + dark friendly).
-export const APPROVAL_BADGE_CLASSES: Record<ApprovalStatus, string> = {
-  draft: 'bg-muted text-muted-foreground',
-  submitted: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+export const STAGE_BADGE_CLASSES: Record<MeetingStage, string> = {
+  initiator: 'bg-muted text-muted-foreground',
+  moderator: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+  admin: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   approved: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
-  sent_back: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
 };

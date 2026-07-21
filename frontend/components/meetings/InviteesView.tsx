@@ -13,9 +13,11 @@ import SendAgendaModal from "./SendAgendaModal";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
+import { canOperateMeeting } from "../../lib/meetingAccess";
 
 export default function InviteesView({ meeting, type, mutate }: { meeting: any, type: string, mutate: any }) {
-  const { canEdit, user } = useAuth();
+  const { user } = useAuth();
+  const canEdit = canOperateMeeting(user, meeting);
   const isPast = meeting.status === 'past';
   const displayType = isPast ? 'Presentees' : 'Invitees';
   const isLocked = meeting.is_locked;

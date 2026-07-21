@@ -14,6 +14,9 @@ interface RevisionHistoryProps {
   contentType: "agendaItem" | "resolutionItem";
   onRestored?: () => void;
   className?: string;
+  // Whether the current user may restore a revision. When omitted, falls back
+  // to the generic staff flag; meeting views pass an ownership-aware value.
+  canRestore?: boolean;
 }
 
 const stripHtml = (html: string) => html.replace(/<[^>]*>?/gm, "").trim();
@@ -30,8 +33,9 @@ const formatRelative = (iso: string) => {
   return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 };
 
-export default function RevisionHistory({ contentId, contentType, onRestored, className }: RevisionHistoryProps) {
-  const { canEdit } = useAuth();
+export default function RevisionHistory({ contentId, contentType, onRestored, className, canRestore }: RevisionHistoryProps) {
+  const { canEdit: staffCanEdit } = useAuth();
+  const canEdit = canRestore ?? staffCanEdit;
   const [isOpen, setIsOpen] = useState(false);
   const [style, setStyle] = useState<React.CSSProperties>({});
   const [mounted, setMounted] = useState(false);

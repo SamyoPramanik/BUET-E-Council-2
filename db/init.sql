@@ -6,7 +6,12 @@ CREATE EXTENSION IF NOT EXISTS "vector";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- 2. Define Enum Types
-CREATE TYPE user_role AS ENUM ('admin', 'moderator', 'viewer', 'superadmin');
+CREATE TYPE user_role AS ENUM ('admin', 'superadmin', 'moderator', 'file_initiator', 'viewer');
+
+-- Approval workflow state of a meeting "file". A file_initiator prepares the
+-- file (draft), submits it for review (submitted), and a moderator/admin either
+-- approves it (approved) or returns it for corrections (sent_back).
+CREATE TYPE meeting_approval_status AS ENUM ('draft', 'submitted', 'approved', 'sent_back');
 
 CREATE TYPE member_type_enum AS ENUM ('academic', 'syndicate', 'none');
 
@@ -120,6 +125,14 @@ CREATE TABLE meetings (
     resolution_status_pdf_link VARCHAR(255),
     status meeting_status NOT NULL DEFAULT 'draft',
     legacy_meeting_no NUMERIC UNIQUE,
+    -- Approval workflow: the file_initiator who owns/prepares this meeting file,
+    -- its review state, and reviewer bookkeeping.
+    created_by UUID REFERENCES users (id) ON DELETE SET NULL,
+    approval_status meeting_approval_status NOT NULL DEFAULT 'draft',
+    review_note TEXT,
+    submitted_at TIMESTAMP WITH TIME ZONE,
+    reviewed_by UUID REFERENCES users (id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

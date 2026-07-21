@@ -12,10 +12,13 @@ import { sanitizeHtml } from "../../lib/sanitize";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
+import { canAuthorMeeting, canOperateMeeting } from "../../lib/meetingAccess";
 import TemplateDrawer from "../TemplateDrawer";
 
 export default function AgendaView({ meeting, type }: { meeting: any, type: string }) {
-  const { canEdit } = useAuth();
+  const { user } = useAuth();
+  const canEdit = canAuthorMeeting(user, meeting);
+  const canManageAnnexures = canOperateMeeting(user, meeting);
   const isSuppliView = type === 'suppli-agenda';
   const { data: response, mutate } = useSWR(`/agendas?meeting_id=${meeting.id}&is_suppli=${isSuppliView}`, fetcher, { fallbackData: { data: [] } });
   const agendas = response?.data || [];
@@ -204,7 +207,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                   {agenda.is_suppli ? 'Supplementary Ag-' : 'Ag-'}{agenda.agenda_serial || index + 1}
                 </h3>
                 <div className="flex gap-2">
-                  <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} />
+                  <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} canRestore={canEdit} />
                   {!readOnly && (
                     <>
                       <button
@@ -269,7 +272,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               )}
 
               {/* Annexure List placed underneath the agenda content */}
-              <AnnexureList contentId={agenda.id} type="agenda" isLocked={isLocked} readOnly={!canEdit} />
+              <AnnexureList contentId={agenda.id} type="agenda" isLocked={isLocked} readOnly={!canManageAnnexures} />
             </div>
 
             {/* Insertion Strip (UX Magic) */}

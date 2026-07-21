@@ -191,6 +191,7 @@ export default function ManageUsersPage() {
                   <SearchableSelect
                     options={[
                       { value: "viewer", label: "Viewer" },
+                      { value: "file_initiator", label: "File Initiator" },
                       { value: "moderator", label: "Moderator" },
                       { value: "admin", label: "Admin" },
                       { value: "superadmin", label: "Super Admin" }

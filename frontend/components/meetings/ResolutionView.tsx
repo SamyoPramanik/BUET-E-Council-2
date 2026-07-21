@@ -12,12 +12,14 @@ import { sanitizeHtml } from "../../lib/sanitize";
 import { toast } from "sonner";
 import TemplateDrawer from "../TemplateDrawer";
 import { useAuth } from "../../hooks/useAuth";
+import { canOperateMeeting } from "../../lib/meetingAccess";
 import { useConfirm } from "../../hooks/useConfirm";
 
 export default function ResolutionView({ meeting }: { meeting: any }) {
-  const { canEdit } = useAuth();
+  const { user } = useAuth();
   const isLocked = meeting.is_locked;
-  const readOnly = isLocked || !canEdit;
+  const canEdit = canOperateMeeting(user, meeting);
+  const readOnly = !canEdit;
   const { confirm, ConfirmModal } = useConfirm();
   const { data: response, mutate } = useSWR(`/agendas?meeting_id=${meeting.id}`, fetcher, { fallbackData: { data: [] } });
 
@@ -169,7 +171,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 </span>
                 {agenda.resolution && (
                   <div className="flex gap-2">
-                    <RevisionHistory contentId={agenda.id} contentType="resolutionItem" onRestored={() => mutate()} />
+                    <RevisionHistory contentId={agenda.id} contentType="resolutionItem" onRestored={() => mutate()} canRestore={canEdit} />
                     {!readOnly && (
                       <>
                         <button

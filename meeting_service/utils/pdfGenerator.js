@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { pool } = require('../db');
 const storageService = require('./storageService');
+const { toBanglaDigits } = require('./agendaSerial');
 
 const getFontBase64 = () => {
     const sonarPath = path.join(__dirname, 'fonts', 'SonarBangla.ttf');
@@ -120,7 +121,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v4';
+const PDF_TEMPLATE_VERSION = 'v5';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -159,7 +160,7 @@ const storeCachedPdf = async (cacheKey, pdfBuffer, fingerprint) => {
 
 const generatePdf = async (meetingId, isResolution, cacheVariant) => {
     try {
-        const meetingQuery = `SELECT title, meeting_date, description FROM meetings WHERE id = $1`;
+        const meetingQuery = `SELECT title, meeting_date, description, agenda_prefix FROM meetings WHERE id = $1`;
         const presenteesQuery = `
             SELECT p.id, p.name, p.designation, p.serial, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM presentees p
@@ -186,7 +187,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const cacheKey = pdfCacheKey(meetingId, cacheType);
         const fingerprint = computeFingerprint({
             type: cacheType,
-            meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description },
+            meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, agenda_prefix: meeting.agenda_prefix },
             presentees: stableRows(presentees),
             agendas: stableRows(agendas)
         });
@@ -413,12 +414,16 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
 
             <div class="disclaimer">এই তালিকা সিনিওরিটি হিসেবে গণ্য হবে না।</div>
 
-            ${mainAgendas.map(renderAgendaBlock).join('')}
-
-            ${suppliAgendas.length > 0 ? `
-                <div class="presentees-header" style="margin-top:20px;">সম্পূরক আলোচ্যসূচি</div>
-                ${suppliAgendas.map(renderAgendaBlock).join('')}
-            ` : ''}
+            ${agendas.map(ag => `
+                <div class="agenda-block">
+                    <div class="agenda-title">প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + toBanglaDigits(ag.agenda_serial)}</div>
+                    <div class="agenda-content">${ag.content || ''}</div>
+                    ${isResolution ? `
+                    <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
+                    <div class="agenda-resolution">${ag.resolution || ''}</div>
+                    ` : ''}
+                </div>
+            `).join('')}
         </body>
         </html>
         `;

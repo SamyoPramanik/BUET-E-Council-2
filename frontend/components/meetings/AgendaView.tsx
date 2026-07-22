@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
 import { canAuthorMeeting, canOperateMeeting } from "../../lib/meetingAccess";
+import { toBanglaDigits } from "../../lib/banglaNumerals";
 import TemplateDrawer from "../TemplateDrawer";
 
 export default function AgendaView({ meeting, type }: { meeting: any, type: string }) {
@@ -214,9 +215,12 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               {/* Agenda Card */}
               <div className="bg-card border border-border p-6 rounded-lg relative group shadow-sm hover:shadow-md transition-shadow">
               <div className="flex justify-between items-start mb-4">
-                <h3 className="font-semibold text-lg text-primary">
-                  {agenda.is_suppli ? 'Supplementary Ag-' : 'Ag-'}{agenda.agenda_serial || index + 1}
-                </h3>
+                <div>
+                  <h3 className="font-semibold text-lg text-primary">
+                    {agenda.is_suppli ? 'Supplementary Ag-' : 'Ag-'}{agenda.agenda_serial || index + 1}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">প্রস্তাব নং {(meeting.agenda_prefix || '') + toBanglaDigits(agenda.agenda_serial || index + 1)}</p>
+                </div>
                 <div className="flex gap-2">
                   <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} canRestore={canEdit} />
                   {!readOnly && (

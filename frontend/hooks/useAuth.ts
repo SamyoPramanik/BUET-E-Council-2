@@ -35,5 +35,9 @@ export function useAuth() {
     canCreateMeeting: isAdmin || isInitiator,
     // Who may review (approve / send back) a submitted file.
     canReview: isAdmin || isModerator,
+    // Any authenticated role except viewer — e.g. the online meeting link,
+    // which any staff role can set/change any time regardless of meeting
+    // ownership/lock/workflow state.
+    canEditOnlineLink: !!role && role !== 'viewer',
   };
 }

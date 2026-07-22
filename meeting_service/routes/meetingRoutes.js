@@ -15,6 +15,9 @@ const adminOnly = requireRole('admin', 'superadmin');
 const canCreate = requireRole('admin', 'superadmin', 'file_initiator');
 // Approving / sending back a submitted file is the reviewer's job.
 const canReview = requireRole('admin', 'superadmin', 'moderator');
+// Any authenticated role except viewer — used for the online meeting link,
+// which is editable any time regardless of meeting ownership/lock/workflow.
+const nonViewer = requireRole('admin', 'superadmin', 'moderator', 'file_initiator');
 
 router.use(authMiddleware);
 router.use(checkMeetingLock);
@@ -25,6 +28,7 @@ router.post('/', canCreate, meetingController.createMeeting);
 router.post('/bulk-import', canCreate, meetingController.bulkImportMeeting);
 router.get('/:id', meetingController.getMeetingById);
 router.put('/:id', requireMeetingAuthor, meetingController.updateMeeting);
+router.put('/:id/online-link', nonViewer, meetingController.updateOnlineMeetingLink);
 router.delete('/:id', adminOnly, meetingController.deleteMeeting); // critical - admin-only
 
 // File approval workflow (initiator submits -> moderator reviews).

@@ -5,6 +5,7 @@ const storageService = require('../utils/storageService');
 const { sendMail } = require('../utils/mailer');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
+const { extractAgendaPrefix } = require('../utils/agendaSerial');
 
 // A viewer whose account is scoped to a specific member_type (academic/syndicate)
 // only sees meetings of that type; 'none' (and every non-viewer role) sees both.
@@ -95,10 +96,10 @@ const createMeeting = async (req, res, next) => {
 const updateMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript } = req.body;
+        const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix } = req.body;
 
         const result = await db.query(
-            `UPDATE meetings SET 
+            `UPDATE meetings SET
                 title = COALESCE($1, title),
                 meeting_title = COALESCE($2, meeting_title),
                 description = COALESCE($3, description),
@@ -109,13 +110,33 @@ const updateMeeting = async (req, res, next) => {
                 meeting_link = COALESCE($8, meeting_link),
                 agenda_pdf_link = COALESCE($9, agenda_pdf_link),
                 resolution_pdf_link = COALESCE($10, resolution_pdf_link),
-                transcript = COALESCE($11, transcript)
-             WHERE id = $12 RETURNING *`,
-            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, id]
+                transcript = COALESCE($11, transcript),
+                agenda_prefix = COALESCE($12, agenda_prefix)
+             WHERE id = $13 RETURNING *`,
+            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, id]
         );
 
         if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
         res.status(200).json({ success: true, message: 'Meeting updated', data: result.rows[0] });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Separate from updateMeeting so any non-viewer role can set/change this any
+// time, regardless of meeting ownership, lock, or approval workflow state.
+const updateOnlineMeetingLink = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { online_meeting_link } = req.body;
+
+        const result = await db.query(
+            'UPDATE meetings SET online_meeting_link = $1 WHERE id = $2 RETURNING *',
+            [online_meeting_link || null, id]
+        );
+
+        if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        res.status(200).json({ success: true, message: 'Online meeting link updated', data: result.rows[0] });
     } catch (error) {
         next(error);
     }
@@ -837,14 +858,19 @@ const bulkImportMeeting = async (req, res, next) => {
     const client = await db.pool.connect();
     try {
         const { meeting, presentees, agendas } = req.body;
-        
+
+        // The proposal-code prefix is meeting-wide (same for every agendum),
+        // so it's only ever extracted from the first imported agendum.
+        const hasAgendas = agendas && Array.isArray(agendas) && agendas.length > 0;
+        const firstAgendaExtraction = hasAgendas ? extractAgendaPrefix(agendas[0].content) : { agendaPrefix: null, content: null };
+
         await client.query('BEGIN');
 
         // 1. Insert Meeting
         const meetingResult = await client.query(
             `INSERT INTO meetings
-            (title, meeting_title, meeting_date, type, status, description, president, conclusion, created_by, approval_status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
+            (title, meeting_title, meeting_date, type, status, description, president, conclusion, created_by, approval_status, agenda_prefix)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft', $10)
             RETURNING id`,
             [
                 meeting.title,
@@ -855,10 +881,11 @@ const bulkImportMeeting = async (req, res, next) => {
                 meeting.description,
                 meeting.president,
                 meeting.conclusion,
-                req.user?.id || null
+                req.user?.id || null,
+                firstAgendaExtraction.agendaPrefix
             ]
         );
-        
+
         const meetingId = meetingResult.rows[0].id;
 
         // 2. Insert Presentees
@@ -886,23 +913,25 @@ const bulkImportMeeting = async (req, res, next) => {
         }
 
         // 3. Insert Agendas
-        if (agendas && Array.isArray(agendas)) {
-            for (const a of agendas) {
+        if (hasAgendas) {
+            for (const [index, a] of agendas.entries()) {
+                // Only the first agendum had its marker stripped (if any); the rest use their content as-is.
+                const content = index === 0 ? firstAgendaExtraction.content : a.content;
                 const res = await client.query(
-                    `INSERT INTO agenda 
-                    (content, resolution, agenda_serial, meeting_id) 
+                    `INSERT INTO agenda
+                    (content, resolution, agenda_serial, meeting_id)
                     VALUES ($1, $2, $3, $4) RETURNING id`,
                     [
-                        a.content,
+                        content,
                         a.resolution,
                         a.agenda_serial,
                         meetingId
                     ]
                 );
                 const agendaId = res.rows[0].id;
-                
-                if (a.content) {
-                    indexAgendaContent(agendaId, a.content).catch(() => {});
+
+                if (content) {
+                    indexAgendaContent(agendaId, content).catch(() => {});
                 }
                 if (a.resolution) {
                     indexResolutionContent(agendaId, a.resolution).catch(() => {});
@@ -925,6 +954,7 @@ module.exports = {
     getMeetingById,
     createMeeting,
     updateMeeting,
+    updateOnlineMeetingLink,
     deleteMeeting,
     submitMeeting,
     reviewApproveMeeting,

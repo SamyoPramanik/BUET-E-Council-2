@@ -65,7 +65,7 @@ export const canApproveMeeting = (user?: WorkflowUser | null, meeting?: Workflow
 
 // Which lower stages the current user may hand the file back down to.
 //   admin/superadmin: moderator/initiator from admin & approved; initiator from moderator.
-//   moderator: initiator, only if an admin handed it back (moderator_can_return).
+//   moderator: initiator, whenever the file is at the moderator stage.
 export const returnTargets = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): ReturnTarget[] => {
   if (!user || !meeting || meeting.is_locked) return [];
   const stage = stageOf(meeting);
@@ -74,7 +74,7 @@ export const returnTargets = (user?: WorkflowUser | null, meeting?: WorkflowMeet
     if (stage === 'admin' || stage === 'approved') return ['moderator', 'initiator'];
     return [];
   }
-  if (user.role === 'moderator' && stage === 'moderator' && meeting.moderator_can_return) {
+  if (user.role === 'moderator' && stage === 'moderator') {
     return ['initiator'];
   }
   return [];

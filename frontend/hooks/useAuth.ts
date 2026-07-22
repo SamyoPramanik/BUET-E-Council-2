@@ -33,6 +33,8 @@ export function useAuth() {
     canEdit: isAdmin || isModerator,
     // Who may create a brand-new meeting file: every workflow role.
     canCreateMeeting: isAdmin || isModerator || isInitiator,
+    // Who may author templates: initiators, moderators, admins, superadmins.
+    canManageTemplates: isAdmin || isModerator || isInitiator,
     // Who may act as a reviewer somewhere in the escalation chain.
     canReview: isAdmin || isModerator,
   };

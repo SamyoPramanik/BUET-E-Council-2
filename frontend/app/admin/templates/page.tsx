@@ -13,7 +13,7 @@ import CustomSelect from "../../../components/CustomSelect";
 import { useAuth } from "../../../hooks/useAuth";
 
 export default function ManageTemplatesPage() {
-  const { canEdit } = useAuth();
+  const { canManageTemplates: canEdit } = useAuth();
   const { data: response, error, mutate } = useSWR('/templates', fetcher);
   const { confirm, ConfirmModal } = useConfirm();
 

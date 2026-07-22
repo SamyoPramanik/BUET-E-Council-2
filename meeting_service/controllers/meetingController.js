@@ -278,10 +278,9 @@ const approveMeeting = async (req, res, next) => {
 
 // Hand the file back DOWN the chain, with an optional note explaining what to fix.
 //   - admin/superadmin: may return from any stage to 'moderator' or 'initiator'.
-//       Returning to the moderator sets moderator_can_return = TRUE, which is the
-//       ONLY way a moderator later gains the right to return it to the initiator.
-//   - moderator: may return to 'initiator' only while holding the file at the
-//       'moderator' stage AND only if an admin handed it down (moderator_can_return).
+//   - moderator: may return to 'initiator' whenever the file is at the
+//       'moderator' stage (whether the initiator submitted it up or an admin
+//       handed it down).
 const returnMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -301,8 +300,8 @@ const returnMeeting = async (req, res, next) => {
                 return next(new CustomError('This file is already with the initiator.', 409));
             }
         } else if (req.user?.role === 'moderator') {
-            if (target !== 'initiator' || meeting.stage !== 'moderator' || !meeting.moderator_can_return) {
-                return next(new CustomError('You can only return this file to the initiator after an admin has handed it back to you.', 403));
+            if (target !== 'initiator' || meeting.stage !== 'moderator') {
+                return next(new CustomError('You can only return this file to the initiator while it is with you for review.', 403));
             }
         } else {
             return next(new CustomError('You do not have permission to return this file.', 403));

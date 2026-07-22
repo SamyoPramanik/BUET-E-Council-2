@@ -125,18 +125,19 @@ CREATE TABLE meetings (
     resolution_status_pdf_link VARCHAR(255),
     status meeting_status NOT NULL DEFAULT 'draft',
     legacy_meeting_no NUMERIC UNIQUE,
-    -- Approval workflow: the initiator who created the file, the current
-    -- escalation stage, and reviewer bookkeeping. moderator_can_return is true
-    -- only when an admin handed the file back down to the moderator, which is
-    -- the sole case where a moderator may return it further down to the initiator.
+    -- Approval workflow: the initiator who created the file and the current
+    -- escalation stage. return_source records who handed the file back down to
+    -- the initiator ('moderator' | 'admin'), so the initiator re-submits to the
+    -- same party. Per-role send-back notes are shown together when both exist.
     created_by UUID REFERENCES users (id) ON DELETE SET NULL,
     stage meeting_stage NOT NULL DEFAULT 'initiator',
-    moderator_can_return BOOLEAN NOT NULL DEFAULT FALSE,
+    return_source VARCHAR(20),
+    moderator_note TEXT,
+    admin_note TEXT,
     -- Resolution/attendance phase: once the agenda is approved and the meeting
     -- is set "ongoing", initiator/moderator can record resolutions & attendance
     -- until an admin approves the resolution, which locks them (Phase 2).
     resolution_approved BOOLEAN NOT NULL DEFAULT FALSE,
-    review_note TEXT,
     submitted_at TIMESTAMP WITH TIME ZONE,
     reviewed_by UUID REFERENCES users (id) ON DELETE SET NULL,
     reviewed_at TIMESTAMP WITH TIME ZONE,

@@ -103,7 +103,7 @@ export default function ManageMeetingsPage() {
   const awaitingAdminCount = allMeetings.filter((m: any) => m.stage === 'admin').length;
   const awaitingModeratorCount = allMeetings.filter((m: any) => m.stage === 'moderator').length;
   const myReturnedCount = allMeetings.filter(
-    (m: any) => (m.stage || 'initiator') === 'initiator' && m.review_note && isMeetingOwner(user, m)
+    (m: any) => (m.stage || 'initiator') === 'initiator' && (m.moderator_note || m.admin_note) && isMeetingOwner(user, m)
   ).length;
 
   const meetings = allMeetings
@@ -116,7 +116,7 @@ export default function ManageMeetingsPage() {
         creator_username: m.creator_username || '—',
         stage_label: (
           <span
-            title={m.review_note ? `Note: ${m.review_note}` : undefined}
+            title={m.moderator_note || m.admin_note || undefined}
             className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${STAGE_BADGE_CLASSES[stage]}`}
           >
             {STAGE_LABELS[stage]}

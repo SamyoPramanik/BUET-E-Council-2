@@ -146,10 +146,15 @@ export default function MeetingWorkflowBar({ meeting, onChanged }: { meeting: an
         </div>
       )}
 
-      {/* Note left by whoever last handed the file back. */}
-      {meeting.review_note && (stage === "initiator" || stage === "moderator") && (
+      {/* Send-back notes, labeled by who handed the file back. Both show if both left one. */}
+      {meeting.moderator_note && (
         <div className="mt-3 rounded-md border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-800 dark:text-red-300">
-          <span className="font-semibold">Note:</span> {meeting.review_note}
+          <span className="font-semibold">Sent back by moderator:</span> {meeting.moderator_note}
+        </div>
+      )}
+      {meeting.admin_note && (
+        <div className="mt-3 rounded-md border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-800 dark:text-red-300">
+          <span className="font-semibold">Sent back by admin/superadmin:</span> {meeting.admin_note}
         </div>
       )}
 

@@ -15,7 +15,9 @@ export interface WorkflowUser {
 export interface WorkflowMeeting {
   created_by?: string | null;
   stage?: MeetingStage | null;
-  moderator_can_return?: boolean;
+  return_source?: 'moderator' | 'admin' | null;
+  moderator_note?: string | null;
+  admin_note?: string | null;
   is_locked?: boolean;
   status?: string | null;
   resolution_approved?: boolean;
@@ -54,7 +56,10 @@ export const canOperateMeeting = canEditMeeting;
 export const submitTarget = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): 'moderator' | 'admin' | null => {
   if (!user || !meeting || meeting.is_locked) return null;
   const stage = stageOf(meeting);
-  if (stage === 'initiator' && (isAdminRole(user) || isMeetingOwner(user, meeting))) return 'moderator';
+  if (stage === 'initiator' && (isAdminRole(user) || isMeetingOwner(user, meeting))) {
+    // Re-submit to whoever granted access; a fresh file goes to the moderator.
+    return meeting.return_source === 'admin' ? 'admin' : 'moderator';
+  }
   if (stage === 'moderator' && (isAdminRole(user) || user.role === 'moderator')) return 'admin';
   return null;
 };

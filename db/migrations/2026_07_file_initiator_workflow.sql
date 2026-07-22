@@ -23,9 +23,10 @@ END$$;
 ALTER TABLE meetings
     ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users (id) ON DELETE SET NULL,
     ADD COLUMN IF NOT EXISTS stage meeting_stage NOT NULL DEFAULT 'initiator',
-    ADD COLUMN IF NOT EXISTS moderator_can_return BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS return_source VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS moderator_note TEXT,
+    ADD COLUMN IF NOT EXISTS admin_note TEXT,
     ADD COLUMN IF NOT EXISTS resolution_approved BOOLEAN NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS review_note TEXT,
     ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP WITH TIME ZONE,
     ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES users (id) ON DELETE SET NULL,
     ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP WITH TIME ZONE;
@@ -38,4 +39,6 @@ ALTER TABLE annexures
 --    (approval_status: replaced by stage; is_approved: the removed dummy approve.)
 ALTER TABLE meetings DROP COLUMN IF EXISTS approval_status;
 ALTER TABLE meetings DROP COLUMN IF EXISTS is_approved;
+ALTER TABLE meetings DROP COLUMN IF EXISTS moderator_can_return;
+ALTER TABLE meetings DROP COLUMN IF EXISTS review_note;
 DROP TYPE IF EXISTS meeting_approval_status;

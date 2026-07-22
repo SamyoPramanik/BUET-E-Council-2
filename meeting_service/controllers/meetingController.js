@@ -210,14 +210,14 @@ const isMeetingOwner = (meeting, user) =>
 
 const isAdminRole = (user) => user && (user.role === 'admin' || user.role === 'superadmin');
 
-// Forward the file one step UP the escalation chain:
-//   initiator (owner) -> moderator      (submitted for moderator review)
-//   moderator          -> admin         (escalated for admin approval)
-// admin/superadmin may push either step on anyone's behalf.
+// Forward the file one step UP the escalation chain. From the initiator it goes
+// to whoever last granted edit access (return_source): the moderator by default,
+// or straight back to the admin if an admin handed it down. From the moderator it
+// escalates to the admin. Submitting up clears the pending send-back notes.
 const submitMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const check = await db.query('SELECT created_by, stage FROM meetings WHERE id = $1', [id]);
+        const check = await db.query('SELECT created_by, stage, return_source FROM meetings WHERE id = $1', [id]);
         if (check.rows.length === 0) return next(new CustomError('Meeting not found', 404));
 
         const meeting = check.rows[0];
@@ -226,9 +226,10 @@ const submitMeeting = async (req, res, next) => {
 
         if (meeting.stage === 'initiator') {
             if (!admin && !isMeetingOwner(meeting, req.user)) {
-                return next(new CustomError('Only the initiator who created this file can submit it to the moderator.', 403));
+                return next(new CustomError('Only the initiator who created this file can submit it.', 403));
             }
-            nextStage = 'moderator';
+            // Re-submit to whoever granted access; a fresh file goes to the moderator.
+            nextStage = meeting.return_source === 'admin' ? 'admin' : 'moderator';
         } else if (meeting.stage === 'moderator') {
             if (!admin && req.user?.role !== 'moderator') {
                 return next(new CustomError('Only a moderator can escalate this file to the admin.', 403));
@@ -240,13 +241,12 @@ const submitMeeting = async (req, res, next) => {
 
         const result = await db.query(
             `UPDATE meetings
-             SET stage = $2, moderator_can_return = FALSE, submitted_at = NOW(),
-                 review_note = NULL, reviewed_by = $3, reviewed_at = NOW()
+             SET stage = $2, return_source = NULL, moderator_note = NULL, admin_note = NULL,
+                 submitted_at = NOW(), reviewed_by = $3, reviewed_at = NOW()
              WHERE id = $1 RETURNING *`,
             [id, nextStage, req.user?.id || null]
         );
-        const dest = nextStage === 'moderator' ? 'moderator' : 'admin';
-        res.status(200).json({ success: true, message: `Meeting file submitted to the ${dest}`, data: result.rows[0] });
+        res.status(200).json({ success: true, message: `Meeting file submitted to the ${nextStage}`, data: result.rows[0] });
     } catch (error) {
         next(error);
     }
@@ -265,8 +265,8 @@ const approveMeeting = async (req, res, next) => {
 
         const result = await db.query(
             `UPDATE meetings
-             SET stage = 'approved', moderator_can_return = FALSE, resolution_approved = FALSE,
-                 review_note = NULL, reviewed_by = $2, reviewed_at = NOW()
+             SET stage = 'approved', return_source = NULL, moderator_note = NULL, admin_note = NULL,
+                 resolution_approved = FALSE, reviewed_by = $2, reviewed_at = NOW()
              WHERE id = $1 RETURNING *`,
             [id, req.user?.id || null]
         );
@@ -278,9 +278,10 @@ const approveMeeting = async (req, res, next) => {
 
 // Hand the file back DOWN the chain, with an optional note explaining what to fix.
 //   - admin/superadmin: may return from any stage to 'moderator' or 'initiator'.
-//   - moderator: may return to 'initiator' whenever the file is at the
-//       'moderator' stage (whether the initiator submitted it up or an admin
-//       handed it down).
+//   - moderator: may return to 'initiator' whenever the file is at the moderator stage.
+// The note is stored per returner-role (moderator_note / admin_note) so a file
+// bounced by both shows both notes. return_source records who returned it to the
+// initiator, so the initiator re-submits to that same party.
 const returnMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -290,7 +291,7 @@ const returnMeeting = async (req, res, next) => {
             return next(new CustomError("A valid target ('initiator' or 'moderator') is required.", 400));
         }
 
-        const check = await db.query('SELECT stage, moderator_can_return FROM meetings WHERE id = $1', [id]);
+        const check = await db.query('SELECT stage FROM meetings WHERE id = $1', [id]);
         if (check.rows.length === 0) return next(new CustomError('Meeting not found', 404));
         const meeting = check.rows[0];
 
@@ -307,13 +308,18 @@ const returnMeeting = async (req, res, next) => {
             return next(new CustomError('You do not have permission to return this file.', 403));
         }
 
-        const moderatorCanReturn = admin && target === 'moderator';
+        // Tier of whoever is sending it back, and the note column that records it.
+        const tier = admin ? 'admin' : 'moderator';
+        const noteColumn = tier === 'admin' ? 'admin_note' : 'moderator_note';
+        // Only a return that lands on the initiator sets where they re-submit.
+        const returnSource = target === 'initiator' ? tier : null;
+
         const result = await db.query(
             `UPDATE meetings
-             SET stage = $2, moderator_can_return = $3, resolution_approved = FALSE, review_note = $4,
+             SET stage = $2, return_source = $3, ${noteColumn} = $4,
                  reviewed_by = $5, reviewed_at = NOW()
              WHERE id = $1 RETURNING *`,
-            [id, target, moderatorCanReturn, note || null, req.user?.id || null]
+            [id, target, returnSource, note || null, req.user?.id || null]
         );
         res.status(200).json({ success: true, message: `Meeting file returned to the ${target}`, data: result.rows[0] });
     } catch (error) {

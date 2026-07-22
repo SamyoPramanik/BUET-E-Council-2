@@ -203,16 +203,15 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   );
 
   return (
-    <div className="flex gap-8 h-full">
+    <div className="flex items-start gap-8 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
       <ConfirmModal />
-      {/* Main Area */}
-      <div className={`flex-1 ${!readOnly ? 'w-[70%] max-w-4xl' : 'w-full max-w-5xl'} pb-32 animate-in fade-in slide-in-from-bottom-4 duration-500`}>
+      <div className={`flex-1 ${!readOnly ? 'w-[70%] max-w-4xl' : 'w-full max-w-5xl'} pb-32`}>
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">{title}</h2>
         </div>
 
         {agendas.length === 0 && createAtIndex === null ? (
-          <div className="bg-card border border-border border-dashed rounded-lg p-12 flex flex-col items-center justify-center text-center space-y-4 shadow-sm h-64">
+          <div className="bg-card border border-border border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center space-y-4 shadow-sm h-64">
             <div className="bg-muted p-4 rounded-full">
               <FileText className="w-8 h-8 text-muted-foreground" />
             </div>
@@ -364,11 +363,9 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
           </div>
         )}
       </div>
-
-      {/* Right Sticky Panel (Reordering) - Only shown when user has edit access */}
       {!readOnly && (
-        <div className="w-[30%] shrink-0">
-          <div className="bg-sidebar/50 border border-border rounded-lg p-5 sticky top-8 max-h-[80vh] overflow-y-auto shadow-sm backdrop-blur-sm">
+        <div className="w-[30%] shrink-0 sticky top-8">
+          <div className="bg-sidebar/50 border border-border rounded-lg p-5 shadow-sm backdrop-blur-sm">
             <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground mb-4">Reorder Sequence</h3>
 
             <div className="space-y-2">
@@ -386,7 +383,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                     প্রস্তাবনা নং {(meeting.agenda_prefix || '') + toBanglaDigits(agenda.agenda_serial || index + 1)}
                   </span>
                   <span className="text-xs text-muted-foreground truncate flex-1 opacity-60">
-                    {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...
+                    {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 38) : '...'}...
                   </span>
                 </div>
               ))}
@@ -398,6 +395,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
           </div>
         </div>
       )}
+
 
       <TemplateDrawer
         isOpen={isDrawerOpen}
@@ -414,6 +412,8 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
           }
         }}
       />
-    </div>
+    </div >
+
+
   );
 }

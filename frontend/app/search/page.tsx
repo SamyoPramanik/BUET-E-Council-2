@@ -168,7 +168,7 @@ function SearchPageInner() {
             />
           </div>
 
-          <div className="bg-card border border-border rounded-lg p-4 mb-6 flex flex-wrap items-end gap-4">
+          <div className="bg-card border border-border rounded-lg p-4 mb-6 flex flex-wrap items-start gap-4">
             <div className="flex-1 min-w-[180px]">
               <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
                 <TagIcon className="w-3.5 h-3.5" /> Tags
@@ -182,49 +182,55 @@ function SearchPageInner() {
               />
             </div>
 
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">From</label>
-              <input
-                type="date"
-                value={dateFromInput}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDateFromInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">To</label>
-              <input
-                type="date"
-                value={dateToInput}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDateToInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Serial From</label>
-              <input
-                type="number"
-                min="0"
-                value={serialFromInput}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSerialFromInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="e.g. 50"
-                className="w-24 px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Serial To</label>
-              <input
-                type="number"
-                min="0"
-                value={serialToInput}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSerialToInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="e.g. 100"
-                className="w-24 px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground"
-              />
+            <div className="flex flex-col gap-3">
+              <div className="flex items-end gap-4">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">From</label>
+                  <input
+                    type="date"
+                    value={dateFromInput}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDateFromInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    className="px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">To</label>
+                  <input
+                    type="date"
+                    value={dateToInput}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDateToInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    className="px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
+                  />
+                </div>
+              </div>
+              <div className="flex items-end gap-4">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Serial From</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={serialFromInput}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSerialFromInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="e.g. 50"
+                    className="w-24 px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Serial To</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={serialToInput}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSerialToInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="e.g. 100"
+                    className="w-24 px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+              </div>
             </div>
 
             <div>

@@ -4,8 +4,7 @@ const CustomError = require('../errors/CustomError');
 // Resolve the meeting id a mutating request targets, regardless of whether it
 // comes in on the /meetings router (meeting id in the path/body) or the
 // /agendas router (agenda / resolution / annexure id that must be traced back
-// to its meeting). Mirrors the resolution logic in lockMiddleware.js so the
-// ownership gate and the lock gate always agree on "which meeting is this".
+// to its meeting).
 const resolveMeetingId = async (req) => {
     const pathParts = req.path.split('/').filter(Boolean);
     const potentialId = pathParts[0];
@@ -67,7 +66,9 @@ const loadMeeting = async (req) => {
     }
 
     const result = await db.query(
-        'SELECT id, created_by, approval_status FROM meetings WHERE id = $1',
+        `SELECT id, created_by, stage, return_source, status,
+                resolution_stage, resolution_return_source
+         FROM meetings WHERE id = $1`,
         [meetingId]
     );
     req._workflowMeeting = result.rows[0] || null;
@@ -77,58 +78,140 @@ const loadMeeting = async (req) => {
 const isOwner = (meeting, user) =>
     meeting.created_by && user && String(meeting.created_by) === String(user.id);
 
-// Factory: allow admins always; allow the owning initiator when the file is in
-// one of `allowStatuses`; allow any role listed in `allowRoles`. Everyone else
-// is rejected. Used to enforce "only the creator can fix it" at the API layer.
-const requireMeetingAccess = ({ allowStatuses = ['draft', 'sent_back'], allowRoles = [] } = {}) =>
-    async (req, res, next) => {
-        try {
-            if (!req.user) return next(new CustomError('You are not logged in.', 401));
+const isAdminRole = (user) => user && (user.role === 'admin' || user.role === 'superadmin');
 
-            if (req.user.role === 'admin' || req.user.role === 'superadmin') return next();
-            if (allowRoles.includes(req.user.role)) return next();
+// A completed meeting is closed for good. The one asymmetry between admin and
+// superadmin lives here: the superadmin keeps an escape hatch for a mis-click,
+// the admin does not.
+const isCompleted = (meeting) => meeting.status === 'past';
 
-            const meeting = await loadMeeting(req);
-            if (!meeting) {
-                return next(new CustomError('Meeting not found.', 404));
-            }
+const isSuperAdmin = (user) => user?.role === 'superadmin';
 
-            if (!isOwner(meeting, req.user)) {
-                return next(new CustomError(
-                    'Forbidden. Only the file initiator who created this meeting can edit it.',
-                    403
-                ));
-            }
+// Position-in-the-chain rule, shared by both the agenda chain (stage) and the
+// resolution chain (resolution_stage):
+//   initiator -> the initiator who created the file, PLUS a moderator who handed
+//                it back (they keep working on it alongside the initiator)
+//   moderator -> any moderator
+//   admin     -> nobody below admin
+//   approved  -> nobody at all; the chain is finished
+// A moderator only loses access by escalating to the admin — handing the file
+// down to the initiator does not give up their own access.
+const holderCanEdit = (user, stage, returnSource, meeting) => {
+    if (stage === 'approved') return false;
+    if (isAdminRole(user)) return true;
+    if (stage === 'initiator') {
+        return isOwner(meeting, user) ||
+            (user?.role === 'moderator' && returnSource === 'moderator');
+    }
+    if (stage === 'moderator') return user?.role === 'moderator';
+    return false;
+};
 
-            if (!allowStatuses.includes(meeting.approval_status)) {
-                const reason = meeting.approval_status === 'submitted'
-                    ? 'This file has been submitted for review and is locked until a moderator sends it back.'
-                    : meeting.approval_status === 'approved'
-                        ? 'This file has been approved and can no longer be edited.'
-                        : 'This file cannot be edited in its current state.';
-                return next(new CustomError(reason, 403));
-            }
+// Agenda phase. Approving the agenda FREEZES it for everyone, admins included —
+// the way to correct an approved agenda is to send it back down the chain, which
+// reopens it and returns the meeting to 'draft'.
+const canEditAtStage = (meeting, user) => {
+    if (isCompleted(meeting)) return isSuperAdmin(user);
+    return holderCanEdit(user, meeting.stage, meeting.return_source, meeting);
+};
 
-            return next();
-        } catch (err) {
-            next(err);
+const stageBlockedMessage = (meeting) => {
+    if (isCompleted(meeting)) {
+        return 'This meeting has been marked completed and can no longer be edited.';
+    }
+    switch (meeting.stage) {
+        case 'moderator':
+            return 'This file is with the moderator for review and can no longer be edited by the initiator.';
+        case 'admin':
+            return 'This file is with the admin for approval and can only be edited by an admin.';
+        case 'approved':
+            return 'The agenda has been approved and is now locked. Send the file back down the chain to reopen it for changes.';
+        default:
+            return 'You do not have permission to edit this file at its current stage.';
+    }
+};
+
+// Gate for editing the file's content (meeting info, agenda, and — for now —
+// its operational sub-resources). Re-enforces the stage rules server-side.
+const requireMeetingAuthor = async (req, res, next) => {
+    try {
+        if (!req.user) return next(new CustomError('You are not logged in.', 401));
+
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found.', 404));
+
+        // NB: no admin short-circuit — an approved agenda and a completed
+        // meeting are locked to admins too (see canEditAtStage).
+        if (!canEditAtStage(meeting, req.user)) {
+            const owned = isOwner(meeting, req.user);
+            const msg = owned || req.user.role === 'moderator'
+                ? stageBlockedMessage(meeting)
+                : 'Forbidden. You are not the current owner of this file.';
+            return next(new CustomError(msg, 403));
         }
-    };
+        return next();
+    } catch (err) {
+        next(err);
+    }
+};
 
-// Editing the file's content: owner may edit only while draft/sent_back.
-const requireMeetingAuthor = requireMeetingAccess({ allowStatuses: ['draft', 'sent_back'] });
+// Operational actions that are part of building the file (invitees, materials)
+// follow the same stage rules as content editing.
+const requireMeetingOperator = requireMeetingAuthor;
 
-// Operational actions on a meeting the owner runs across the whole lifecycle
-// (invitees, attendance, materials, completion). Still owner-or-admin only.
-const requireMeetingOperator = requireMeetingAccess({
-    allowStatuses: ['draft', 'sent_back', 'submitted', 'approved']
-});
+// Resolution phase. Opens only once the agenda is approved (which is what makes
+// the meeting 'ongoing'), then runs its own escalation chain on
+// resolution_stage. Reaching 'approved' there freezes the resolution for good.
+const canEditResolutionAtStage = (meeting, user) => {
+    if (isCompleted(meeting)) return isSuperAdmin(user);
+    if (meeting.stage !== 'approved' || meeting.status !== 'ongoing') return false;
+    return holderCanEdit(user, meeting.resolution_stage, meeting.resolution_return_source, meeting);
+};
+
+const resolutionBlockedMessage = (meeting) => {
+    if (isCompleted(meeting)) {
+        return 'This meeting has been marked completed and can no longer be edited.';
+    }
+    if (meeting.stage !== 'approved') {
+        return 'Resolutions and attendance open once the agenda has been approved.';
+    }
+    switch (meeting.resolution_stage) {
+        case 'moderator':
+            return 'The resolution is with the moderator for review.';
+        case 'admin':
+            return 'The resolution is with the admin for approval.';
+        case 'approved':
+            return 'The resolution has been approved and is now locked.';
+        default:
+            return 'You do not have permission to edit the resolution at this stage.';
+    }
+};
+
+const requireResolutionEditor = async (req, res, next) => {
+    try {
+        if (!req.user) return next(new CustomError('You are not logged in.', 401));
+
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found.', 404));
+
+        if (canEditResolutionAtStage(meeting, req.user)) return next();
+        return next(new CustomError(resolutionBlockedMessage(meeting), 403));
+    } catch (err) {
+        next(err);
+    }
+};
 
 module.exports = {
     resolveMeetingId,
     loadMeeting,
     isOwner,
-    requireMeetingAccess,
+    isAdminRole,
+    isCompleted,
+    isSuperAdmin,
+    holderCanEdit,
+    canEditAtStage,
+    canEditResolutionAtStage,
     requireMeetingAuthor,
     requireMeetingOperator,
+    requireResolutionEditor,
 };

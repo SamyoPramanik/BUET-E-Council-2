@@ -3,11 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useParams } from "next/navigation";
-import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers } from "lucide-react";
+import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers, History } from "lucide-react";
 import useSWR from "swr";
 import { fetcher } from "../../../../lib/api";
 import SidebarToggleButton from "../../../../components/SidebarToggleButton";
 import MeetingWorkflowBar from "../../../../components/meetings/MeetingWorkflowBar";
+import { useAuth } from "../../../../hooks/useAuth";
 
 const navigation = [
   { name: 'Meeting Info', view: 'info', icon: Info },
@@ -33,6 +34,12 @@ export default function MeetingWorkspaceLayout({
   const { data: response, mutate } = useSWR(`/meetings/${params.id}`, fetcher);
   const meeting = response?.data;
 
+  // The full activity/edit history is visible to admin/superadmin only.
+  const { isAdmin } = useAuth();
+  const navItems = isAdmin
+    ? [...navigation, { name: 'History', view: 'history', icon: History }]
+    : navigation;
+
   return (
     <div className="flex flex-1 w-full h-full overflow-hidden">
       {/* Backdrop, mobile only, shown while the drawer is open */}
@@ -51,12 +58,12 @@ export default function MeetingWorkspaceLayout({
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="p-4 border-b border-sidebar-border">
-          <Link href="/admin/meetings" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-2">
+          <Link href="/workspace/meetings" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-2">
             ← Back to Meetings
           </Link>
         </div>
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-          {navigation.map((item) => {
+          {navItems.map((item) => {
             const isActive = currentView === item.view;
             const Icon = item.icon;
 
@@ -69,7 +76,7 @@ export default function MeetingWorkspaceLayout({
             return (
               <Link
                 key={item.name}
-                href={`/admin/meetings/${params.id}?view=${item.view}`}
+                href={`/workspace/meetings/${params.id}?view=${item.view}`}
                 onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors ${isActive
                     ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium shadow-sm'

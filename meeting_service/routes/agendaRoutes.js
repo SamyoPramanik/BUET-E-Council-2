@@ -1,8 +1,7 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
-const { requireMeetingAuthor, requireMeetingOperator } = require('../middlewares/meetingWorkflowMiddleware');
+const { requireMeetingAuthor, requireMeetingOperator, requireResolutionEditor } = require('../middlewares/meetingWorkflowMiddleware');
 const agendaController = require('../controllers/agendaController');
-const { checkMeetingLock } = require('../middlewares/lockMiddleware');
 const { auditLog } = require('../middlewares/auditMiddleware');
 const multer = require('multer');
 const { fileFilter: annexureFileFilter, MAX_FILE_SIZE_MB } = require('../config/annexureUpload');
@@ -18,7 +17,6 @@ const upload = multer({
 const router = express.Router();
 
 router.use(authMiddleware);
-router.use(checkMeetingLock);
 router.use(auditLog('agenda'));
 
 // Agendam routes.
@@ -29,13 +27,13 @@ router.post('/', requireMeetingAuthor, agendaController.createAgendam);
 router.put('/:id', requireMeetingAuthor, agendaController.updateAgendam);
 router.delete('/:id', requireMeetingAuthor, agendaController.deleteAgendam);
 
-// Resolution routes. Resolutions/execution are recorded during/after the
-// meeting, so the owner (or admin) may manage them across the file lifecycle.
+// Resolution routes. Recorded in the resolution/attendance phase (agenda
+// approved + meeting ongoing, before the resolution is approved).
 router.get('/:id/resolutions', agendaController.getResolutions);
-router.post('/:id/resolutions', requireMeetingOperator, agendaController.createResolution);
-router.put('/resolutions/:resId', requireMeetingOperator, agendaController.updateResolution);
-router.put('/resolutions/:resId/execution', requireMeetingOperator, agendaController.updateExecutionStatus);
-router.delete('/resolutions/:resId', requireMeetingOperator, agendaController.deleteResolution);
+router.post('/:id/resolutions', requireResolutionEditor, agendaController.createResolution);
+router.put('/resolutions/:resId', requireResolutionEditor, agendaController.updateResolution);
+router.put('/resolutions/:resId/execution', requireResolutionEditor, agendaController.updateExecutionStatus);
+router.delete('/resolutions/:resId', requireResolutionEditor, agendaController.deleteResolution);
 
 // Annexures (attachments for agenda items or resolutions).
 router.get('/:id/annexures', agendaController.getAnnexures);

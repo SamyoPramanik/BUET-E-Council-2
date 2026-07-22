@@ -8,16 +8,22 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 -- 2. Define Enum Types
 CREATE TYPE user_role AS ENUM ('admin', 'superadmin', 'moderator', 'file_initiator', 'viewer');
 
--- Approval workflow state of a meeting "file". A file_initiator prepares the
--- file (draft), submits it for review (submitted), and a moderator/admin either
--- approves it (approved) or returns it for corrections (sent_back).
-CREATE TYPE meeting_approval_status AS ENUM ('draft', 'submitted', 'approved', 'sent_back');
+-- Approval escalation stage of a meeting "file". Editing rights follow the
+-- stage: the file climbs initiator -> moderator -> admin, and an admin/superadmin
+-- finally approves it. admin/superadmin can always edit and can hand the file
+-- back down the chain, recording who did so in return_source so the receiver
+-- knows which reviewer to re-submit to.
+CREATE TYPE meeting_stage AS ENUM ('initiator', 'moderator', 'admin', 'approved');
 
 CREATE TYPE member_type_enum AS ENUM ('academic', 'syndicate', 'none');
 
 CREATE TYPE meeting_type AS ENUM ('syndicate', 'academic');
 
-CREATE TYPE meeting_status AS ENUM ('draft', 'ongoing', 'past', 'locked');
+-- Lifecycle of a meeting, derived from the approval workflow rather than picked
+-- by hand: 'draft' while the agenda is being prepared and approved, 'ongoing'
+-- the moment an admin/superadmin approves the agenda, and 'past' only when an
+-- admin hits "Mark Meeting Completed".
+CREATE TYPE meeting_status AS ENUM ('draft', 'ongoing', 'past');
 
 CREATE TYPE annexure_type AS ENUM ('agendaItem', 'resolution');
 
@@ -115,8 +121,6 @@ CREATE TABLE meetings (
     president VARCHAR(255),
     conclusion TEXT,
     meeting_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    is_locked BOOLEAN DEFAULT FALSE,
-    is_approved BOOLEAN DEFAULT FALSE,
     type meeting_type NOT NULL,
     meeting_link VARCHAR(255),
     -- Video-call link (Zoom/Meet/Teams) for attending remotely, editable any
@@ -135,11 +139,23 @@ CREATE TABLE meetings (
     resolution_status_pdf_link VARCHAR(255),
     status meeting_status NOT NULL DEFAULT 'draft',
     legacy_meeting_no NUMERIC UNIQUE,
-    -- Approval workflow: the file_initiator who owns/prepares this meeting file,
-    -- its review state, and reviewer bookkeeping.
+    -- Approval workflow: the initiator who created the file and the current
+    -- escalation stage. return_source records who handed the file back down to
+    -- the initiator ('moderator' | 'admin'), so the initiator re-submits to the
+    -- same party. Per-role send-back notes are shown together when both exist.
     created_by UUID REFERENCES users (id) ON DELETE SET NULL,
-    approval_status meeting_approval_status NOT NULL DEFAULT 'draft',
-    review_note TEXT,
+    stage meeting_stage NOT NULL DEFAULT 'initiator',
+    return_source VARCHAR(20),
+    moderator_note TEXT,
+    admin_note TEXT,
+    -- Resolution approval: a SECOND escalation chain that opens once the agenda
+    -- is approved (status 'ongoing'), running the same initiator -> moderator ->
+    -- admin route with its own stage, return source and per-role send-back
+    -- notes. Reaching 'approved' freezes the resolution for good.
+    resolution_stage meeting_stage NOT NULL DEFAULT 'initiator',
+    resolution_return_source VARCHAR(20),
+    resolution_moderator_note TEXT,
+    resolution_admin_note TEXT,
     submitted_at TIMESTAMP WITH TIME ZONE,
     reviewed_by UUID REFERENCES users (id) ON DELETE SET NULL,
     reviewed_at TIMESTAMP WITH TIME ZONE,
@@ -296,6 +312,7 @@ CREATE TABLE annexures (
     file_path VARCHAR(255),
     summary TEXT,
     annexure_serial INTEGER DEFAULT 1,
+    uploaded_by UUID REFERENCES users (id) ON DELETE SET NULL,
     upload_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

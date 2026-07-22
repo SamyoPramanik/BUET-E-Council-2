@@ -369,15 +369,18 @@ const getAnnexures = async (req, res, next) => {
         
         if (type === 'agenda') type = 'agendaItem';
 
-        let query = 'SELECT * FROM annexures WHERE content_id = $1';
+        let query = `SELECT an.*, u.username AS uploaded_by_username
+                     FROM annexures an
+                     LEFT JOIN users u ON u.id = an.uploaded_by
+                     WHERE an.content_id = $1`;
         let params = [id];
 
         if (type) {
-            query += ' AND annexure_type = $2';
+            query += ' AND an.annexure_type = $2';
             params.push(type);
         }
 
-        query += ' ORDER BY annexure_serial ASC';
+        query += ' ORDER BY an.annexure_serial ASC';
 
         const result = await db.query(query, params);
         
@@ -433,8 +436,8 @@ const uploadAnnexure = async (req, res, next) => {
 
         // Save to DB
         const result = await db.query(
-            'INSERT INTO annexures (content_id, annexure_type, file_name, file_path, summary, annexure_serial) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [id, annexure_type, file.originalname, fileKey, summary || '', nextSerial]
+            'INSERT INTO annexures (content_id, annexure_type, file_name, file_path, summary, annexure_serial, uploaded_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [id, annexure_type, file.originalname, fileKey, summary || '', nextSerial, req.user?.id || null]
         );
 
         res.status(201).json({ success: true, message: 'Annexure added successfully', data: result.rows[0] });

@@ -4,7 +4,8 @@ const { requireRole } = require('../middlewares/roleMiddleware');
 const templateController = require('../controllers/templateController');
 
 const router = express.Router();
-const canEdit = requireRole('admin', 'moderator');
+// Initiators, moderators, admins and superadmins can all author templates.
+const canEdit = requireRole('admin', 'superadmin', 'moderator', 'file_initiator');
 
 router.use(authMiddleware);
 

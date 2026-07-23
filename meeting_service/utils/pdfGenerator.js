@@ -438,7 +438,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
     }
 };
 
-const generateAttendanceSheet = async (meetingId) => {
+const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
     try {
         const meetingQuery = `SELECT title FROM meetings WHERE id = $1`;
         const presenteesQuery = `
@@ -460,9 +460,12 @@ const generateAttendanceSheet = async (meetingId) => {
         const presentees = presenteesResult.rows;
 
         // Serve a cached PDF when the underlying data is unchanged.
-        const cacheKey = pdfCacheKey(meetingId, 'attendance');
+        const cacheKey = groupFilter
+            ? pdfCacheKey(meetingId, `attendance-${groupFilter}`)
+            : pdfCacheKey(meetingId, 'attendance');
         const fingerprint = computeFingerprint({
             type: 'attendance',
+            group: groupFilter,
             meeting: { title: meeting.title },
             invitees: stableRows(presentees)
         });
@@ -500,14 +503,25 @@ const generateAttendanceSheet = async (meetingId) => {
                 serial: p.serial
             };
 
-            if (officeStr.includes('উপাচার্য')) {
+            const des = (p.designation || '').toLowerCase();
+            const office = officeStr.toLowerCase();
+
+            const isVC = (des.includes('উপাচার্য') || office.includes('উপাচার্য'))
+                && !(des.includes('উপ-উপাচার্য') || office.includes('উপ-উপাচার্য'));
+            const isProVC = des.includes('উপ-উপাচার্য') || office.includes('উপ-উপাচার্য');
+            const isDean = office.includes('ডিন') || office.includes('dean') || des.includes('ডিন') || des.includes('dean');
+            const isHead = office.includes('বিভাগীয় প্রধান');
+
+            if (isVC) {
+                admins.unshift(pObj);
+            } else if (isProVC) {
                 admins.push(pObj);
-            } else if (officeStr.includes('ডিন')) {
+            } else if (isDean) {
                 deans.push(pObj);
-            } else if (officeStr.includes('বিভাগীয় প্রধান')) {
+            } else if (isHead) {
                 heads.push(pObj);
             } else if (p.department_name) {
-                if (!depts[p.department_name]) depts[p.department_name] = { serial: p.department_serial, members: [] };
+                if (!depts[p.department_name]) depts[p.department_name] = { serial: p.department_serial ?? 9999, members: [] };
                 depts[p.department_name].members.push(pObj);
             } else {
                 others.push(pObj);
@@ -519,18 +533,6 @@ const generateAttendanceSheet = async (meetingId) => {
         heads.sort(bySerial);
         others.sort(bySerial);
         Object.values(depts).forEach(dept => dept.members.sort(bySerial));
-
-        admins.sort((a, b) => {
-            const aIsVc = a.office === 'উপাচার্য' || (a.office.includes('উপাচার্য') && !a.office.includes('উপ-উপাচার্য') && !a.office.includes('উপউপাচার্য'));
-            const bIsVc = b.office === 'উপাচার্য' || (b.office.includes('উপাচার্য') && !b.office.includes('উপ-উপাচার্য') && !b.office.includes('উপউপাচার্য'));
-            const aIsPro = a.office.includes('উপউপাচার্য') || a.office.includes('উপ-উপাচার্য');
-            const bIsPro = b.office.includes('উপউপাচার্য') || b.office.includes('উপ-উপাচার্য');
-            if (aIsVc) return -1;
-            if (bIsVc) return 1;
-            if (aIsPro) return -1;
-            if (bIsPro) return 1;
-            return bySerial(a, b);
-        });
 
         const fontBase64 = FONT_BASE64;
         const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); }` : '';
@@ -565,6 +567,37 @@ const generateAttendanceSheet = async (meetingId) => {
 
         const serialNo = meeting.title || 'Untitled';
 
+        const sortedDepts = Object.entries(depts)
+            .sort(([, a], [, b]) => (a.serial ?? Infinity) - (b.serial ?? Infinity));
+
+        const buildAllSections = () => {
+            let s = '';
+            s += renderTableSection('প্রশাসন', admins);
+            s += renderTableSection('সকল ডিন', deans);
+            s += renderTableSection('সকল বিভাগীয় প্রধান', heads);
+            sortedDepts.forEach(([deptName, dept]) => {
+                s += renderTableSection(deptName, dept.members);
+            });
+            s += renderTableSection('অন্যান্য সদস্য', others);
+            return s;
+        };
+
+        const buildSingleGroupSections = (filter) => {
+            let s = '';
+            if (filter === 'admins') s += renderTableSection('প্রশাসন', admins);
+            else if (filter === 'deans') s += renderTableSection('সকল ডিন', deans);
+            else if (filter === 'heads') s += renderTableSection('সকল বিভাগীয় প্রধান', heads);
+            else if (filter === 'others') s += renderTableSection('অন্যান্য সদস্য', others);
+            else if (filter.startsWith('dept:')) {
+                const deptName = filter.replace('dept:', '');
+                const dept = depts[deptName];
+                if (dept) s += renderTableSection(deptName, dept.members);
+            }
+            return s;
+        };
+
+        const sections = groupFilter ? buildSingleGroupSections(groupFilter) : buildAllSections();
+
         let html = `
         <!DOCTYPE html>
         <html>
@@ -597,16 +630,10 @@ const generateAttendanceSheet = async (meetingId) => {
             </style>
         </head>
         <body>
-            <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
             <div class="text-center sub-title">${serialNo}</div>
             
-            ${renderTableSection('প্রশাসন', admins)}
-            ${renderTableSection('সকল ডিন', deans)}
-            ${renderTableSection('সকল বিভাগীয় প্রধান', heads)}
-            ${Object.entries(depts)
-                .sort(([, a], [, b]) => (a.serial ?? Infinity) - (b.serial ?? Infinity))
-                .map(([deptName, dept]) => renderTableSection(deptName, dept.members)).join('')}
-            ${renderTableSection('অন্যান্য সদস্য', others)}
+            ${sections}
         </body>
         </html>
         `;

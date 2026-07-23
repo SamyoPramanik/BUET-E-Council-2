@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { useAuth } from "../../hooks/useAuth";
 import { canOperateMeeting } from "../../lib/meetingAccess";
+import AttendanceSheetOptionsModal from "./AttendanceSheetOptionsModal";
 
 export default function MaterialsView({ meeting }: { meeting: any }) {
   const { user } = useAuth();
@@ -17,6 +18,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
   const [uploadType, setUploadType] = useState<string | null>(null);
   const { mutate } = useSWRConfig();
   const readOnly = !canEdit;
+  const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
 
   const handleGenerate = async (type: string, filename: string) => {
     setGenerating(type);
@@ -36,6 +38,43 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
       toast.error(`Failed to generate ${type} PDF.`);
     } finally {
       setGenerating(null);
+    }
+  };
+
+  const handleGenerateAttendance = async (mode: 'all' | 'separate', selectedGroups: string[]) => {
+    if (mode === 'all') {
+      await handleGenerate('attendance', 'Attendance');
+    } else {
+      // Generate separate PDFs for each selected group
+      for (const group of selectedGroups) {
+        setGenerating(`attendance-${group}`);
+        try {
+          const response = await api.get(`/meetings/${meeting.id}/pdf/attendance`, {
+            params: { group },
+            responseType: 'blob'
+          });
+          
+          const url = window.URL.createObjectURL(new Blob([response.data]));
+          const link = document.createElement('a');
+          link.href = url;
+          // Create a readable filename from the group key
+          const groupLabel = group.startsWith('dept:') 
+            ? group.replace('dept:', '').replace(/\s+/g, '_')
+            : group;
+          link.setAttribute('download', `Attendance_${groupLabel}-${meeting.title}.pdf`);
+          document.body.appendChild(link);
+          link.click();
+          link.parentNode?.removeChild(link);
+          
+          // Small delay between downloads to avoid browser blocking
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (err) {
+          toast.error(`Failed to generate PDF for ${group}.`);
+        } finally {
+          setGenerating(null);
+        }
+      }
+      toast.success(`Generated ${selectedGroups.length} attendance PDF(s)`);
     }
   };
 
@@ -121,10 +160,10 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
 
         {/* Generate Attendance Sheet */}
         <div 
-          onClick={() => !generating && handleGenerate('attendance', 'Attendance')}
-          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-8 rounded-xl flex flex-col items-center justify-center gap-4 transition-all hover:shadow-md ${generating === 'attendance' ? 'opacity-70 pointer-events-none' : ''}`}
+          onClick={() => !generating && setIsAttendanceModalOpen(true)}
+          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-8 rounded-xl flex flex-col items-center justify-center gap-4 transition-all hover:shadow-md ${generating ? 'opacity-70 pointer-events-none' : ''}`}
         >
-          {generating === 'attendance' ? (
+          {generating ? (
             <Loader2 className="w-12 h-12 text-primary animate-spin" />
           ) : (
             <Users className="w-12 h-12 text-foreground group-hover:text-primary transition-colors" />
@@ -235,6 +274,13 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
 
         </div>
       </div>
+
+      <AttendanceSheetOptionsModal
+        isOpen={isAttendanceModalOpen}
+        onClose={() => setIsAttendanceModalOpen(false)}
+        meeting={meeting}
+        onGenerate={handleGenerateAttendance}
+      />
     </div>
   );
 }

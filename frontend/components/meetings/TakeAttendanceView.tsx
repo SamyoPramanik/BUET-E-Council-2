@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Check, X, Users, Building, ShieldCheck } from "lucide-react";
+import { Check, X, Users, Building, ShieldCheck, Search } from "lucide-react";
 
 interface Invitee {
   id: string;
@@ -26,6 +26,19 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
   const [presentIds, setPresentIds] = useState<Set<string>>(() => {
     return new Set(invitees.filter(i => i.is_present).map(i => i.id));
   });
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filter invitees by search query
+  const filteredInvitees = useMemo(() => {
+    if (!searchQuery.trim()) return invitees;
+    const q = searchQuery.toLowerCase();
+    return invitees.filter(m =>
+      m.name?.toLowerCase().includes(q) ||
+      m.designation?.toLowerCase().includes(q) ||
+      m.office_name?.toLowerCase().includes(q) ||
+      m.department_name?.toLowerCase().includes(q)
+    );
+  }, [invitees, searchQuery]);
 
   // Grouping logic
   const { vcGroup, deptGroups, othersGroup } = useMemo(() => {
@@ -39,7 +52,7 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
       return ['উপাচার্য', 'উপ-উপাচার্য', 'vc', 'pro-vc', 'vice chancellor', 'pro vice chancellor'].includes(lower) || lower.includes('উপাচার্য') || lower.includes('vc');
     };
 
-    invitees.forEach(invitee => {
+    filteredInvitees.forEach(invitee => {
       if (isVC(invitee.designation)) {
         vc.push(invitee);
       } else if (invitee.department_name) {
@@ -67,7 +80,7 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
       .map(([name, data]) => ({ name, members: data.members }));
 
     return { vcGroup: vc, deptGroups: sortedDepts, othersGroup: others };
-  }, [invitees]);
+  }, [filteredInvitees]);
 
   const toggleMember = (id: string) => {
     setPresentIds(prev => {
@@ -186,6 +199,25 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
         </div>
       </div>
 
+      <div className="relative mb-6">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Search by name, designation, department, or office..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 bg-input/20 border border-input rounded-md text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
       <div className="space-y-6">
         {renderGroup("VC & Pro-VC", vcGroup, <ShieldCheck className="w-5 h-5 text-primary" />)}
         
@@ -195,11 +227,19 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
 
         {renderGroup("Others", othersGroup, <Users className="w-5 h-5 text-muted-foreground" />)}
         
-        {invitees.length === 0 && (
+        {invitees.length === 0 && !searchQuery && (
           <div className="text-center py-16 bg-card border border-border rounded-lg shadow-sm">
             <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
             <h3 className="text-lg font-medium text-foreground">No invitees found</h3>
             <p className="text-muted-foreground mt-1">Please add invitees to the meeting first.</p>
+          </div>
+        )}
+
+        {invitees.length > 0 && filteredInvitees.length === 0 && searchQuery && (
+          <div className="text-center py-16 bg-card border border-border rounded-lg shadow-sm">
+            <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+            <h3 className="text-lg font-medium text-foreground">No results found</h3>
+            <p className="text-muted-foreground mt-1">No invitees match &ldquo;{searchQuery}&rdquo;</p>
           </div>
         )}
       </div>

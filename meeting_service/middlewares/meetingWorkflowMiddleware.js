@@ -159,6 +159,31 @@ const requireMeetingAuthor = async (req, res, next) => {
 // follow the same stage rules as content editing.
 const requireMeetingOperator = requireMeetingAuthor;
 
+// Email sending is a separate action from the workflow — admin/superadmin/moderator
+// can send emails at any stage (as long as the meeting isn't completed).
+const requireEmailSender = async (req, res, next) => {
+    try {
+        if (!req.user) return next(new CustomError('You are not logged in.', 401));
+
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found.', 404));
+
+        // Only admin/superadmin/moderator can send emails
+        if (!isAdminRole(req.user) && req.user.role !== 'moderator') {
+            return next(new CustomError('Only admin, superadmin, or moderator can send emails.', 403));
+        }
+
+        // Cannot send emails for completed meetings
+        if (isCompleted(meeting)) {
+            return next(new CustomError('Cannot send emails for completed meetings.', 403));
+        }
+
+        return next();
+    } catch (err) {
+        next(err);
+    }
+};
+
 // Resolution phase. Opens only once the agenda is approved (which is what makes
 // the meeting 'ongoing'), then runs its own escalation chain on
 // resolution_stage. Reaching 'approved' there freezes the resolution for good.
@@ -214,4 +239,5 @@ module.exports = {
     requireMeetingAuthor,
     requireMeetingOperator,
     requireResolutionEditor,
+    requireEmailSender,
 };

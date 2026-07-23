@@ -1,7 +1,7 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
-const { requireMeetingAuthor, requireMeetingOperator, requireResolutionEditor } = require('../middlewares/meetingWorkflowMiddleware');
+const { requireMeetingAuthor, requireMeetingOperator, requireResolutionEditor, requireEmailSender } = require('../middlewares/meetingWorkflowMiddleware');
 const meetingController = require('../controllers/meetingController');
 const { auditLog } = require('../middlewares/auditMiddleware');
 const multer = require('multer');
@@ -69,7 +69,13 @@ router.put('/:id/attendance', requireResolutionEditor, meetingController.saveAtt
 router.get('/:id/pdf/:type', meetingController.generatePdf);
 
 // Send agenda (or any ad-hoc message) via email to selected invitees
-router.post('/:id/send-email', requireMeetingOperator, meetingController.sendAgendaEmail);
+router.post('/:id/send-email', requireEmailSender, meetingController.sendAgendaEmail);
+
+// Send meeting notice email to selected invitees (draft/ongoing meetings only)
+router.post('/:id/send-notice', requireEmailSender, meetingController.sendNoticeEmail);
+
+// Send agenda email with PDF attached to selected invitees (ongoing meetings only)
+router.post('/:id/send-agenda-email', requireEmailSender, meetingController.sendAgendaEmailBulk);
 
 // Endpoint for uploading material PDFs
 router.post('/:id/materials/upload', requireMeetingOperator, upload.single('file'), meetingController.uploadMaterial);

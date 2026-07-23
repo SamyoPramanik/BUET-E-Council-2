@@ -47,19 +47,25 @@ const sendMail = async ({ from, to, subject, html, attachments = [] }) => {
         throw new Error('Email sending is disabled: SMTP_HOST is not configured');
     }
 
-    await transport.sendMail({
-        from: process.env.MAIL_FROM || process.env.SMTP_USER,
-        replyTo: from,
-        to,
-        subject,
-        html,
-        attachments: attachments.map(({ filename, content, contentType }) => ({
-            filename,
-            content,
-            encoding: 'base64',
-            contentType,
-        })),
-    });
+    try {
+        const info = await transport.sendMail({
+            from: process.env.MAIL_FROM || process.env.SMTP_USER,
+            replyTo: from,
+            to,
+            subject,
+            html,
+            attachments: attachments.map(({ filename, content, contentType }) => ({
+                filename,
+                content,
+                encoding: 'base64',
+                contentType,
+            })),
+        });
+        return info;
+    } catch (error) {
+        console.error('[mailer] Failed to send email:', error.message);
+        throw error;
+    }
 };
 
 module.exports = { sendMail };

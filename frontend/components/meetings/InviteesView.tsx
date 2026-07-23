@@ -3,12 +3,12 @@
 import { useState, useMemo } from "react";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
-import { Mail, Plus, CheckCircle, Clock, Trash2, Users, ShieldCheck, Building, Check, X, ChevronDown, LayoutList, Layers, Pencil } from "lucide-react";
+import { Mail, Plus, CheckCircle, Clock, Trash2, Users, ShieldCheck, Building, Check, X, ChevronDown, LayoutList, Layers, Pencil, Bell } from "lucide-react";
 import SearchableSelect from "../SearchableSelect";
 import CustomSelect from "../CustomSelect";
 import DataTable from "../DataTable";
 import TakeAttendanceView from "./TakeAttendanceView";
-import SendAgendaModal from "./SendAgendaModal";
+import SendAgendaModal, { type EmailMode } from "./SendAgendaModal";
 
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
@@ -18,6 +18,8 @@ import { canOperateMeeting, canEditResolution } from "../../lib/meetingAccess";
 export default function InviteesView({ meeting, type, mutate }: { meeting: any, type: string, mutate: any }) {
   const { user } = useAuth();
   const canEdit = canOperateMeeting(user, meeting);
+  // Simple role check for email sending — only admin/superadmin/moderator
+  const canSendEmail = user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'moderator';
   // Attendance belongs to the resolution phase (approved + ongoing), which
   // opens for the initiator/moderator even though agenda editing is locked.
   const canAttendance = canEditResolution(user, meeting);
@@ -31,6 +33,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const [isTakingAttendance, setIsTakingAttendance] = useState(false);
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
   const [isSendAgendaModalOpen, setIsSendAgendaModalOpen] = useState(false);
+  const [emailModalMode, setEmailModalMode] = useState<EmailMode>("custom");
   const [isBulkDeleteMode, setIsBulkDeleteMode] = useState(false);
   const [selectedInviteeIds, setSelectedInviteeIds] = useState<Set<string>>(new Set());
   const [inviteeViewMode, setInviteeViewMode] = useState<'list' | 'grouped'>('list');
@@ -315,10 +318,23 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     { key: "department_name", label: "Department" },
     { key: "office_name", label: "Office" },
     {
-      key: "email_sent",
-      label: "Agenda Sent",
+      key: "notice_mail_sent",
+      label: "Notice",
       render: (val: any) => val ? (
-        <span className="inline-flex items-center gap-1 bg-accent text-accent-foreground px-2 py-0.5 rounded-full text-xs font-medium">
+        <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-full text-xs font-medium">
+          <CheckCircle className="w-3 h-3" /> Sent
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 bg-muted text-muted-foreground px-2 py-0.5 rounded-full text-xs font-medium">
+          <Clock className="w-3 h-3" /> Not Sent
+        </span>
+      )
+    },
+    {
+      key: "agenda_mail_sent",
+      label: "Agenda",
+      render: (val: any) => val ? (
+        <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-full text-xs font-medium">
           <CheckCircle className="w-3 h-3" /> Sent
         </span>
       ) : (
@@ -710,13 +726,29 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                     <Plus className="w-4 h-4" />
                     {isFetching ? "Fetching..." : "Fetch From Members"}
                   </button>
-                                    <button
-                    onClick={() => setIsSendAgendaModalOpen(true)}
-                    className="bg-secondary text-secondary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
-                  >
-
-                    Send Agenda
-                  </button>
+                  {canSendEmail && (meeting.status === 'draft' || meeting.status === 'ongoing') && (
+                    <button
+                      onClick={() => {
+                        setEmailModalMode("notice");
+                        setIsSendAgendaModalOpen(true);
+                      }}
+                      className="bg-secondary text-secondary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
+                    >
+                      <Bell className="w-4 h-4" />
+                      Send Notice
+                    </button>
+                  )}
+                  {!readOnly && (
+                    <button
+                      onClick={() => {
+                        setEmailModalMode("custom");
+                        setIsSendAgendaModalOpen(true);
+                      }}
+                      className="bg-secondary text-secondary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
+                    >
+                      Send Agenda
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       const initiallySelected = allMembers
@@ -842,12 +874,14 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         />
       )}
 
-            {/* Send Agenda Modal (Invitees tab + Email tab) */}
+            {/* Send Email Modal (Invitees tab) */}
       <SendAgendaModal
         isOpen={isSendAgendaModalOpen}
         onClose={() => setIsSendAgendaModalOpen(false)}
         meeting={meeting}
         currentUserEmail={currentUserEmail}
+        mode={emailModalMode}
+        onSent={() => mutateInvitees()}
       />
 
 

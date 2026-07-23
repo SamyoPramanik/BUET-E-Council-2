@@ -30,7 +30,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
 
   const getDisplayName = (annexure: Annexure) => {
     const num = annexure.global_serial || annexure.annexure_serial;
-    const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;
+    const prefix = (type !== 'resolution' && annexure.is_suppli) ? `Supple. Annexure-${num}` : `Annexure-${num}`;
     return `${prefix}. ${annexure.file_name}`;
   };
   

@@ -65,9 +65,7 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
                 {annexures.map((annexure: any) => {
                   const num = annexure.global_serial || annexure.annexure_serial;
                   const banglaNum = toBanglaDigits(num);
-                  const label = (annexure.is_suppli || agenda.is_suppli)
-                    ? `সাপ্লি. পরিশিষ্ট-${banglaNum}`
-                    : `পরিশিষ্ট- ${banglaNum}`;
+                  const label = `পরিশিষ্ট-${banglaNum}`;
 
                   return (
                     <li key={annexure.id}>

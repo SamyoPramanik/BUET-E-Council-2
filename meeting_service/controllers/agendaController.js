@@ -386,10 +386,9 @@ const getAnnexures = async (req, res, next) => {
                               JOIN agenda prev_a ON prev_a.id = prev_an.content_id
                               WHERE prev_a.meeting_id = a.meeting_id
                                 AND prev_an.annexure_type = an.annexure_type
-                                AND prev_a.is_suppli = a.is_suppli
                                 AND (
-                                  (prev_a.agenda_serial, prev_an.annexure_serial) <
-                                  (a.agenda_serial, an.annexure_serial)
+                                  (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
+                                  (a.is_suppli, a.agenda_serial, an.annexure_serial)
                                 )
                             ) + 1 AS global_serial
                      FROM annexures an

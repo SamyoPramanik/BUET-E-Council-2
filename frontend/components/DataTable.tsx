@@ -20,7 +20,7 @@ interface DataTableProps {
   // the moved row's original index and its drop target index instead, so the
   // caller can derive a serial from its actual new neighbors. Takes priority
   // over onReorder if both are passed.
-  onReorderItem?: (sourceIndex: number, targetIndex: number) => void;
+  onReorderItem?: (sourceIndex: number, targetIndex: number) => Promise<void> | void;
   onUploadCsv?: (file: File) => void;
   onDownloadCsv?: () => void;
   onAdd?: () => void;
@@ -133,7 +133,7 @@ export default function DataTable({
     e.currentTarget.classList.remove('opacity-50');
   };
 
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
     const sourceIndexStr = e.dataTransfer.getData('text/plain');
     if (!sourceIndexStr) return;
@@ -148,6 +148,7 @@ export default function DataTable({
       return;
     }
 
+    const oldData = [...data];
     const newData = [...data];
     const [movedItem] = newData.splice(sourceIndex, 1);
     newData.splice(targetIndex, 0, movedItem);
@@ -155,7 +156,11 @@ export default function DataTable({
     setData(newData);
 
     if (onReorderItem) {
-      onReorderItem(sourceIndex, targetIndex);
+      try {
+        await onReorderItem(sourceIndex, targetIndex);
+      } catch (err) {
+        setData(oldData);
+      }
     } else if (onReorder) {
       const reorderedItems = newData.map((item, index) => ({
         id: item.id,
@@ -295,8 +300,10 @@ export default function DataTable({
                     className={`hover:bg-accent/50 transition-colors bg-card ${(onEdit || selectable) ? 'cursor-pointer' : ''}`}
                   >
                     {reorderEnabled && (
-                      <td className={`px-4 py-4 text-muted-foreground flex items-center justify-center ${isRowDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-20'}`}>
-                        <GripVertical className={`w-4 h-4 ${isRowDraggable ? 'opacity-50 hover:opacity-100' : 'opacity-20'}`} />
+                      <td className="px-4 py-4 text-muted-foreground flex items-center justify-center">
+                        {isRowDraggable ? (
+                          <GripVertical className="w-4 h-4 opacity-50 hover:opacity-100 cursor-grab active:cursor-grabbing" />
+                        ) : null}
                       </td>
                     )}
 

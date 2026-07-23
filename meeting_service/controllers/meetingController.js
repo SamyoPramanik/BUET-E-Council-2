@@ -843,13 +843,17 @@ const removeInvitee = async (req, res, next) => {
 };
 
 const updateInvitee = async (req, res, next) => {
+    const client = await db.pool.connect();
     try {
         const { id, inviteeId } = req.params;
-        const { name, email, designation, department_id, office_id, is_present } = req.body;
+        const { name, email, designation, department_id, office_id, is_present, serial } = req.body;
 
         const meeting = await loadMeeting(req);
         if (meeting) {
             const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditInvitees) {
+                return next(new CustomError('Access denied. Invitees are locked for your level.', 403));
+            }
             if (!access.canEditPresentees) {
                 const targetRes = await db.query('SELECT is_present FROM invitees WHERE id = $1 AND meeting_id = $2', [inviteeId, id]);
                 const isTargetPresent = targetRes.rows[0]?.is_present;
@@ -859,25 +863,79 @@ const updateInvitee = async (req, res, next) => {
             }
         }
 
-        const result = await db.query(
+        await client.query('BEGIN');
+
+        const currentRes = await client.query('SELECT serial, is_present FROM invitees WHERE id = $1 AND meeting_id = $2', [inviteeId, id]);
+        if (currentRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return next(new CustomError('Invitee not found', 404));
+        }
+
+        const currentInvitee = currentRes.rows[0];
+        const oldSerial = currentInvitee.serial;
+        let finalSerial = oldSerial;
+
+        if (serial !== undefined && serial !== null && !Number.isNaN(parseInt(serial, 10))) {
+            const requestedSerial = parseInt(serial, 10);
+            if (requestedSerial !== oldSerial) {
+                if (meeting) {
+                    const access = calculateMeetingAccess(meeting, req.user);
+                    if (!access.canEditPresentees) {
+                        if (currentInvitee.is_present) {
+                            await client.query('ROLLBACK');
+                            return next(new CustomError('Access denied. Presentees are locked and cannot be reordered.', 403));
+                        }
+                        const minSerial = Math.min(oldSerial, requestedSerial);
+                        const maxSerial = Math.max(oldSerial, requestedSerial);
+                        const presenteeCheck = await client.query(
+                            `SELECT COUNT(*)::int as count
+                             FROM invitees
+                             WHERE meeting_id = $1 AND is_present = true AND serial >= $2 AND serial <= $3 AND id != $4`,
+                            [id, minSerial, maxSerial, inviteeId]
+                        );
+                        if (presenteeCheck.rows[0].count > 0) {
+                            await client.query('ROLLBACK');
+                            return next(new CustomError('Access denied. Order of presentees is locked.', 403));
+                        }
+                    }
+                }
+
+                if (requestedSerial > oldSerial) {
+                    await client.query(
+                        'UPDATE invitees SET serial = serial - 1 WHERE meeting_id = $1 AND serial > $2 AND serial <= $3 AND id != $4',
+                        [id, oldSerial, requestedSerial, inviteeId]
+                    );
+                } else if (requestedSerial < oldSerial) {
+                    await client.query(
+                        'UPDATE invitees SET serial = serial + 1 WHERE meeting_id = $1 AND serial >= $2 AND serial < $3 AND id != $4',
+                        [id, requestedSerial, oldSerial, inviteeId]
+                    );
+                }
+                finalSerial = requestedSerial;
+            }
+        }
+
+        const result = await client.query(
             `UPDATE invitees SET 
                 name = COALESCE($1, name), 
                 email = COALESCE($2, email), 
                 designation = COALESCE($3, designation), 
                 department_id = $4, 
                 office_id = $5,
-                is_present = COALESCE($6, is_present)
-            WHERE id = $7 AND meeting_id = $8 RETURNING *`,
-            [name, email, designation, department_id || null, office_id || null, is_present !== undefined ? is_present : null, inviteeId, id]
+                is_present = COALESCE($6, is_present),
+                serial = $7
+            WHERE id = $8 AND meeting_id = $9 RETURNING *`,
+            [name, email, designation, department_id || null, office_id || null, is_present !== undefined ? is_present : null, finalSerial, inviteeId, id]
         );
 
-        if (result.rows.length === 0) {
-            return next(new CustomError('Invitee not found', 404));
-        }
-
+        await client.query('COMMIT');
+        await db.query('DELETE FROM search_cache').catch(() => {});
         res.status(200).json({ success: true, message: 'Invitee updated', data: result.rows[0] });
     } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
         next(error);
+    } finally {
+        client.release();
     }
 };
 
@@ -887,12 +945,14 @@ const reorderInvitee = async (req, res, next) => {
         const requestedSerial = parseInt(req.body.serial, 10);
         if (Number.isNaN(requestedSerial)) return next(new CustomError('serial is required', 400));
 
+        const meeting = await loadMeeting(req);
+
         const client = await db.pool.connect();
         try {
             await client.query('BEGIN');
 
             const inviteeRes = await client.query(
-                'SELECT serial FROM invitees WHERE id = $1 AND meeting_id = $2',
+                'SELECT serial, is_present FROM invitees WHERE id = $1 AND meeting_id = $2',
                 [inviteeId, id]
             );
             if (inviteeRes.rows.length === 0) {
@@ -901,7 +961,35 @@ const reorderInvitee = async (req, res, next) => {
                 return next(new CustomError('Invitee not found', 404));
             }
 
-            const oldSerial = inviteeRes.rows[0].serial ?? requestedSerial;
+            const targetInvitee = inviteeRes.rows[0];
+            const oldSerial = targetInvitee.serial ?? requestedSerial;
+
+            if (meeting) {
+                const access = calculateMeetingAccess(meeting, req.user);
+                if (!access.canEditPresentees) {
+                    if (targetInvitee.is_present) {
+                        await client.query('ROLLBACK');
+                        client.release();
+                        return next(new CustomError('Access denied. Presentees are locked and cannot be reordered.', 403));
+                    }
+
+                    const minSerial = Math.min(oldSerial, requestedSerial);
+                    const maxSerial = Math.max(oldSerial, requestedSerial);
+
+                    const presenteeCheck = await client.query(
+                        `SELECT COUNT(*)::int as count
+                         FROM invitees
+                         WHERE meeting_id = $1 AND is_present = true AND serial >= $2 AND serial <= $3 AND id != $4`,
+                        [id, minSerial, maxSerial, inviteeId]
+                    );
+
+                    if (presenteeCheck.rows[0].count > 0) {
+                        await client.query('ROLLBACK');
+                        client.release();
+                        return next(new CustomError('Access denied. Order of presentees is locked and cannot be changed.', 403));
+                    }
+                }
+            }
 
             // Meeting-local move only — never touches members.serial, even for
             // member-linked invitees. This is intentionally decoupled from the
@@ -1039,28 +1127,69 @@ const addPresentees = async (req, res, next) => {
 };
 
 const updatePresentee = async (req, res, next) => {
+    const client = await db.pool.connect();
     try {
         const { id, presenteeId } = req.params;
-        const { name, email, designation, department_id, office_id, is_present } = req.body;
-        const result = await db.query(
+        const { name, email, designation, department_id, office_id, is_present, serial } = req.body;
+
+        const meeting = await loadMeeting(req);
+        if (meeting) {
+            const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditPresentees) {
+                return next(new CustomError('Access denied. Presentee data is locked for your level.', 403));
+            }
+        }
+
+        await client.query('BEGIN');
+
+        const currentRes = await client.query('SELECT serial FROM invitees WHERE id = $1 AND meeting_id = $2', [presenteeId, id]);
+        if (currentRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return next(new CustomError('Presentee not found', 404));
+        }
+
+        const oldSerial = currentRes.rows[0].serial;
+        let finalSerial = oldSerial;
+
+        if (serial !== undefined && serial !== null && !Number.isNaN(parseInt(serial, 10))) {
+            const requestedSerial = parseInt(serial, 10);
+            if (requestedSerial !== oldSerial) {
+                if (requestedSerial > oldSerial) {
+                    await client.query(
+                        'UPDATE invitees SET serial = serial - 1 WHERE meeting_id = $1 AND serial > $2 AND serial <= $3 AND id != $4',
+                        [id, oldSerial, requestedSerial, presenteeId]
+                    );
+                } else if (requestedSerial < oldSerial) {
+                    await client.query(
+                        'UPDATE invitees SET serial = serial + 1 WHERE meeting_id = $1 AND serial >= $2 AND serial < $3 AND id != $4',
+                        [id, requestedSerial, oldSerial, presenteeId]
+                    );
+                }
+                finalSerial = requestedSerial;
+            }
+        }
+
+        const result = await client.query(
             `UPDATE invitees SET 
                 name = COALESCE($1, name), 
                 email = COALESCE($2, email), 
                 designation = COALESCE($3, designation), 
                 department_id = $4, 
                 office_id = $5,
-                is_present = COALESCE($6, is_present)
-            WHERE id = $7 AND meeting_id = $8 RETURNING *`,
-            [name, email, designation, department_id || null, office_id || null, is_present !== undefined ? is_present : null, presenteeId, id]
+                is_present = COALESCE($6, is_present),
+                serial = $7
+            WHERE id = $8 AND meeting_id = $9 RETURNING *`,
+            [name, email, designation, department_id || null, office_id || null, is_present !== undefined ? is_present : null, finalSerial, presenteeId, id]
         );
 
-        if (result.rows.length === 0) {
-            return next(new CustomError('Presentee not found', 404));
-        }
-
+        await client.query('COMMIT');
+        await db.query('DELETE FROM search_cache').catch(() => {});
         res.status(200).json({ success: true, message: 'Presentee updated', data: result.rows[0] });
     } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
         next(error);
+    } finally {
+        client.release();
     }
 };
 

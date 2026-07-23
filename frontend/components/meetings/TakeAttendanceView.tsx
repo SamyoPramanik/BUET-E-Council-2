@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Check, X, Users, Building, ShieldCheck } from "lucide-react";
+import { Check, X, Users, Building, ShieldCheck, Search } from "lucide-react";
 
 interface Invitee {
   id: string;
@@ -27,47 +27,67 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
     return new Set(invitees.filter(i => i.is_present).map(i => i.id));
   });
 
-  // Grouping logic
-  const { vcGroup, deptGroups, othersGroup } = useMemo(() => {
-    const vc: Invitee[] = [];
-    const depts: Record<string, { serial: number, members: Invitee[] }> = {};
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Search filtering
+  const filteredInvitees = useMemo(() => {
+    if (!searchQuery.trim()) return invitees;
+    const q = searchQuery.toLowerCase();
+    return invitees.filter(i => 
+      (i.name && i.name.toLowerCase().includes(q)) ||
+      (i.designation && i.designation.toLowerCase().includes(q))
+    );
+  }, [invitees, searchQuery]);
+
+  // Grouping logic — matching InviteesView categorization
+  const isVC = (m: Invitee) => {
+    const des = (m.designation || '').toLowerCase();
+    const office = (m.office_name || '').toLowerCase();
+    return (des.includes('উপাচার্য') || office.includes('উপাচার্য')) && !(des.includes('উপ-উপাচার্য') || office.includes('উপ-উপাচার্য'));
+  };
+
+  const isProVC = (m: Invitee) => {
+    const des = (m.designation || '').toLowerCase();
+    const office = (m.office_name || '').toLowerCase();
+    return des.includes('উপ-উপাচার্য') || office.includes('উপ-উপাচার্য');
+  };
+
+  const isDean = (m: Invitee) => {
+    const des = (m.designation || '').toLowerCase();
+    const office = (m.office_name || '').toLowerCase();
+    return office.includes('ডিন') || office.includes('dean') || des.includes('ডিন') || des.includes('dean');
+  };
+
+  const isHead = (m: Invitee) => (m.office_name || '').toLowerCase().includes('বিভাগীয় প্রধান');
+
+  const groups = useMemo(() => {
+    const admin: Invitee[] = [];
+    const deans: Invitee[] = [];
+    const heads: Invitee[] = [];
+    const deptGroups: Record<string, { serial: number, members: Invitee[] }> = {};
     const others: Invitee[] = [];
 
-    const isVC = (designation: string) => {
-      if (!designation) return false;
-      const lower = designation.toLowerCase();
-      return ['উপাচার্য', 'উপ-উপাচার্য', 'vc', 'pro-vc', 'vice chancellor', 'pro vice chancellor'].includes(lower) || lower.includes('উপাচার্য') || lower.includes('vc');
-    };
-
-    invitees.forEach(invitee => {
-      if (isVC(invitee.designation)) {
-        vc.push(invitee);
-      } else if (invitee.department_name) {
-        if (!depts[invitee.department_name]) {
-          depts[invitee.department_name] = {
-            serial: invitee.department_serial || 9999,
-            members: []
-          };
+    filteredInvitees.forEach(m => {
+      if (isVC(m)) admin.unshift(m);
+      else if (isProVC(m)) admin.push(m);
+      else if (isDean(m)) deans.push(m);
+      else if (isHead(m)) heads.push(m);
+      else if (m.department_name) {
+        if (!deptGroups[m.department_name]) {
+          deptGroups[m.department_name] = { serial: m.department_serial ?? 9999, members: [] };
         }
-        depts[invitee.department_name].members.push(invitee);
+        deptGroups[m.department_name].members.push(m);
       } else {
-        others.push(invitee);
+        others.push(m);
       }
     });
 
-    // Sort each group's members by seniority (presentee/invitee serial)
-    const bySerial = (a: Invitee, b: Invitee) => (a.serial ?? Infinity) - (b.serial ?? Infinity);
-    vc.sort(bySerial);
-    others.sort(bySerial);
-    Object.values(depts).forEach(dept => dept.members.sort(bySerial));
-
-    // Sort departments by serial
-    const sortedDepts = Object.entries(depts)
+    const sortedDeptGroups = Object.entries(deptGroups)
       .sort(([, a], [, b]) => a.serial - b.serial)
       .map(([name, data]) => ({ name, members: data.members }));
 
-    return { vcGroup: vc, deptGroups: sortedDepts, othersGroup: others };
-  }, [invitees]);
+    return { admin, deans, heads, sortedDeptGroups, others };
+  }, [filteredInvitees]);
 
   const toggleMember = (id: string) => {
     setPresentIds(prev => {
@@ -177,29 +197,53 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
         </div>
       </div>
 
-      <div className="bg-muted/30 p-4 rounded-lg border border-border mb-6 flex items-center justify-between">
+      <div className="bg-muted/30 p-4 rounded-lg border border-border mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-green-500" />
           <span className="text-sm font-medium text-foreground">Total Present:</span>
           <span className="text-lg font-bold text-primary">{presentIds.size}</span>
           <span className="text-sm text-muted-foreground">/ {invitees.length}</span>
         </div>
+
+        {/* Search Bar */}
+        <div className="relative w-full sm:w-72">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by name or designation..."
+            className="w-full pl-9 pr-8 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-6">
-        {renderGroup("VC & Pro-VC", vcGroup, <ShieldCheck className="w-5 h-5 text-primary" />)}
+        {renderGroup("প্রশাসন", groups.admin, <ShieldCheck className="w-5 h-5 text-primary" />)}
+        {renderGroup("সকল ডিন", groups.deans, <Building className="w-5 h-5 text-blue-500" />)}
+        {renderGroup("সকল বিভাগীয় প্রধান", groups.heads, <Building className="w-5 h-5 text-blue-500" />)}
         
-        {deptGroups.map(dept => 
+        {groups.sortedDeptGroups.map(dept => 
           renderGroup(dept.name, dept.members, <Building className="w-5 h-5 text-blue-500" />)
         )}
 
-        {renderGroup("Others", othersGroup, <Users className="w-5 h-5 text-muted-foreground" />)}
+        {renderGroup("অন্যান্য সদস্য", groups.others, <Users className="w-5 h-5 text-muted-foreground" />)}
         
-        {invitees.length === 0 && (
+        {filteredInvitees.length === 0 && (
           <div className="text-center py-16 bg-card border border-border rounded-lg shadow-sm">
             <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-            <h3 className="text-lg font-medium text-foreground">No invitees found</h3>
-            <p className="text-muted-foreground mt-1">Please add invitees to the meeting first.</p>
+            <h3 className="text-lg font-medium text-foreground">No members found</h3>
+            <p className="text-muted-foreground mt-1">
+              {searchQuery ? "No members match your search criteria." : "Please add invitees to the meeting first."}
+            </p>
           </div>
         )}
       </div>

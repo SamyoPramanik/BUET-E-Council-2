@@ -880,7 +880,9 @@ router.post('/roles', requireAuth, async (req, res) => {
 router.put('/roles/reorder', requireAuth, async (req, res) => {
     try {
         const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
-        if (!isAdmin && req.user.role_level === null) {
+        const userLevel = req.user.role_level;
+
+        if (!isAdmin && userLevel === null) {
             return res.status(403).json({ success: false, message: 'Forbidden' });
         }
 
@@ -892,6 +894,26 @@ router.put('/roles/reorder', requireAuth, async (req, res) => {
         const currentRolesRes = await db.query('SELECT id, level FROM roles');
         const roleMap = new Map(currentRolesRes.rows.map(r => [r.id, parseInt(r.level, 10)]));
         const sortedLevels = Array.from(roleMap.values()).sort((a, b) => b - a);
+
+        if (!isAdmin) {
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                const originalLevel = roleMap.get(item.id);
+
+                if (originalLevel !== undefined && originalLevel >= userLevel) {
+                    const targetLevel = item.level !== undefined && item.level !== null
+                        ? parseInt(item.level, 10)
+                        : (sortedLevels[i] !== undefined ? sortedLevels[i] : (items.length - i));
+
+                    if (targetLevel !== originalLevel) {
+                        return res.status(403).json({
+                            success: false,
+                            message: 'You cannot change the order of your own level or higher levels.'
+                        });
+                    }
+                }
+            }
+        }
 
         await db.query('BEGIN');
 
@@ -909,7 +931,7 @@ router.put('/roles/reorder', requireAuth, async (req, res) => {
         await db.query('COMMIT');
         res.status(200).json({ success: true, message: 'Roles reordered successfully' });
     } catch (err) {
-        await db.query('ROLLBACK');
+        await db.query('ROLLBACK').catch(() => {});
         console.error('Reorder roles error:', err);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }

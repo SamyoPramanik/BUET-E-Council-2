@@ -221,6 +221,25 @@ export default function RoleAndUserManagementPage() {
   };
 
   const handleRoleReorder = async (newOrder: any[]) => {
+    const userLevel = isAdmin ? 999999 : (currentUser?.role_level !== null && currentUser?.role_level !== undefined ? Number(currentUser.role_level) : -1);
+
+    if (!isAdmin) {
+      const oldMap = new Map(roles.map((r: any) => [r.id, Number(r.level)]));
+      const existingLevels = roles.map((r: any) => Number(r.level)).sort((a, b) => b - a);
+
+      for (let i = 0; i < newOrder.length; i++) {
+        const r = newOrder[i];
+        const oldLvl = oldMap.get(r.id);
+        const newLvl = existingLevels[i] !== undefined ? existingLevels[i] : (newOrder.length - i);
+
+        if (oldLvl !== undefined && oldLvl >= userLevel && newLvl !== oldLvl) {
+          toast.error("You cannot change the order of your own level or higher levels.");
+          await mutateRoles();
+          return;
+        }
+      }
+    }
+
     try {
       const existingLevels = roles.map((r: any) => Number(r.level)).sort((a, b) => b - a);
       const reorderedItems = newOrder.map((r: any, idx: number) => ({
@@ -463,6 +482,12 @@ export default function RoleAndUserManagementPage() {
             onEdit={openRoleEditModal}
             onDelete={handleDeleteRole}
             onReorder={isAdmin || (currentUser?.role_level !== null && currentUser?.role_level !== undefined) ? handleRoleReorder : undefined}
+            isRowReorderable={(row: any) => {
+              if (isAdmin) return true;
+              const userLevel = currentUser?.role_level !== null && currentUser?.role_level !== undefined ? Number(currentUser.role_level) : -1;
+              const roleLevel = Number(row.level);
+              return roleLevel < userLevel;
+            }}
           />
         </div>
       )}

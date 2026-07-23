@@ -39,6 +39,7 @@ interface DataTableProps {
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
   onToggleSelectAll?: (visibleIds: string[], selectAll: boolean) => void;
+  isRowReorderable?: (row: any) => boolean;
 }
 
 export default function DataTable({
@@ -62,7 +63,8 @@ export default function DataTable({
   selectable,
   selectedIds,
   onToggleSelect,
-  onToggleSelectAll
+  onToggleSelectAll,
+  isRowReorderable
 }: DataTableProps) {
   const [data, setData] = useState(initialData);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -74,12 +76,18 @@ export default function DataTable({
     setData(initialData);
   }, [initialData]);
 
+  const canRowDrag = (row: any) => {
+    if (!reorderEnabled) return false;
+    if (isRowReorderable) return isRowReorderable(row);
+    if (row.reorderable !== undefined) return !!row.reorderable;
+    return true;
+  };
+
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc';
     } else if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') {
-      // Third click removes sorting
       setSortConfig(null);
       return;
     }
@@ -100,7 +108,6 @@ export default function DataTable({
     });
   }, [data, sortConfig]);
 
-  // Client-side search across the visible columns (opt-in via `searchable`).
   const filteredData = useMemo(() => {
     if (!searchable || !query.trim()) return sortedData;
     const q = query.trim().toLowerCase();
@@ -113,6 +120,11 @@ export default function DataTable({
   const isIndeterminate = selectable && !isAllSelected && filteredData.some(row => selectedIds?.has(row.id));
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
+    const row = filteredData[index];
+    if (!canRowDrag(row)) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('text/plain', index.toString());
     e.currentTarget.classList.add('opacity-50');
   };
@@ -123,9 +135,18 @@ export default function DataTable({
 
   const handleDrop = (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
-    const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    const sourceIndexStr = e.dataTransfer.getData('text/plain');
+    if (!sourceIndexStr) return;
+    const sourceIndex = parseInt(sourceIndexStr, 10);
     
-    if (sourceIndex === targetIndex) return;
+    if (isNaN(sourceIndex) || sourceIndex === targetIndex) return;
+
+    const sourceRow = filteredData[sourceIndex];
+    const targetRow = filteredData[targetIndex];
+
+    if (!canRowDrag(sourceRow) || !canRowDrag(targetRow)) {
+      return;
+    }
 
     const newData = [...data];
     const [movedItem] = newData.splice(sourceIndex, 1);
@@ -136,7 +157,6 @@ export default function DataTable({
     if (onReorderItem) {
       onReorderItem(sourceIndex, targetIndex);
     } else if (onReorder) {
-      // Re-calculate serials (assuming 1-indexed based on array position)
       const reorderedItems = newData.map((item, index) => ({
         id: item.id,
         serial: index + 1
@@ -261,22 +281,24 @@ export default function DataTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredData.map((row, index) => (
-                <tr 
-                  key={row.id || index}
-                  draggable={reorderEnabled}
-                  onDragStart={(e) => handleDragStart(e, index)}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, index)}
-                  onClick={() => selectable ? (onToggleSelect && onToggleSelect(row.id)) : (onEdit && onEdit(row))}
-                  className={`hover:bg-accent/50 transition-colors bg-card ${(onEdit || selectable) ? 'cursor-pointer' : ''}`}
-                >
-                  {reorderEnabled && (
-                    <td className="px-4 py-4 cursor-grab active:cursor-grabbing text-muted-foreground flex items-center justify-center">
-                      <GripVertical className="w-4 h-4 opacity-50 hover:opacity-100" />
-                    </td>
-                  )}
+              {filteredData.map((row, index) => {
+                const isRowDraggable = canRowDrag(row);
+                return (
+                  <tr 
+                    key={row.id || index}
+                    draggable={isRowDraggable}
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, index)}
+                    onClick={() => selectable ? (onToggleSelect && onToggleSelect(row.id)) : (onEdit && onEdit(row))}
+                    className={`hover:bg-accent/50 transition-colors bg-card ${(onEdit || selectable) ? 'cursor-pointer' : ''}`}
+                  >
+                    {reorderEnabled && (
+                      <td className={`px-4 py-4 text-muted-foreground flex items-center justify-center ${isRowDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-20'}`}>
+                        <GripVertical className={`w-4 h-4 ${isRowDraggable ? 'opacity-50 hover:opacity-100' : 'opacity-20'}`} />
+                      </td>
+                    )}
 
                   {selectable && (
                     <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
@@ -327,7 +349,8 @@ export default function DataTable({
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+            })}
               
               {filteredData.length === 0 && (
                 <tr>

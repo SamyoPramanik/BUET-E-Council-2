@@ -552,6 +552,10 @@ router.put('/users/:id', requireAuth, async (req, res) => {
             queryParams
         );
 
+        if (status === 'inactive') {
+            await db.query('DELETE FROM sessions WHERE user_id = $1', [id]);
+        }
+
         logAudit({
             userId: req.user.id, username: req.user.username, action: 'update',
             entityType: 'user', entityId: id,
@@ -604,6 +608,10 @@ router.patch('/users/:id/status', requireAuth, async (req, res) => {
             `UPDATE users SET status = $1 WHERE id = $2 RETURNING id, username, role, role_id, status`,
             [status, id]
         );
+
+        if (status === 'inactive') {
+            await db.query('DELETE FROM sessions WHERE user_id = $1', [id]);
+        }
 
         logAudit({
             userId: req.user.id, username: req.user.username, action: 'update_status',

@@ -13,7 +13,7 @@ const requireAuth = async (req, res, next) => {
         }
 
         const query = `
-            SELECT s.*, u.username, u.role, u.role_id, u.email, r.level as role_level, r.level_title 
+            SELECT s.*, u.username, u.role, u.role_id, u.email, u.status, r.level as role_level, r.level_title 
             FROM sessions s
             JOIN users u ON s.user_id = u.id
             LEFT JOIN roles r ON u.role_id = r.id
@@ -30,6 +30,15 @@ const requireAuth = async (req, res, next) => {
         }
 
         const session = rows[0];
+
+        if (session.status === 'inactive') {
+            await db.query('DELETE FROM sessions WHERE user_id = $1', [session.user_id]);
+            return res.status(401).json({
+                success: false,
+                message: 'Account is inactive. Access denied.',
+                error_code: 'UNAUTHORIZED'
+            });
+        }
 
         // Attach user and session to request
         req.user = {

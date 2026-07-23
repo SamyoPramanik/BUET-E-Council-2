@@ -397,70 +397,72 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
 
             <div className="space-y-4">
                 
-                {/* Handover Actions (Requires Password Confirmation) */}
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
-                    <ArrowRightLeft className="w-3.5 h-3.5" /> Handover to Upper Levels
+                {/* Handover Actions (Requires Password Confirmation - Only shown to Non-Admin Editors) */}
+                {!isAdmin && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
+                      <ArrowRightLeft className="w-3.5 h-3.5" /> Handover to Upper Levels
+                    </div>
+                    
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={() => openHandoverModal('handover-agenda', 'Main Agenda handed over to upper levels.')}
+                        disabled={!access.canHandoverAgenda}
+                        title={!access.canHandoverAgenda ? (meeting.agenda_handover_level !== null ? "Already handed over" : "No access to handover") : ""}
+                        className="w-full text-left px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                      >
+                        <span>Handover Main Agenda</span>
+                        {meeting.agenda_handover_level !== null && (
+                          <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">
+                            Handed over ({getLevelTitle(meeting.agenda_handover_level)})
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => openHandoverModal('handover-suppli-agenda', 'Supplementary Agenda handed over to upper levels.')}
+                        disabled={!access.canHandoverSuppliAgenda}
+                        title={!access.canHandoverSuppliAgenda ? (meeting.suppli_agenda_handover_level !== null ? "Already handed over" : "No access to handover") : ""}
+                        className="w-full text-left px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                      >
+                        <span>Handover Suppli Agenda</span>
+                        {meeting.suppli_agenda_handover_level !== null && (
+                          <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">
+                            Handed over ({getLevelTitle(meeting.suppli_agenda_handover_level)})
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => openHandoverModal('handover-resolution', 'Resolution handed over to upper levels.')}
+                        disabled={!access.canHandoverResolution}
+                        title={!access.canHandoverResolution ? (meeting.resolution_handover_level !== null ? "Already handed over" : "No access to handover") : ""}
+                        className="w-full text-left px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                      >
+                        <span>Handover Resolution</span>
+                        {meeting.resolution_handover_level !== null && (
+                          <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">
+                            Handed over ({getLevelTitle(meeting.resolution_handover_level)})
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => openHandoverModal('handover-resolution-status', 'Resolution Status handed over to upper levels.')}
+                        disabled={!access.canHandoverResolutionStatus}
+                        title={!access.canHandoverResolutionStatus ? (meeting.resolution_status_handover_level !== null ? "Already handed over" : "No access to handover") : ""}
+                        className="w-full text-left px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                      >
+                        <span>Handover Resolution Status</span>
+                        {meeting.resolution_status_handover_level !== null && (
+                          <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">
+                            Handed over ({getLevelTitle(meeting.resolution_status_handover_level)})
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                  
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={() => openHandoverModal('handover-agenda', 'Main Agenda handed over to upper levels.')}
-                      disabled={!access.canHandoverAgenda}
-                      title={!access.canHandoverAgenda ? (meeting.agenda_handover_level !== null ? "Already handed over" : "Highest editor level available - no upper level to handover to") : ""}
-                      className="w-full text-left px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
-                    >
-                      <span>Handover Main Agenda</span>
-                      {meeting.agenda_handover_level !== null && (
-                        <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">
-                          Handed over ({getLevelTitle(meeting.agenda_handover_level)})
-                        </span>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => openHandoverModal('handover-suppli-agenda', 'Supplementary Agenda handed over to upper levels.')}
-                      disabled={!access.canHandoverSuppliAgenda}
-                      title={!access.canHandoverSuppliAgenda ? (meeting.suppli_agenda_handover_level !== null ? "Already handed over" : "Highest editor level available - no upper level to handover to") : ""}
-                      className="w-full text-left px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
-                    >
-                      <span>Handover Suppli Agenda</span>
-                      {meeting.suppli_agenda_handover_level !== null && (
-                        <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">
-                          Handed over ({getLevelTitle(meeting.suppli_agenda_handover_level)})
-                        </span>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => openHandoverModal('handover-resolution', 'Resolution handed over to upper levels.')}
-                      disabled={!access.canHandoverResolution}
-                      title={!access.canHandoverResolution ? (meeting.resolution_handover_level !== null ? "Already handed over" : "Highest editor level available - no upper level to handover to") : ""}
-                      className="w-full text-left px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
-                    >
-                      <span>Handover Resolution</span>
-                      {meeting.resolution_handover_level !== null && (
-                        <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">
-                          Handed over ({getLevelTitle(meeting.resolution_handover_level)})
-                        </span>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => openHandoverModal('handover-resolution-status', 'Resolution Status handed over to upper levels.')}
-                      disabled={!access.canHandoverResolutionStatus}
-                      title={!access.canHandoverResolutionStatus ? (meeting.resolution_status_handover_level !== null ? "Already handed over" : "Highest editor level available - no upper level to handover to") : ""}
-                      className="w-full text-left px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
-                    >
-                      <span>Handover Resolution Status</span>
-                      {meeting.resolution_status_handover_level !== null && (
-                        <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">
-                          Handed over ({getLevelTitle(meeting.resolution_status_handover_level)})
-                        </span>
-                      )}
-                    </button>
-                  </div>
-                </div>
+                )}
 
                 <hr className="border-border" />
 

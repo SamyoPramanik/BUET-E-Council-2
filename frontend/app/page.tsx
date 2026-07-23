@@ -9,9 +9,9 @@ import { useAuth } from "../hooks/useAuth";
 
 export default function HomePage() {
   const { user } = useAuth();
-  // Viewer and syndicate member can access both academic and syndicate meetings.
+  // Viewer and syndicate member / member_type none can access both academic and syndicate meetings.
   // Academic member viewer can see only academic meetings.
-  const restrictedType: 'academic' | 'syndicate' | null = (user?.role === 'viewer' && user?.member_type !== 'syndicate')
+  const restrictedType: 'academic' | 'syndicate' | null = (user?.role === 'viewer' && user?.member_type === 'academic')
     ? 'academic'
     : null;
 

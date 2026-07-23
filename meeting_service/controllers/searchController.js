@@ -9,7 +9,7 @@ const SNIPPET_OPTS = 'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=15
 
 const viewerTypeRestriction = (user) => {
     if (user?.role !== 'viewer') return null;
-    if (user?.member_type === 'syndicate') return null;
+    if (user?.member_type === 'syndicate' || user?.member_type === 'none' || !user?.member_type) return null;
     return 'academic';
 };
 

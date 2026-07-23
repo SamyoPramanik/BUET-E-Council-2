@@ -770,3 +770,42 @@ VALUES (
         'উপ-উপাচার্য, বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়',
         'Pro-Vice Chancellor, Bangladesh University of Engineering and Technology'
     );
+
+-- Migration: Automatic invalidation of search_cache on any meeting or agenda changes
+CREATE OR REPLACE FUNCTION clear_search_cache_trigger_fn()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM search_cache;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_meetings ON meetings;
+CREATE TRIGGER trg_clear_search_cache_meetings
+AFTER INSERT OR UPDATE OR DELETE ON meetings
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_agenda ON agenda;
+CREATE TRIGGER trg_clear_search_cache_agenda
+AFTER INSERT OR UPDATE OR DELETE ON agenda
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_users ON users;
+CREATE TRIGGER trg_clear_search_cache_users
+AFTER INSERT OR UPDATE OR DELETE ON users
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_annexures ON annexures;
+CREATE TRIGGER trg_clear_search_cache_annexures
+AFTER INSERT OR UPDATE OR DELETE ON annexures
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_invitees ON invitees;
+CREATE TRIGGER trg_clear_search_cache_invitees
+AFTER INSERT OR UPDATE OR DELETE ON invitees
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_agenda_tags ON agenda_tags;
+CREATE TRIGGER trg_clear_search_cache_agenda_tags
+AFTER INSERT OR UPDATE OR DELETE ON agenda_tags
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();

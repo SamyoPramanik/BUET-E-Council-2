@@ -3,7 +3,7 @@ const db = require('../db');
 
 const viewerTypeRestriction = (user) => {
     if (user?.role !== 'viewer') return null;
-    if (user?.member_type === 'syndicate') return null;
+    if (user?.member_type === 'syndicate' || user?.member_type === 'none' || !user?.member_type) return null;
     return 'academic';
 };
 

@@ -14,7 +14,7 @@ const { loadMeeting, calculateMeetingAccess } = require('../middlewares/meetingW
 // only sees meetings of that type; 'none' (and every non-viewer role) sees both.
 const viewerTypeRestriction = (user) => {
     if (user?.role !== 'viewer') return null;
-    if (user?.member_type === 'syndicate') return null;
+    if (user?.member_type === 'syndicate' || user?.member_type === 'none' || !user?.member_type) return null;
     return 'academic';
 };
 

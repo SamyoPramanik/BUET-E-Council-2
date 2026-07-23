@@ -10,8 +10,9 @@ import { toBanglaDigits } from "../../../lib/banglaNumerals";
 import Header from "../../../components/Header";
 
 // Component to render a single agenda and its annexures
-function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highlightType }: { agenda: any, agendaPrefix: string | null, meetingStatus: string, highlightId: string | null, highlightType: string | null }) {
-  const { data: annexuresRes } = useSWR(`/agendas/${agenda.id}/annexures`, fetcher);
+function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highlightType, mainAgendaCount = 0 }: { agenda: any, agendaPrefix: string | null, meetingStatus: string, highlightId: string | null, highlightType: string | null, mainAgendaCount?: number }) {
+  // Only fetch resolution annexures on the public meeting page
+  const { data: annexuresRes } = useSWR(`/agendas/${agenda.id}/annexures?type=resolution`, fetcher);
   const annexures = annexuresRes?.data || [];
 
   const isAgendaHighlight = highlightId === agenda.id && highlightType !== 'resolution';
@@ -27,6 +28,10 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const displaySerial = agenda.is_suppli
+    ? mainAgendaCount + (agenda.agenda_serial || 1)
+    : (agenda.agenda_serial || 1);
+
   return (
     <div
       id={`agenda-${agenda.id}`}
@@ -34,7 +39,7 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
       className={`border border-border rounded-lg p-6 bg-card transition-shadow ${isAgendaHighlight && showHighlight ? 'ring-2 ring-primary' : ''}`}
     >
       <h3 className="font-semibold text-lg mb-4 text-foreground">
-        প্রস্তাব নং: {(agendaPrefix || '') + toBanglaDigits(agenda.agenda_serial)}
+        প্রস্তাবনা নং {(agendaPrefix || '') + toBanglaDigits(displaySerial)}
       </h3>
       <div
         className="prose prose-sm dark:prose-invert max-w-none mb-4 text-muted-foreground"
@@ -52,27 +57,35 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
             className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground"
             dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.resolution) }}
           />
-        </div>
-      )}
 
-      {annexures.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-border">
-          <h4 className="font-semibold mb-2 text-foreground text-sm">সংযোজনী (Annexures):</h4>
-          <ul className="space-y-2 mt-2">
-            {annexures.map((annexure: any) => (
-              <li key={annexure.id}>
-                <a
-                  href={annexure.url || '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-primary hover:underline flex items-center gap-2"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
-                  {annexure.file_name}
-                </a>
-              </li>
-            ))}
-          </ul>
+          {annexures.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-border/50">
+              <h5 className="font-semibold mb-2 text-foreground text-xs uppercase tracking-wider">সংযোজনী:</h5>
+              <ul className="space-y-2">
+                {annexures.map((annexure: any) => {
+                  const num = annexure.global_serial || annexure.annexure_serial;
+                  const banglaNum = toBanglaDigits(num);
+                  const label = (annexure.is_suppli || agenda.is_suppli)
+                    ? `সাপ্লি. পরিশিষ্ট-${banglaNum}`
+                    : `পরিশিষ্ট- ${banglaNum}`;
+
+                  return (
+                    <li key={annexure.id}>
+                      <a
+                        href={annexure.url || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline flex items-center gap-2 font-medium"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
+                        {label}
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -303,9 +316,12 @@ export default function PublicMeetingView() {
             {agendas.length > 0 && (
               <section>
                 <div className="space-y-6">
-                  {agendas.map((agenda: any) => (
-                    <AgendaItem key={agenda.id} agenda={agenda} agendaPrefix={meeting.agenda_prefix} meetingStatus={meeting.status} highlightId={highlightId} highlightType={highlightType} />
-                  ))}
+                  {(() => {
+                    const mainAgendaCount = (agendas || []).filter((a: any) => !a.is_suppli).length;
+                    return agendas.map((agenda: any) => (
+                      <AgendaItem key={agenda.id} agenda={agenda} agendaPrefix={meeting.agenda_prefix} meetingStatus={meeting.status} highlightId={highlightId} highlightType={highlightType} mainAgendaCount={mainAgendaCount} />
+                    ));
+                  })()}
                 </div>
               </section>
             )}

@@ -38,7 +38,7 @@ const getAgendams = async (req, res, next) => {
                 params.push(is_suppli === 'true');
             }
 
-            query += ' ORDER BY agenda_serial ASC';
+            query += ' ORDER BY is_suppli ASC, agenda_serial ASC';
         } else {
             query += ' ORDER BY created_at DESC';
         }
@@ -379,8 +379,21 @@ const getAnnexures = async (req, res, next) => {
         
         if (type === 'agenda') type = 'agendaItem';
 
-        let query = `SELECT an.*, u.username AS uploaded_by_username
+        let query = `SELECT an.*, a.is_suppli, u.username AS uploaded_by_username,
+                            (
+                              SELECT COUNT(*)::int
+                              FROM annexures prev_an
+                              JOIN agenda prev_a ON prev_a.id = prev_an.content_id
+                              WHERE prev_a.meeting_id = a.meeting_id
+                                AND prev_an.annexure_type = an.annexure_type
+                                AND prev_a.is_suppli = a.is_suppli
+                                AND (
+                                  (prev_a.agenda_serial, prev_an.annexure_serial) <
+                                  (a.agenda_serial, an.annexure_serial)
+                                )
+                            ) + 1 AS global_serial
                      FROM annexures an
+                     JOIN agenda a ON a.id = an.content_id
                      LEFT JOIN users u ON u.id = an.uploaded_by
                      WHERE an.content_id = $1`;
         let params = [id];
@@ -398,8 +411,6 @@ const getAnnexures = async (req, res, next) => {
         const annexures = await Promise.all(result.rows.map(async (annexure) => {
             if (annexure.file_path) {
                 try {
-                    // Since MinIO bucket is public and proxied via NGINX, we can directly link it!
-                    // Removing 'annexures/' prefix if file_path includes it since the bucket name is the root
                     annexure.url = `/storage/${annexure.file_path}`;
                 } catch (err) {
                     annexure.url = null;
@@ -421,7 +432,6 @@ const uploadAnnexure = async (req, res, next) => {
         let { annexure_type } = req.body;
         const file = req.file;
 
-        // Map 'agenda' to 'agendaItem' for the Postgres enum
         if (annexure_type === 'agenda') {
             annexure_type = 'agendaItem';
         }
@@ -430,21 +440,17 @@ const uploadAnnexure = async (req, res, next) => {
             return next(new CustomError('content_id, annexure_type, and file are required', 400));
         }
 
-        // Generate a unique file key
         const ext = file.originalname.split('.').pop();
         const fileKey = `annexures/${id}/${crypto.randomBytes(8).toString('hex')}.${ext}`;
 
-        // Upload to S3/MinIO
         await storageService.uploadFile(file.buffer, fileKey, file.mimetype);
 
-        // Get max serial
         const maxSerialResult = await db.query(
             'SELECT COALESCE(MAX(annexure_serial), 0) as max_serial FROM annexures WHERE content_id = $1',
             [id]
         );
         const nextSerial = parseInt(maxSerialResult.rows[0].max_serial, 10) + 1;
 
-        // Save to DB
         const result = await db.query(
             'INSERT INTO annexures (content_id, annexure_type, file_name, file_path, summary, annexure_serial, uploaded_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
             [id, annexure_type, file.originalname, fileKey, summary || '', nextSerial, req.user?.id || null]

@@ -25,6 +25,12 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   const agendas = response?.data || [];
   const { confirm, ConfirmModal } = useConfirm();
 
+  const { data: mainAgendasRes } = useSWR(
+    isSuppliView ? `/agendas?meeting_id=${meeting.id}&is_suppli=false` : null,
+    fetcher
+  );
+  const mainAgendaCount = isSuppliView ? (mainAgendasRes?.data || []).length : 0;
+
   const isEmergencyMeeting = typeof window !== 'undefined'
     && window.localStorage.getItem(`meeting_criteria_${meeting.id}`) === 'emergency';
   const emergencyLimitReached = !isSuppliView && isEmergencyMeeting && agendas.length >= 1;
@@ -252,7 +258,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                     <div>
                       {/* Bengali proposal heading: "প্রস্তাবনা নং {prefix}{01}" */}
                       <h3 className="font-semibold text-lg text-primary">
-                        প্রস্তাবনা নং {(meeting.agenda_prefix || '') + toBanglaDigits(agenda.agenda_serial || index + 1)}
+                        প্রস্তাবনা নং {(meeting.agenda_prefix || '') + toBanglaDigits(isSuppliView ? mainAgendaCount + (agenda.agenda_serial || index + 1) : (agenda.agenda_serial || index + 1))}
                       </h3>
                     </div>
                     <div className="flex gap-2">
@@ -380,7 +386,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 >
                   <GripVertical className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                   <span className="font-medium text-xs">
-                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + toBanglaDigits(agenda.agenda_serial || index + 1)}
+                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + toBanglaDigits(isSuppliView ? mainAgendaCount + (agenda.agenda_serial || index + 1) : (agenda.agenda_serial || index + 1))}
                   </span>
                   <span className="text-xs text-muted-foreground truncate flex-1 opacity-60">
                     {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 38) : '...'}...

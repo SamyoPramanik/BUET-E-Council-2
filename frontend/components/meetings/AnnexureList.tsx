@@ -12,6 +12,8 @@ interface Annexure {
   file_name: string;
   url: string | null;
   annexure_serial: number;
+  global_serial?: number | null;
+  is_suppli?: boolean | null;
   uploaded_by_username?: string | null;
   upload_date?: string | null;
 }
@@ -25,6 +27,12 @@ interface AnnexureListProps {
 export default function AnnexureList({ contentId, type, readOnly = false }: AnnexureListProps) {
   const { data: response, mutate } = useSWR(`/agendas/${contentId}/annexures?type=${type}`, fetcher, { fallbackData: { data: [] } });
   const annexures: Annexure[] = response?.data || [];
+
+  const getDisplayName = (annexure: Annexure) => {
+    const num = annexure.global_serial || annexure.annexure_serial;
+    const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;
+    return `${prefix}. ${annexure.file_name}`;
+  };
   
   const [isUploading, setIsUploading] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -121,11 +129,11 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   };
 
   return (
-    <div className="mt-6 border-t border-border pt-6 animate-in fade-in duration-300">
+    <div className="mt-3 border-t border-border/40 pt-3 animate-in fade-in duration-300">
       <ConfirmModal />
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold flex items-center gap-2 text-foreground">
-          <Paperclip className="w-4 h-4" /> 
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground">
+          <Paperclip className="w-3.5 h-3.5" /> 
           Annexures ({annexures.length})
         </h3>
         
@@ -140,19 +148,19 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
             <button 
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              className="text-[11px] font-medium bg-secondary/80 text-secondary-foreground hover:bg-secondary px-2.5 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
             >
-              {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
               Add Annexure
             </button>
           )}
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {annexures.length === 0 ? (
-          <div className="text-center py-6 bg-muted/30 border border-dashed border-border rounded-lg">
-            <p className="text-xs text-muted-foreground">No annexures attached yet.</p>
+          <div className="text-center py-3 bg-muted/20 border border-dashed border-border/40 rounded">
+            <p className="text-[11px] text-muted-foreground/70">No annexures attached yet.</p>
           </div>
         ) : (
           annexures.map((annexure) => (
@@ -163,26 +171,26 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
               onDragEnd={(!readOnly) ? handleDragEnd : undefined}
               onDragOver={(!readOnly) ? handleDragOver : undefined}
               onDrop={(e) => !readOnly && handleDrop(e, annexure.id)}
-              className={`flex items-center gap-3 p-3 bg-card border border-border rounded-md group hover:border-primary/30 transition-colors shadow-sm ${(!readOnly) ? 'cursor-grab active:cursor-grabbing' : ''}`}
+              className={`flex items-center gap-2 p-1.5 px-2.5 bg-card/40 border border-border/40 rounded group hover:border-primary/30 transition-colors ${(!readOnly) ? 'cursor-grab active:cursor-grabbing' : ''}`}
             >
               {!readOnly && (
-                <div className="text-muted-foreground/50 group-hover:text-muted-foreground cursor-grab">
-                  <GripVertical className="w-4 h-4" />
+                <div className="text-muted-foreground/40 group-hover:text-muted-foreground cursor-grab">
+                  <GripVertical className="w-3.5 h-3.5" />
                 </div>
               )}
-              <div className="bg-primary/10 p-1.5 rounded text-primary">
-                <File className="w-4 h-4" />
+              <div className="bg-muted p-1 rounded text-muted-foreground">
+                <File className="w-3.5 h-3.5" />
               </div>
               <div className="flex-1 min-w-0">
                 {annexure.url ? (
-                  <a href={annexure.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary hover:underline truncate block">
-                    {annexure.file_name}
+                  <a href={annexure.url} target="_blank" rel="noopener noreferrer" className="text-xs font-normal text-foreground/80 hover:text-primary hover:underline truncate block">
+                    {getDisplayName(annexure)}
                   </a>
                 ) : (
-                  <p className="text-sm font-medium text-foreground truncate">{annexure.file_name}</p>
+                  <p className="text-xs font-normal text-foreground/80 truncate">{getDisplayName(annexure)}</p>
                 )}
                 {annexure.uploaded_by_username && (
-                  <p className="text-xs text-muted-foreground truncate">
+                  <p className="text-[10px] text-muted-foreground/60 truncate">
                     Uploaded by {annexure.uploaded_by_username}
                     {annexure.upload_date ? ` · ${new Date(annexure.upload_date).toLocaleDateString()}` : ""}
                   </p>

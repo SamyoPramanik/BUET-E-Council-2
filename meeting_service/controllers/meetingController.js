@@ -234,19 +234,49 @@ const createMeeting = async (req, res, next) => {
 };
 
 const updateMeeting = async (req, res, next) => {
+    const client = await db.pool.connect();
     try {
         const { id } = req.params;
         const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix } = req.body;
 
-        const currentMeeting = await db.query('SELECT status, is_completed FROM meetings WHERE id = $1', [id]);
-        if (currentMeeting.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
 
-        let finalStatus = status;
-        if (currentMeeting.rows[0].status === 'past' || currentMeeting.rows[0].is_completed) {
-            finalStatus = 'past';
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canEditMeeting) {
+            return next(new CustomError('You do not have permission to edit Meeting Info.', 403));
         }
 
-        const result = await db.query(
+        await client.query('BEGIN');
+
+        if (status && status === 'past') {
+            await client.query(
+                `UPDATE meetings SET is_completed = TRUE, completed_at = COALESCE(completed_at, NOW()), completed_by = COALESCE(completed_by, $1) WHERE id = $2`,
+                [req.user?.id || null, id]
+            );
+
+            // 1. Clear existing presentees for this meeting first
+            await client.query('DELETE FROM presentees WHERE meeting_id = $1', [id]);
+
+            // 2. Fetch presented invitees (is_present = true) and insert into presentees
+            const inviteesRes = await client.query(
+                'SELECT name, designation, department_id, office_id, serial FROM invitees WHERE meeting_id = $1 AND is_present = true ORDER BY serial ASC',
+                [id]
+            );
+            for (const invitee of inviteesRes.rows) {
+                await client.query(
+                    'INSERT INTO presentees (meeting_id, name, designation, department_id, office_id, serial) VALUES ($1, $2, $3, $4, $5, $6)',
+                    [id, invitee.name || null, invitee.designation, invitee.department_id, invitee.office_id, invitee.serial]
+                );
+            }
+        } else if (status && (status === 'draft' || status === 'ongoing')) {
+            await client.query(
+                `UPDATE meetings SET is_completed = FALSE WHERE id = $1`,
+                [id]
+            );
+        }
+
+        const result = await client.query(
             `UPDATE meetings SET
                 title = COALESCE($1, title),
                 meeting_title = COALESCE($2, meeting_title),
@@ -261,12 +291,16 @@ const updateMeeting = async (req, res, next) => {
                 transcript = COALESCE($11, transcript),
                 agenda_prefix = COALESCE($12, agenda_prefix)
              WHERE id = $13 RETURNING *`,
-            [title, meeting_title, description, conclusion, meeting_date, type, finalStatus, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, id]
+            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, id]
         );
 
-        res.status(200).json({ success: true, message: 'Meeting updated', data: result.rows[0] });
+        await client.query('COMMIT');
+        res.status(200).json({ success: true, message: 'Meeting updated successfully', data: result.rows[0] });
     } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
         next(error);
+    } finally {
+        client.release();
     }
 };
 
@@ -1153,13 +1187,15 @@ const bulkImportMeeting = async (req, res, next) => {
 
         const meetingId = meetingResult.rows[0].id;
 
-        // 2. Insert Presentees
+        // 2. Insert Presentees & Invitees
         if (presentees && Array.isArray(presentees)) {
             // Legacy meetings have no serial data of their own — the JSON array's
             // order *is* the seniority order, so index 0 -> serial 1, etc.
             for (const [index, p] of presentees.entries()) {
                 // Combine prefix and name if prefix exists
-                const fullName = p.prefix ? `${p.prefix} ${p.name}` : p.name;
+                const rawName = p.name ? p.name.trim() : null;
+                const rawPrefix = p.prefix ? p.prefix.trim() : null;
+                const fullName = rawPrefix ? (rawName ? `${rawPrefix} ${rawName}` : rawPrefix) : rawName;
 
                 await client.query(
                     `INSERT INTO presentees
@@ -1167,7 +1203,22 @@ const bulkImportMeeting = async (req, res, next) => {
                     VALUES ($1, $2, $3, $4, $5, $6)`,
                     [
                         fullName,
-                        p.designation,
+                        p.designation || null,
+                        p.department_id || null,
+                        p.office_id || null,
+                        meetingId,
+                        index + 1
+                    ]
+                );
+
+                await client.query(
+                    `INSERT INTO invitees
+                    (name, email, designation, department_id, office_id, meeting_id, serial, is_present)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)`,
+                    [
+                        fullName,
+                        p.email || null,
+                        p.designation || null,
                         p.department_id || null,
                         p.office_id || null,
                         meetingId,

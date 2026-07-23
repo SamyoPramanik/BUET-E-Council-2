@@ -255,7 +255,7 @@ CREATE TABLE templates (
 
 CREATE TABLE invitees (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-    name VARCHAR(255) NOT NULL,
+    name VARCHAR(255),
     email VARCHAR(255),
     designation VARCHAR(255),
     department_id UUID REFERENCES departments (id) ON DELETE SET NULL,

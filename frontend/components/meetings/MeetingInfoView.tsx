@@ -9,7 +9,7 @@ import CustomSelect from "../CustomSelect";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
-import { canAuthorMeeting, canCompleteMeeting, canUnlockItem, canSendBack } from "../../lib/meetingAccess";
+import { canAuthorMeeting, canUnlockItem, canSendBack } from "../../lib/meetingAccess";
 import MeetingWorkflowBar from "./MeetingWorkflowBar";
 import { Trash2, Video, Lock, Unlock, ArrowRightLeft, CheckCircle2, ShieldAlert, CornerDownLeft, Clock, Users, UserCheck, FileText, Layers, KeyRound } from "lucide-react";
 
@@ -20,7 +20,8 @@ const typeOptions = [
 
 const statusOptions = [
   { value: "draft", label: "Draft" },
-  { value: "ongoing", label: "Ongoing" }
+  { value: "ongoing", label: "Ongoing" },
+  { value: "past", label: "Past" }
 ];
 
 export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mutate: any }) {
@@ -67,9 +68,6 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
 
   const [saving, setSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
-  const [confirmTitle, setConfirmTitle] = useState("");
-  const [isCompleting, setIsCompleting] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Password confirmation modal for Handover
@@ -196,25 +194,6 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
     }
   };
 
-  const handleCompleteMeeting = async () => {
-    if (confirmTitle !== formData.title) {
-      toast.error("Meeting Serial Number does not match confirmation.");
-      return;
-    }
-    
-    setIsCompleting(true);
-    try {
-      await api.post(`/meetings/${meeting.id}/complete`, { title: confirmTitle });
-      mutate();
-      toast.success("Meeting marked as completed. Members transferred from invitees to presentees.");
-      setIsCompleteModalOpen(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to complete meeting');
-    } finally {
-      setIsCompleting(false);
-    }
-  };
-
   const currentTargetRoleObj = allRoles.find((r: any) => String(r.level) === selectedTargetLevel);
   const currentTargetTitle = currentTargetRoleObj ? currentTargetRoleObj.level_title : "Lower Level";
 
@@ -305,11 +284,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
 
               <div className="space-y-1">
                 <label className="text-sm font-medium">Meeting Status</label>
-                {isPast ? (
-                  <div className="w-full px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-md text-sm font-bold text-emerald-800 dark:text-emerald-300 cursor-not-allowed">
-                    Past (Completed)
-                  </div>
-                ) : readOnly ? (
+                {readOnly ? (
                   <div className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm opacity-50 cursor-not-allowed capitalize">
                     {formData.status}
                   </div>
@@ -714,23 +689,6 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                     )}
                   </div>
                 </div>
-
-                <hr className="border-border" />
-
-                {/* Mark Completed Section (Authorized user / Admin) */}
-                {canCompleteMeeting(user, meeting) && (
-                  <div className="pt-1">
-                    <button
-                      onClick={() => {
-                        setConfirmTitle("");
-                        setIsCompleteModalOpen(true);
-                      }}
-                      className="w-full py-2.5 px-4 bg-primary text-primary-foreground font-semibold hover:bg-primary/90 text-xs rounded-md shadow-sm transition-colors flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle2 className="w-4 h-4" /> Mark Meeting Completed
-                    </button>
-                  </div>
-                )}
               </div>
           </div>
         </div>
@@ -785,48 +743,6 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Completion Confirmation Modal */}
-      {isCompleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-          <div className="bg-card w-full max-w-md rounded-lg shadow-xl border border-border flex flex-col p-6 animate-in zoom-in-95 duration-200 space-y-4">
-            <h2 className="text-xl font-bold">Confirm Meeting Completion</h2>
-            <p className="text-sm text-muted-foreground">
-              This will mark the meeting status as <span className="font-bold text-foreground">Past</span>, freeze member attendance from invitees to presentees, and lock the meeting.
-            </p>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-destructive">
-                Type meeting serial number <span className="font-bold">"{formData.title}"</span> for confirmation:
-              </label>
-              <input 
-                type="text" 
-                value={confirmTitle}
-                onChange={(e) => setConfirmTitle(e.target.value)}
-                placeholder="Meeting Serial Number"
-                className="w-full px-3 py-2 bg-input/20 border border-destructive/50 rounded-md focus:ring-1 focus:ring-destructive focus:border-destructive text-sm"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button 
-                onClick={() => setIsCompleteModalOpen(false)}
-                disabled={isCompleting}
-                className="px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground rounded-md transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleCompleteMeeting}
-                disabled={confirmTitle !== formData.title || isCompleting}
-                className="px-4 py-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 text-sm font-medium rounded-md shadow-sm transition-colors disabled:opacity-50"
-              >
-                {isCompleting ? "Processing..." : "Confirm & Mark Completed"}
-              </button>
-            </div>
           </div>
         </div>
       )}

@@ -272,19 +272,7 @@ CREATE TABLE invitees (
     member_id UUID REFERENCES members (id) ON DELETE SET NULL
 );
 
--- Presentees Table (Linking table for attendance)
-CREATE TABLE presentees (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-    name VARCHAR(255),
-    designation VARCHAR(255),
-    department_id UUID REFERENCES departments (id) ON DELETE SET NULL,
-    office_id UUID REFERENCES offices (id) ON DELETE SET NULL,
-    meeting_id UUID REFERENCES meetings (id) ON DELETE CASCADE,
-    -- Seniority order captured at the time attendance was finalized (from the
-    -- source invitee/member's serial at that moment). Frozen from then on —
-    -- unlike invitees, presentees are never resynced to later member changes.
-    serial INTEGER
-);
+DROP TABLE IF EXISTS presentees CASCADE;
 
 -- Keeps a pending invitee's serial in lockstep with the seniority-order
 -- serial of the member it was created from, so reordering members (add-time

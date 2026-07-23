@@ -113,7 +113,7 @@ const findMatchingEntityTerms = async (queryText) => {
             [patternArray]
         ).catch(() => ({ rows: [] })),
         db.query(
-            `SELECT DISTINCT name FROM presentees WHERE name ILIKE ANY($1)`,
+            `SELECT DISTINCT name FROM invitees WHERE is_present = true AND name ILIKE ANY($1)`,
             [patternArray]
         ).catch(() => ({ rows: [] })),
         db.query(

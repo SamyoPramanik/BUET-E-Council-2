@@ -310,6 +310,22 @@ const requireResolutionEditor = async (req, res, next) => {
     }
 };
 
+const requirePresenteesEditor = async (req, res, next) => {
+    try {
+        if (!req.user) return next(new CustomError('You are not logged in.', 401));
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found.', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canEditPresentees) {
+            return next(new CustomError('Access denied. Presentees/Attendance is locked for your level.', 403));
+        }
+        return next();
+    } catch (err) {
+        next(err);
+    }
+};
+
 module.exports = {
     resolveMeetingId,
     loadMeeting,
@@ -317,4 +333,5 @@ module.exports = {
     requireMeetingAuthor,
     requireMeetingOperator,
     requireResolutionEditor,
+    requirePresenteesEditor,
 };

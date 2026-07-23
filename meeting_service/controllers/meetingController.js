@@ -254,21 +254,6 @@ const updateMeeting = async (req, res, next) => {
                 `UPDATE meetings SET is_completed = TRUE, completed_at = COALESCE(completed_at, NOW()), completed_by = COALESCE(completed_by, $1) WHERE id = $2`,
                 [req.user?.id || null, id]
             );
-
-            // 1. Clear existing presentees for this meeting first
-            await client.query('DELETE FROM presentees WHERE meeting_id = $1', [id]);
-
-            // 2. Fetch presented invitees (is_present = true) and insert into presentees
-            const inviteesRes = await client.query(
-                'SELECT name, designation, department_id, office_id, serial FROM invitees WHERE meeting_id = $1 AND is_present = true ORDER BY serial ASC',
-                [id]
-            );
-            for (const invitee of inviteesRes.rows) {
-                await client.query(
-                    'INSERT INTO presentees (meeting_id, name, designation, department_id, office_id, serial) VALUES ($1, $2, $3, $4, $5, $6)',
-                    [id, invitee.name || null, invitee.designation, invitee.department_id, invitee.office_id, invitee.serial]
-                );
-            }
         } else if (status && (status === 'draft' || status === 'ongoing')) {
             await client.query(
                 `UPDATE meetings SET is_completed = FALSE WHERE id = $1`,
@@ -774,6 +759,17 @@ const getInviteesEmails = async (req, res, next) => {
 const removeInvitee = async (req, res, next) => {
     try {
         const { id, inviteeId } = req.params;
+        const meeting = await loadMeeting(req);
+        if (meeting) {
+            const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditPresentees) {
+                const targetRes = await db.query('SELECT is_present FROM invitees WHERE id = $1 AND meeting_id = $2', [inviteeId, id]);
+                if (targetRes.rows[0]?.is_present) {
+                    return next(new CustomError('Access denied. Presentee data is locked for your level.', 403));
+                }
+            }
+        }
+
         const result = await db.query(
             'DELETE FROM invitees WHERE id = $1 AND meeting_id = $2 RETURNING *',
             [inviteeId, id]
@@ -792,10 +788,30 @@ const removeInvitee = async (req, res, next) => {
 const updateInvitee = async (req, res, next) => {
     try {
         const { id, inviteeId } = req.params;
-        const { name, email, designation, department_id, office_id } = req.body;
+        const { name, email, designation, department_id, office_id, is_present } = req.body;
+
+        const meeting = await loadMeeting(req);
+        if (meeting) {
+            const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditPresentees) {
+                const targetRes = await db.query('SELECT is_present FROM invitees WHERE id = $1 AND meeting_id = $2', [inviteeId, id]);
+                const isTargetPresent = targetRes.rows[0]?.is_present;
+                if (isTargetPresent || (is_present !== undefined && is_present !== isTargetPresent)) {
+                    return next(new CustomError('Access denied. Presentee data / attendance is locked for your level.', 403));
+                }
+            }
+        }
+
         const result = await db.query(
-            'UPDATE invitees SET name = $1, email = $2, designation = $3, department_id = $4, office_id = $5 WHERE id = $6 AND meeting_id = $7 RETURNING *',
-            [name, email, designation, department_id || null, office_id || null, inviteeId, id]
+            `UPDATE invitees SET 
+                name = COALESCE($1, name), 
+                email = COALESCE($2, email), 
+                designation = COALESCE($3, designation), 
+                department_id = $4, 
+                office_id = $5,
+                is_present = COALESCE($6, is_present)
+            WHERE id = $7 AND meeting_id = $8 RETURNING *`,
+            [name, email, designation, department_id || null, office_id || null, is_present !== undefined ? is_present : null, inviteeId, id]
         );
 
         if (result.rows.length === 0) {
@@ -866,12 +882,12 @@ const getPresentees = async (req, res, next) => {
     try {
         const { id } = req.params;
         const result = await db.query(`
-            SELECT p.*, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
-            FROM presentees p
-            LEFT JOIN departments d ON p.department_id = d.id
-            LEFT JOIN offices o ON p.office_id = o.id
-            WHERE p.meeting_id = $1
-            ORDER BY p.serial ASC NULLS LAST
+            SELECT i.*, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
+            FROM invitees i
+            LEFT JOIN departments d ON i.department_id = d.id
+            LEFT JOIN offices o ON i.office_id = o.id
+            WHERE i.meeting_id = $1 AND i.is_present = true
+            ORDER BY i.serial ASC NULLS LAST
         `, [id]);
 
         res.status(200).json({ success: true, data: result.rows });
@@ -883,43 +899,60 @@ const getPresentees = async (req, res, next) => {
 const addPresentees = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { presentees } = req.body; // array of presentee objects
-        if (!presentees || !Array.isArray(presentees)) return next(new CustomError('Presentees array is required', 400));
+        const { invitee_ids, presentees } = req.body;
 
         const client = await db.pool.connect();
         try {
             await client.query('BEGIN');
 
-            // Custom (non-member) presentees are appended after whatever is
-            // already recorded for this meeting.
-            const maxSerialResult = await client.query('SELECT MAX(serial) as max_serial FROM presentees WHERE meeting_id = $1', [id]);
-            let nextSerial = (maxSerialResult.rows[0].max_serial || 0) + 1;
-
-            for (const presentee of presentees) {
-                let serial = null;
-                if (presentee.member_id) {
-                    // Trust the DB, not the client, for the linked member's serial.
-                    const memberRes = await client.query('SELECT serial FROM members WHERE id = $1', [presentee.member_id]);
-                    serial = memberRes.rows[0]?.serial ?? null;
-                } else if (presentee.serial !== undefined && presentee.serial !== null && presentee.serial !== '') {
-                    const requestedSerial = parseInt(presentee.serial, 10);
-                    if (!Number.isNaN(requestedSerial)) {
-                        await client.query(
-                            'UPDATE presentees SET serial = serial + 1 WHERE meeting_id = $1 AND serial >= $2',
-                            [id, requestedSerial]
-                        );
-                        serial = requestedSerial;
-                        nextSerial = Math.max(nextSerial + 1, requestedSerial + 1);
-                    }
-                }
-                if (serial === null) {
-                    serial = nextSerial++;
-                }
-
+            // Option 1: Mark existing invitees of this meeting as present
+            if (invitee_ids && Array.isArray(invitee_ids) && invitee_ids.length > 0) {
                 await client.query(
-                    'INSERT INTO presentees (name, designation, department_id, office_id, meeting_id, serial) VALUES ($1, $2, $3, $4, $5, $6)',
-                    [presentee.name, presentee.designation, presentee.department_id || null, presentee.office_id || null, id, serial]
+                    'UPDATE invitees SET is_present = true WHERE meeting_id = $1 AND id = ANY($2)',
+                    [id, invitee_ids]
                 );
+            }
+
+            // Option 2: Add new custom presentees into invitees table with is_present = true
+            if (presentees && Array.isArray(presentees) && presentees.length > 0) {
+                const maxSerialResult = await client.query('SELECT MAX(serial) as max_serial FROM invitees WHERE meeting_id = $1', [id]);
+                let nextSerial = (maxSerialResult.rows[0].max_serial || 0) + 1;
+
+                for (const presentee of presentees) {
+                    let serial = null;
+                    if (presentee.member_id) {
+                        const memberRes = await client.query('SELECT serial FROM members WHERE id = $1', [presentee.member_id]);
+                        serial = memberRes.rows[0]?.serial ?? null;
+                    } else if (presentee.serial !== undefined && presentee.serial !== null && presentee.serial !== '') {
+                        const requestedSerial = parseInt(presentee.serial, 10);
+                        if (!Number.isNaN(requestedSerial)) {
+                            await client.query(
+                                'UPDATE invitees SET serial = serial + 1 WHERE meeting_id = $1 AND serial >= $2',
+                                [id, requestedSerial]
+                            );
+                            serial = requestedSerial;
+                            nextSerial = Math.max(nextSerial + 1, requestedSerial + 1);
+                        }
+                    }
+                    if (serial === null) {
+                        serial = nextSerial++;
+                    }
+
+                    await client.query(
+                        `INSERT INTO invitees (name, email, designation, department_id, office_id, meeting_id, serial, is_present, member_id)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8)`,
+                        [
+                            presentee.name || null,
+                            presentee.email || null,
+                            presentee.designation || null,
+                            presentee.department_id || null,
+                            presentee.office_id || null,
+                            id,
+                            serial,
+                            presentee.member_id || null
+                        ]
+                    );
+                }
             }
             await client.query('COMMIT');
             res.status(201).json({ success: true, message: 'Presentees added' });
@@ -937,10 +970,17 @@ const addPresentees = async (req, res, next) => {
 const updatePresentee = async (req, res, next) => {
     try {
         const { id, presenteeId } = req.params;
-        const { name, designation, department_id, office_id } = req.body;
+        const { name, email, designation, department_id, office_id, is_present } = req.body;
         const result = await db.query(
-            'UPDATE presentees SET name = $1, designation = $2, department_id = $3, office_id = $4 WHERE id = $5 AND meeting_id = $6 RETURNING *',
-            [name, designation, department_id || null, office_id || null, presenteeId, id]
+            `UPDATE invitees SET 
+                name = COALESCE($1, name), 
+                email = COALESCE($2, email), 
+                designation = COALESCE($3, designation), 
+                department_id = $4, 
+                office_id = $5,
+                is_present = COALESCE($6, is_present)
+            WHERE id = $7 AND meeting_id = $8 RETURNING *`,
+            [name, email, designation, department_id || null, office_id || null, is_present !== undefined ? is_present : null, presenteeId, id]
         );
 
         if (result.rows.length === 0) {
@@ -957,7 +997,7 @@ const removePresentee = async (req, res, next) => {
     try {
         const { id, presenteeId } = req.params;
         const result = await db.query(
-            'DELETE FROM presentees WHERE id = $1 AND meeting_id = $2 RETURNING *',
+            'UPDATE invitees SET is_present = false WHERE id = $1 AND meeting_id = $2 RETURNING *',
             [presenteeId, id]
         );
 
@@ -1187,7 +1227,7 @@ const bulkImportMeeting = async (req, res, next) => {
 
         const meetingId = meetingResult.rows[0].id;
 
-        // 2. Insert Presentees & Invitees
+        // 2. Insert Invitees (with is_present = true for imported presentees)
         if (presentees && Array.isArray(presentees)) {
             // Legacy meetings have no serial data of their own — the JSON array's
             // order *is* the seniority order, so index 0 -> serial 1, etc.
@@ -1196,20 +1236,6 @@ const bulkImportMeeting = async (req, res, next) => {
                 const rawName = p.name ? p.name.trim() : null;
                 const rawPrefix = p.prefix ? p.prefix.trim() : null;
                 const fullName = rawPrefix ? (rawName ? `${rawPrefix} ${rawName}` : rawPrefix) : rawName;
-
-                await client.query(
-                    `INSERT INTO presentees
-                    (name, designation, department_id, office_id, meeting_id, serial)
-                    VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [
-                        fullName,
-                        p.designation || null,
-                        p.department_id || null,
-                        p.office_id || null,
-                        meetingId,
-                        index + 1
-                    ]
-                );
 
                 await client.query(
                     `INSERT INTO invitees
@@ -1654,25 +1680,8 @@ const completeMeeting = async (req, res, next) => {
             [req.user.id, id]
         );
 
-        // 2. Fetch present invitees
-        const inviteesRes = await client.query(
-            'SELECT name, designation, department_id, office_id, serial FROM invitees WHERE meeting_id = $1 AND is_present = true',
-            [id]
-        );
-
-        // 3. Insert into presentees
-        for (const invitee of inviteesRes.rows) {
-            await client.query(
-                'INSERT INTO presentees (meeting_id, name, designation, department_id, office_id, serial) VALUES ($1, $2, $3, $4, $5, $6)',
-                [id, invitee.name, invitee.designation, invitee.department_id, invitee.office_id, invitee.serial]
-            );
-        }
-
-        // 4. Delete invitees for this meeting
-        await client.query('DELETE FROM invitees WHERE meeting_id = $1', [id]);
-
         await client.query('COMMIT');
-        res.status(200).json({ success: true, message: 'Meeting marked as completed and present members transferred.' });
+        res.status(200).json({ success: true, message: 'Meeting marked as completed.' });
     } catch (err) {
         await client.query('ROLLBACK');
         next(err);

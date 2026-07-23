@@ -1,7 +1,8 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const { requireRole, requireNonViewer } = require('../middlewares/roleMiddleware');
-const { requireMeetingAuthor, requireResolutionEditor } = require('../middlewares/meetingWorkflowMiddleware');
+const { requireMeetingAuthor, requireResolutionEditor, requirePresenteesEditor } = require('../middlewares/meetingWorkflowMiddleware');
+
 const meetingController = require('../controllers/meetingController');
 const { auditLog } = require('../middlewares/auditMiddleware');
 const multer = require('multer');
@@ -59,10 +60,10 @@ router.put('/:id/invitees/:inviteeId/reorder', requireMeetingAuthor, meetingCont
 router.post('/:id/invitees/bulk-fetch', requireMeetingAuthor, meetingController.bulkFetchInvitees);
 
 router.get('/:id/presentees', meetingController.getPresentees);
-router.post('/:id/presentees', requireResolutionEditor, meetingController.addPresentees);
-router.put('/:id/presentees/:presenteeId', requireResolutionEditor, meetingController.updatePresentee);
-router.delete('/:id/presentees/:presenteeId', requireResolutionEditor, meetingController.removePresentee);
-router.put('/:id/attendance', requireResolutionEditor, meetingController.saveAttendance);
+router.post('/:id/presentees', requirePresenteesEditor, meetingController.addPresentees);
+router.put('/:id/presentees/:presenteeId', requirePresenteesEditor, meetingController.updatePresentee);
+router.delete('/:id/presentees/:presenteeId', requirePresenteesEditor, meetingController.removePresentee);
+router.put('/:id/attendance', requirePresenteesEditor, meetingController.saveAttendance);
 
 router.get('/:id/pdf/:type', meetingController.generatePdf);
 router.post('/:id/send-email', requireMeetingAuthor, meetingController.sendAgendaEmail);

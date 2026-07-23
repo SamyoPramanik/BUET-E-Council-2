@@ -163,10 +163,11 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const meetingQuery = `SELECT title, meeting_date, description, agenda_prefix FROM meetings WHERE id = $1`;
         const presenteesQuery = `
             SELECT p.id, p.name, p.designation, p.serial, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
-            FROM presentees p
+            FROM invitees p
             LEFT JOIN departments d ON p.department_id = d.id
             LEFT JOIN offices o ON p.office_id = o.id
-            WHERE p.meeting_id = $1
+            WHERE p.meeting_id = $1 AND p.is_present = true
+            ORDER BY p.serial ASC NULLS LAST
         `;
         const agendasQuery = `SELECT agenda_serial, content, resolution, is_suppli FROM agenda WHERE meeting_id = $1 ORDER BY agenda_serial ASC`;
 

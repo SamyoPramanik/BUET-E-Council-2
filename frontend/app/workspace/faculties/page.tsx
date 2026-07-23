@@ -68,11 +68,12 @@ export default function ManageFacultiesPage() {
     confirm("Delete Faculty", "Are you sure you want to delete this faculty?", async () => {
       try {
         await api.delete(`/faculties/${faculty.id}`);
-        mutate();
+        await mutate(undefined, { revalidate: true });
         toast.success('Faculty deleted successfully');
       } catch (err) {
         console.error(err);
         toast.error('Failed to delete faculty');
+        await mutate(undefined, { revalidate: true });
       }
     });
   };
@@ -89,10 +90,11 @@ export default function ManageFacultiesPage() {
       setIsEditMode(false);
       setEditingId(null);
       setNewFaculty({ name_bangla: "", name_english: "" });
-      mutate();
+      await mutate(undefined, { revalidate: true });
       toast.success(isEditMode ? 'Faculty updated successfully' : 'Faculty created successfully');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save faculty');
+      await mutate(undefined, { revalidate: true });
     }
   };
 

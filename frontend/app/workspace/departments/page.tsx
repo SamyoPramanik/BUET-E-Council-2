@@ -83,11 +83,12 @@ export default function ManageDepartmentsPage() {
     confirm("Delete Department", "Are you sure you want to delete this department?", async () => {
       try {
         await api.delete(`/departments/${department.id}`);
-        mutate();
+        await mutate(undefined, { revalidate: true });
         toast.success('Department deleted successfully');
       } catch (err) {
         console.error(err);
         toast.error('Failed to delete department');
+        await mutate(undefined, { revalidate: true });
       }
     });
   };
@@ -108,10 +109,11 @@ export default function ManageDepartmentsPage() {
       setIsEditMode(false);
       setEditingId(null);
       setNewDepartment({ name_bangla: "", name_english: "", alias_bangla: "", alias_english: "", faculty_id: "", serial: "" });
-      mutate();
+      await mutate(undefined, { revalidate: true });
       toast.success(isEditMode ? 'Department updated successfully' : 'Department created successfully');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save department');
+      await mutate(undefined, { revalidate: true });
     }
   };
 

@@ -97,11 +97,12 @@ export default function ManageMembersPage() {
     confirm("Delete Member", "Are you sure you want to delete this member?", async () => {
       try {
         await api.delete(`/members/${member.id}`);
-        mutate();
+        await mutate(undefined, { revalidate: true });
         toast.success('Member deleted successfully');
       } catch (err) {
         console.error(err);
         toast.error('Failed to delete member');
+        await mutate(undefined, { revalidate: true });
       }
     });
   };
@@ -116,9 +117,10 @@ export default function ManageMembersPage() {
           const res = await api.post('/members/fetch-external');
           toast.dismiss(loadingToast);
           toast.success(res.data.message || "Synced members successfully");
-          mutate();
+          await mutate(undefined, { revalidate: true });
         } catch (err: any) {
           toast.error(err.response?.data?.message || "Failed to sync members");
+          await mutate(undefined, { revalidate: true });
         }
       }
     );
@@ -136,10 +138,11 @@ export default function ManageMembersPage() {
       setIsEditMode(false);
       setEditingId(null);
       setNewMember({ name: "", prefix: "", designation: "", department_id: "", office_id: "", email: "", member_type: "academic", serial: "" });
-      mutate();
+      await mutate(undefined, { revalidate: true });
       toast.success(isEditMode ? 'Member updated successfully' : 'Member created successfully');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save member');
+      await mutate(undefined, { revalidate: true });
     }
   };
 

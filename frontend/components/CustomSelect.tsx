@@ -14,13 +14,15 @@ interface CustomSelectProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  className?: string;
 }
 
 export default function CustomSelect({
   options,
   value,
   onChange,
-  placeholder = "Select option..."
+  placeholder = "Select option...",
+  className = ""
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -76,7 +78,7 @@ export default function CustomSelect({
   return (
     <div className="relative" ref={containerRef}>
       <div 
-        className="flex items-center justify-between w-full px-3 py-2 bg-input/20 border border-input rounded-md cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring text-foreground text-sm"
+        className={`flex items-center justify-between w-full px-3 py-2 border rounded-md cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring text-sm ${className || 'bg-input/20 border-input text-foreground'}`}
         onClick={() => setIsOpen(!isOpen)}
       >
         <span className={selectedOption ? "" : "text-muted-foreground"}>

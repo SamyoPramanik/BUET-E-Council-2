@@ -565,6 +565,58 @@ router.put('/users/:id', requireAuth, async (req, res) => {
     }
 });
 
+// 10b. PATCH /users/:id/status (Upper level users can modify status of lower level users)
+router.patch('/users/:id/status', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+        const userLevel = req.user.role_level;
+
+        if (!isAdmin && userLevel === null) {
+            return res.status(403).json({ success: false, message: 'Forbidden. Permission denied.' });
+        }
+
+        if (!status || !['active', 'inactive'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'Valid status required (active, inactive)' });
+        }
+
+        const targetRes = await db.query(
+            `SELECT u.id, u.role, r.level as role_level
+             FROM users u
+             LEFT JOIN roles r ON u.role_id = r.id
+             WHERE u.id = $1`,
+            [id]
+        );
+        if (targetRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        const targetUser = targetRes.rows[0];
+
+        if (!isAdmin) {
+            const targetLevel = targetUser.role_level;
+            if (targetUser.role === 'admin' || (targetLevel !== null && targetLevel >= userLevel)) {
+                return res.status(403).json({ success: false, message: 'Upper level users can only change status of lower level users.' });
+            }
+        }
+
+        const result = await db.query(
+            `UPDATE users SET status = $1 WHERE id = $2 RETURNING id, username, role, role_id, status`,
+            [status, id]
+        );
+
+        logAudit({
+            userId: req.user.id, username: req.user.username, action: 'update_status',
+            entityType: 'user', entityId: id, details: { new_status: status }, ip: req.ip
+        });
+
+        res.status(200).json({ success: true, message: 'User status updated successfully', data: result.rows[0] });
+    } catch (err) {
+        console.error('Update status error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
 // 11. POST /upload-csv (users)
 // Expected CSV columns: username, password, email, role, type (type -> member_type).
 // Strict all-or-nothing: the whole file is validated up front, and nothing is

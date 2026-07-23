@@ -81,10 +81,11 @@ export default function ManageTemplatesPage() {
     confirm("Delete Template", `Are you sure you want to delete this template?`, async () => {
       try {
         await api.delete(`/templates/${row.id}`);
-        mutate();
+        await mutate(undefined, { revalidate: true });
         toast.success("Template deleted successfully");
       } catch (err: any) {
         toast.error(err.response?.data?.message || "Failed to delete template");
+        await mutate(undefined, { revalidate: true });
       }
     });
   };
@@ -103,10 +104,11 @@ export default function ManageTemplatesPage() {
         await api.post("/templates", formData);
         toast.success("Template created successfully");
       }
-      mutate();
+      await mutate(undefined, { revalidate: true });
       setIsModalOpen(false);
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save template");
+      await mutate(undefined, { revalidate: true });
     }
   };
 

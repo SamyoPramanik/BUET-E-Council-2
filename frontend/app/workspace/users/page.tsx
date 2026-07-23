@@ -51,6 +51,11 @@ export default function RoleAndUserManagementPage() {
     level_title: ""
   });
 
+  // User Filters State
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [memberTypeFilter, setMemberTypeFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
   // System Settings State
   const [minCompletedLevel, setMinCompletedLevel] = useState<string>("1");
   const [savingSettings, setSavingSettings] = useState(false);
@@ -100,9 +105,10 @@ export default function RoleAndUserManagementPage() {
       }
 
       setIsUserModalOpen(false);
-      mutateUsers();
+      await mutateUsers(undefined, { revalidate: true });
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save user");
+      await mutateUsers(undefined, { revalidate: true });
     }
   };
 
@@ -124,9 +130,11 @@ export default function RoleAndUserManagementPage() {
       }
 
       setIsRoleModalOpen(false);
-      mutateRoles();
+      await mutateRoles();
+      await mutateUsers();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save role");
+      await mutateRoles();
     }
   };
 
@@ -153,9 +161,10 @@ export default function RoleAndUserManagementPage() {
       try {
         await api.delete(`/auth/users/${u.id}`);
         toast.success("User deleted successfully.");
-        mutateUsers();
+        await mutateUsers(undefined, { revalidate: true });
       } catch (err: any) {
         toast.error(err.response?.data?.message || "Failed to delete user.");
+        await mutateUsers(undefined, { revalidate: true });
       }
     });
   };
@@ -165,9 +174,11 @@ export default function RoleAndUserManagementPage() {
       try {
         await api.delete(`/auth/roles/${r.id}`);
         toast.success("Role level deleted successfully.");
-        mutateRoles();
+        await mutateRoles(undefined, { revalidate: true });
+        await mutateUsers(undefined, { revalidate: true });
       } catch (err: any) {
         toast.error(err.response?.data?.message || "Failed to delete role.");
+        await mutateRoles(undefined, { revalidate: true });
       }
     });
   };
@@ -181,10 +192,12 @@ export default function RoleAndUserManagementPage() {
       }));
       await api.put('/auth/roles/reorder', { items: reorderedItems });
       toast.success("Role levels reordered successfully.");
-      mutateRoles();
+      await mutateRoles(undefined, { revalidate: true });
+      await mutateUsers(undefined, { revalidate: true });
     } catch (err: any) {
       console.error(err);
       toast.error(err.response?.data?.message || "Failed to reorder role levels.");
+      await mutateRoles(undefined, { revalidate: true });
     }
   };
 
@@ -275,90 +288,123 @@ export default function RoleAndUserManagementPage() {
       </div>
 
       {/* ----------------- TAB 1: USERS ----------------- */}
-      {activeTab === 'users' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Users className="w-5 h-5 text-primary" /> System Users ({users.length})
-            </h2>
-            <button
-              onClick={openUserCreateModal}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm"
-            >
-              <Plus className="w-4 h-4" /> Create User
-            </button>
-          </div>
+      {activeTab === 'users' && (() => {
+        const currentUserLevel = isAdmin ? 999999 : (currentUser?.role_level !== null && currentUser?.role_level !== undefined ? Number(currentUser.role_level) : -1);
 
-          <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-muted/50 border-b border-border text-muted-foreground font-medium">
-                <tr>
-                  <th className="p-4">Username</th>
-                  <th className="p-4">Email</th>
-                  <th className="p-4">Role Title</th>
-                  <th className="p-4">Member Type</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {users.map((u: any) => (
-                  <tr key={u.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="p-4 font-medium">{u.username}</td>
-                    <td className="p-4 text-muted-foreground">{u.email}</td>
-                    <td className="p-4">
-                      {u.role === 'admin' ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
-                          Admin (Super Access)
-                        </span>
-                      ) : u.role === 'viewer' ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
-                          Viewer (Read Only)
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
-                          {u.level_title || 'Editor'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 capitalize text-muted-foreground">{u.member_type || 'None'}</td>
-                    <td className="p-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        u.status === 'active' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-muted text-muted-foreground'
-                      }`}>
-                        {u.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right space-x-2">
-                      <button
-                        onClick={() => openUserEditModal(u)}
-                        className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors"
-                        title="Edit / Degrade User"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteUser(u)}
-                        className="p-1.5 text-destructive/80 hover:text-destructive rounded-md hover:bg-destructive/10 transition-colors"
-                        title="Delete User"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {users.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                      No users found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        const filteredUsers = users.filter((u: any) => {
+          if (roleFilter !== 'all') {
+            if (roleFilter === 'admin' && u.role !== 'admin') return false;
+            if (roleFilter === 'viewer' && u.role !== 'viewer') return false;
+            if (roleFilter !== 'admin' && roleFilter !== 'viewer') {
+              if (u.role_id !== roleFilter && u.level_title !== roleFilter) return false;
+            }
+          }
+          if (memberTypeFilter !== 'all' && (u.member_type || 'none') !== memberTypeFilter) {
+            return false;
+          }
+          if (statusFilter !== 'all' && (u.status || 'active') !== statusFilter) {
+            return false;
+          }
+          return true;
+        });
+
+        const formattedUsers = filteredUsers.map((u: any) => {
+          const targetUserLevel = u.role === 'admin' ? 999999 : (u.role_level !== null && u.role_level !== undefined ? Number(u.role_level) : -1);
+          const canChangeUserStatus = isAdmin || (currentUserLevel > targetUserLevel && u.role !== 'admin');
+
+          return {
+            ...u,
+            role_title_display: u.role === 'admin' ? (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                Admin (Super Access)
+              </span>
+            ) : u.role === 'viewer' ? (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                Viewer (Read Only)
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                {u.level_title || 'Editor'}
+              </span>
+            ),
+            member_type_display: <span className="capitalize text-muted-foreground">{u.member_type || 'None'}</span>,
+            status_display: (
+              <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-bold capitalize ${
+                u.status === 'inactive'
+                  ? 'bg-rose-100 text-rose-800 border border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800'
+                  : 'bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
+              }`}>
+                {u.status || 'active'}
+              </span>
+            )
+          };
+        });
+
+        const userFilters = (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="w-44">
+              <CustomSelect
+                value={roleFilter}
+                onChange={setRoleFilter}
+                options={[
+                  { value: "all", label: "All Role Titles" },
+                  { value: "admin", label: "Admin" },
+                  { value: "viewer", label: "Viewer" },
+                  ...roles.map((r: any) => ({ value: r.id, label: r.level_title }))
+                ]}
+              />
+            </div>
+
+            <div className="w-44">
+              <CustomSelect
+                value={memberTypeFilter}
+                onChange={setMemberTypeFilter}
+                options={[
+                  { value: "all", label: "All Member Types" },
+                  { value: "syndicate", label: "Syndicate" },
+                  { value: "academic", label: "Academic" },
+                  { value: "both", label: "Both" },
+                  { value: "none", label: "None" }
+                ]}
+              />
+            </div>
+
+            <div className="w-36">
+              <CustomSelect
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  { value: "all", label: "All Statuses" },
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" }
+                ]}
+              />
+            </div>
           </div>
-        </div>
-      )}
+        );
+
+        return (
+          <div className="space-y-4">
+            <DataTable
+              columns={[
+                { key: "username", label: "Username" },
+                { key: "email", label: "Email" },
+                { key: "role_title_display", label: "Role Title" },
+                { key: "member_type_display", label: "Member Type" },
+                { key: "status_display", label: "Status" }
+              ]}
+              data={formattedUsers}
+              title={`System Users (${users.length})`}
+              searchable
+              searchPlaceholder="Search users by name or email..."
+              filters={userFilters}
+              onAdd={isAdmin || currentUser?.role_level !== null ? openUserCreateModal : undefined}
+              onEdit={openUserEditModal}
+              onDelete={handleDeleteUser}
+            />
+          </div>
+        );
+      })()}
 
       {/* ----------------- TAB 2: ROLE LEVELS ----------------- */}
       {activeTab === 'roles' && (
@@ -524,7 +570,7 @@ export default function RoleAndUserManagementPage() {
                   onChange={(val) => setUserFormData({ ...userFormData, status: val })}
                   options={[
                     { value: "active", label: "Active" },
-                    { value: "suspended", label: "Suspended" }
+                    { value: "inactive", label: "Inactive" }
                   ]}
                 />
               </div>

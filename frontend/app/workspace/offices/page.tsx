@@ -68,11 +68,12 @@ export default function ManageOfficesPage() {
     confirm("Delete Office", "Are you sure you want to delete this office?", async () => {
       try {
         await api.delete(`/offices/${office.id}`);
-        mutate();
+        await mutate(undefined, { revalidate: true });
         toast.success('Office deleted successfully');
       } catch (err) {
         console.error(err);
         toast.error('Failed to delete office');
+        await mutate(undefined, { revalidate: true });
       }
     });
   };
@@ -89,10 +90,11 @@ export default function ManageOfficesPage() {
       setIsEditMode(false);
       setEditingId(null);
       setNewOffice({ name_bangla: "", name_english: "" });
-      mutate();
+      await mutate(undefined, { revalidate: true });
       toast.success(isEditMode ? 'Office updated successfully' : 'Office created successfully');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save office');
+      await mutate(undefined, { revalidate: true });
     }
   };
 

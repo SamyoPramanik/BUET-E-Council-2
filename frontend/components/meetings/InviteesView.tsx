@@ -434,10 +434,11 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     }
 
     try {
-      await api.put(`/meetings/${meeting.id}/invitees/${movedInvitee.id}/reorder`, { serial: targetSerial });
+      const res = await api.put(`/meetings/${meeting.id}/invitees/${movedInvitee.id}/reorder`, { serial: targetSerial });
+      toast.success(res.data?.message || `${isPast ? 'Presentee' : 'Invitee'} reordered successfully`);
       await mutateInvitees();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to reorder invitee");
+      toast.error(err.response?.data?.message || `Failed to reorder ${isPast ? 'presentee' : 'invitee'}`);
       await mutateInvitees();
       throw err;
     }
@@ -855,7 +856,11 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
           searchable
           searchPlaceholder="Search by name or designation..."
           onReorderItem={canEditInviteesAccess && noTableFiltersActive ? handleReorderInvitee : undefined}
-          isRowReorderable={() => canEditInviteesAccess}
+          isRowReorderable={(row: any) => {
+            if (!canEditInviteesAccess) return false;
+            if (!canEditPresenteesAccess && row?.is_present) return false;
+            return true;
+          }}
           selectable={isBulkDeleteMode}
           selectedIds={selectedInviteeIds}
           onToggleSelect={handleToggleSelectInvitee}

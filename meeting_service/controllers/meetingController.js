@@ -957,6 +957,30 @@ const reorderInvitee = async (req, res, next) => {
                     client.release();
                     return next(new CustomError('Access denied. Invitees are locked for your level.', 403));
                 }
+
+                if (!access.canEditPresentees) {
+                    if (targetInvitee.is_present) {
+                        await client.query('ROLLBACK');
+                        client.release();
+                        return next(new CustomError('Access denied. Presentees are locked and cannot be reordered.', 403));
+                    }
+
+                    const minSerial = Math.min(oldSerial, requestedSerial);
+                    const maxSerial = Math.max(oldSerial, requestedSerial);
+
+                    const presenteeCheck = await client.query(
+                        `SELECT COUNT(*)::int as count
+                         FROM invitees
+                         WHERE meeting_id = $1 AND is_present = true AND serial >= $2 AND serial <= $3 AND id != $4`,
+                        [id, minSerial, maxSerial, inviteeId]
+                    );
+
+                    if (presenteeCheck.rows[0].count > 0) {
+                        await client.query('ROLLBACK');
+                        client.release();
+                        return next(new CustomError('Access denied. Order of presentees is locked.', 403));
+                    }
+                }
             }
 
             // Meeting-local move only — never touches members.serial, even for

@@ -1,7 +1,7 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const { requireRole, requireNonViewer } = require('../middlewares/roleMiddleware');
-const { requireMeetingAuthor, requireResolutionEditor, requirePresenteesEditor } = require('../middlewares/meetingWorkflowMiddleware');
+const { requireMeetingAuthor, requireResolutionEditor, requirePresenteesEditor, requireInviteesEditor } = require('../middlewares/meetingWorkflowMiddleware');
 
 const meetingController = require('../controllers/meetingController');
 const { auditLog } = require('../middlewares/auditMiddleware');
@@ -51,13 +51,13 @@ router.post('/:id/send-back-resolution', requireNonViewer, meetingController.sen
 router.post('/:id/send-back-resolution-status', requireNonViewer, meetingController.sendBackResolutionStatus);
 router.post('/:id/complete', requireNonViewer, meetingController.completeMeeting);
 
-router.post('/:id/invitees', requireMeetingAuthor, meetingController.addInvitees);
+router.post('/:id/invitees', requireInviteesEditor, meetingController.addInvitees);
 router.get('/:id/invitees', meetingController.getInvitees);
 router.get('/:id/invitees/emails', meetingController.getInviteesEmails);
-router.delete('/:id/invitees/:inviteeId', requireMeetingAuthor, meetingController.removeInvitee);
-router.put('/:id/invitees/:inviteeId', requireMeetingAuthor, meetingController.updateInvitee);
-router.put('/:id/invitees/:inviteeId/reorder', requireMeetingAuthor, meetingController.reorderInvitee);
-router.post('/:id/invitees/bulk-fetch', requireMeetingAuthor, meetingController.bulkFetchInvitees);
+router.delete('/:id/invitees/:inviteeId', requireInviteesEditor, meetingController.removeInvitee);
+router.put('/:id/invitees/:inviteeId', requireInviteesEditor, meetingController.updateInvitee);
+router.put('/:id/invitees/:inviteeId/reorder', requireInviteesEditor, meetingController.reorderInvitee);
+router.post('/:id/invitees/bulk-fetch', requireInviteesEditor, meetingController.bulkFetchInvitees);
 
 router.get('/:id/presentees', meetingController.getPresentees);
 router.post('/:id/presentees', requirePresenteesEditor, meetingController.addPresentees);

@@ -3,7 +3,8 @@
 import { Eye, EyeOff } from 'lucide-react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import api from '../../lib/api';
+import { useSWRConfig } from 'swr';
+import api, { setTabSessionToken } from '../../lib/api';
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -12,6 +13,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { mutate } = useSWRConfig();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,6 +22,11 @@ export default function LoginPage() {
 
     try {
       const res = await api.post('/auth/signin', { username, password });
+      const token = res.data?.data?.token;
+      if (token) {
+        setTabSessionToken(token);
+      }
+      mutate('/auth/me');
       const role = res.data?.data?.user?.role;
       router.push(role === 'viewer' ? '/viewer/meetings' : '/workspace/meetings');
     } catch (err: any) {

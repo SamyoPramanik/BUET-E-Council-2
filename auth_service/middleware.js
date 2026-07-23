@@ -2,7 +2,7 @@ const db = require('./db');
 
 const requireAuth = async (req, res, next) => {
     try {
-        const token = req.cookies.session_token || (req.header('Authorization') ? req.header('Authorization').replace('Bearer ', '') : null);
+        const token = (req.header('Authorization') ? req.header('Authorization').replace('Bearer ', '') : null) || (req.cookies ? req.cookies.session_token : null);
 
         if (!token) {
             return res.status(401).json({

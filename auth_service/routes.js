@@ -206,10 +206,10 @@ router.post('/signin', async (req, res) => {
 
         logAudit({ userId: user.id, username: user.username, action: 'login', entityType: 'auth', entityId: user.id, ip: ipAddress });
 
-        // Set HttpOnly, Secure Cookie
+        // Set HttpOnly Cookie for browser media/storage fallback
         res.cookie('session_token', sessionToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+            secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
             expires: expiresAt
         });

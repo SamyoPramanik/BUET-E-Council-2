@@ -3,7 +3,8 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { LayoutGrid, User, LogOut } from 'lucide-react';
-import api from '../lib/api';
+import { useSWRConfig } from 'swr';
+import api, { clearTabSessionToken } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
 
 export default function UserDropdown() {
@@ -11,6 +12,7 @@ export default function UserDropdown() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const { user, role, error } = useAuth();
+  const { mutate } = useSWRConfig();
   const dashboardHref = role === 'viewer' ? '/viewer/meetings' : '/workspace';
 
   useEffect(() => {
@@ -34,9 +36,12 @@ export default function UserDropdown() {
     setIsOpen(false);
     try {
       await api.post('/auth/signout');
-      router.push('/login');
     } catch (err) {
       console.error('Logout failed', err);
+    } finally {
+      clearTabSessionToken();
+      mutate('/auth/me', null, false);
+      router.push('/login');
     }
   };
 

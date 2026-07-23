@@ -105,21 +105,24 @@ export default function RoleAndUserManagementPage() {
       const levelTitle = selectedRole ? selectedRole.level_title : (payload.role === 'admin' ? 'Admin' : payload.role === 'viewer' ? 'Viewer' : 'Editor');
 
       if (isUserEditMode && editingUserId) {
+        const res = await api.put(`/auth/users/${editingUserId}`, payload);
+        const updatedUser = res.data?.data;
+
         setUsersList((prev) =>
           prev.map((u: any) =>
             u.id === editingUserId
               ? {
                   ...u,
                   ...payload,
+                  ...(updatedUser || {}),
                   role_level: roleLevel,
                   level_title: levelTitle
                 }
               : u
           )
         );
-        setIsUserModalOpen(false);
 
-        await api.put(`/auth/users/${editingUserId}`, payload);
+        setIsUserModalOpen(false);
         toast.success("User updated successfully!");
       } else {
         const res = await api.post('/auth/signup', payload);
@@ -193,10 +196,23 @@ export default function RoleAndUserManagementPage() {
 
   // Delete Handlers
   const handleDeleteUser = (u: any) => {
+    if (u.role === 'admin' && !isAdmin) {
+      toast.error("Only admin users can delete admin user information.");
+      return;
+    }
+
+    const currentUserLevel = isAdmin ? 999999 : (currentUser?.role_level !== null && currentUser?.role_level !== undefined ? Number(currentUser.role_level) : -1);
+    const targetUserLevel = u.role === 'admin' ? 999999 : (u.role_level !== null && u.role_level !== undefined ? Number(u.role_level) : -1);
+
+    if (!isAdmin && currentUserLevel <= targetUserLevel) {
+      toast.error("You can only delete users at a lower level than yours.");
+      return;
+    }
+
     confirm("Delete User", `Are you sure you want to delete user '${u.username}'?`, async () => {
       try {
-        setUsersList((prev) => prev.filter((item: any) => item.id !== u.id));
         await api.delete(`/auth/users/${u.id}`);
+        setUsersList((prev) => prev.filter((item: any) => item.id !== u.id));
         toast.success("User deleted successfully.");
         mutateUsers();
       } catch (err: any) {
@@ -204,6 +220,34 @@ export default function RoleAndUserManagementPage() {
         mutateUsers();
       }
     });
+  };
+
+  const openUserEditModal = (u: any) => {
+    if (u.role === 'admin' && !isAdmin) {
+      toast.error("Only admin users can edit admin user information.");
+      return;
+    }
+
+    const currentUserLevel = isAdmin ? 999999 : (currentUser?.role_level !== null && currentUser?.role_level !== undefined ? Number(currentUser.role_level) : -1);
+    const targetUserLevel = u.role === 'admin' ? 999999 : (u.role_level !== null && u.role_level !== undefined ? Number(u.role_level) : -1);
+
+    if (!isAdmin && currentUserLevel <= targetUserLevel) {
+      toast.error("You can only edit information of users at a lower level than yours.");
+      return;
+    }
+
+    setIsUserEditMode(true);
+    setEditingUserId(u.id);
+    setUserFormData({
+      username: u.username || "",
+      email: u.email || "",
+      password: "",
+      role: u.role || "editor",
+      role_id: u.role_id || (roles.length > 0 ? roles[0].id : ""),
+      member_type: u.member_type || "none",
+      status: u.status || "active"
+    });
+    setIsUserModalOpen(true);
   };
 
   const handleDeleteRole = (r: any) => {
@@ -268,21 +312,6 @@ export default function RoleAndUserManagementPage() {
       role_id: roles.length > 0 ? roles[0].id : "",
       member_type: "none",
       status: "active"
-    });
-    setIsUserModalOpen(true);
-  };
-
-  const openUserEditModal = (u: any) => {
-    setIsUserEditMode(true);
-    setEditingUserId(u.id);
-    setUserFormData({
-      username: u.username || "",
-      email: u.email || "",
-      password: "",
-      role: u.role || "editor",
-      role_id: u.role_id || (roles.length > 0 ? roles[0].id : ""),
-      member_type: u.member_type || "none",
-      status: u.status || "active"
     });
     setIsUserModalOpen(true);
   };

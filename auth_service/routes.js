@@ -490,6 +490,9 @@ router.put('/users/:id', requireAuth, async (req, res) => {
         const targetUser = targetRes.rows[0];
 
         if (!isAdmin) {
+            if (targetUser.role === 'admin' || targetUser.role === 'superadmin') {
+                return res.status(403).json({ success: false, message: 'Forbidden. Only admin users can edit admin user information.' });
+            }
             const targetLevel = targetUser.role_level;
             if (targetLevel !== null && targetLevel >= userLevel) {
                 return res.status(403).json({ success: false, message: 'Upper level users can only modify lower level users.' });
@@ -598,8 +601,11 @@ router.patch('/users/:id/status', requireAuth, async (req, res) => {
         const targetUser = targetRes.rows[0];
 
         if (!isAdmin) {
+            if (targetUser.role === 'admin' || targetUser.role === 'superadmin') {
+                return res.status(403).json({ success: false, message: 'Forbidden. Only admin users can edit admin user information.' });
+            }
             const targetLevel = targetUser.role_level;
-            if (targetUser.role === 'admin' || (targetLevel !== null && targetLevel >= userLevel)) {
+            if (targetLevel !== null && targetLevel >= userLevel) {
                 return res.status(403).json({ success: false, message: 'Upper level users can only change status of lower level users.' });
             }
         }
@@ -621,6 +627,54 @@ router.patch('/users/:id/status', requireAuth, async (req, res) => {
         res.status(200).json({ success: true, message: 'User status updated successfully', data: result.rows[0] });
     } catch (err) {
         console.error('Update status error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+// 10c. DELETE /users/:id
+router.delete('/users/:id', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+        const userLevel = req.user.role_level;
+
+        if (!isAdmin && userLevel === null) {
+            return res.status(403).json({ success: false, message: 'Forbidden. Access denied.' });
+        }
+
+        const targetRes = await db.query(
+            `SELECT u.id, u.username, u.role, r.level as role_level
+             FROM users u
+             LEFT JOIN roles r ON u.role_id = r.id
+             WHERE u.id = $1`,
+            [id]
+        );
+        if (targetRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        const targetUser = targetRes.rows[0];
+
+        if (!isAdmin) {
+            if (targetUser.role === 'admin' || targetUser.role === 'superadmin') {
+                return res.status(403).json({ success: false, message: 'Forbidden. Only admin users can delete admin user information.' });
+            }
+            const targetLevel = targetUser.role_level;
+            if (targetLevel !== null && targetLevel >= userLevel) {
+                return res.status(403).json({ success: false, message: 'Upper level users can only delete lower level users.' });
+            }
+        }
+
+        await db.query('DELETE FROM sessions WHERE user_id = $1', [id]);
+        await db.query('DELETE FROM users WHERE id = $1', [id]);
+
+        logAudit({
+            userId: req.user.id, username: req.user.username, action: 'delete',
+            entityType: 'user', entityId: id, details: { username: targetUser.username }, ip: req.ip
+        });
+
+        res.status(200).json({ success: true, message: 'User deleted successfully' });
+    } catch (err) {
+        console.error('Delete user error:', err);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });

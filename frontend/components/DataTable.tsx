@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { GripVertical, Pencil, Trash2, Eye, Upload, Download, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
 
 interface Column {
@@ -70,12 +70,9 @@ export default function DataTable({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reorderEnabled = !selectable && !!(onReorder || onReorderItem);
 
-  // Update local state when initialData changes (from SWR)
-  // We use a simple effect here just in case, though ideally SWR handles it better if we pass it down
-  // For simplicity, we just sync them if initialData changes length or items.
-  if (data.length !== initialData.length) {
-      setData(initialData);
-  }
+  useEffect(() => {
+    setData(initialData);
+  }, [initialData]);
 
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';

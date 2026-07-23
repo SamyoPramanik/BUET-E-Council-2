@@ -82,13 +82,18 @@ export default function ManageDepartmentsPage() {
   const handleDelete = (department: any) => {
     confirm("Delete Department", "Are you sure you want to delete this department?", async () => {
       try {
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          return { ...current, data: current.data.filter((item: any) => item.id !== department.id) };
+        }, { revalidate: false });
+
         await api.delete(`/departments/${department.id}`);
-        await mutate(undefined, { revalidate: true });
         toast.success('Department deleted successfully');
+        await mutate();
       } catch (err) {
         console.error(err);
         toast.error('Failed to delete department');
-        await mutate(undefined, { revalidate: true });
+        await mutate();
       }
     });
   };
@@ -100,20 +105,43 @@ export default function ManageDepartmentsPage() {
         ...newDepartment,
         serial: newDepartment.serial === "" ? undefined : parseInt(newDepartment.serial, 10)
       };
+
+      let res;
       if (isEditMode && editingId) {
-        await api.put(`/departments/${editingId}`, payload);
+        res = await api.put(`/departments/${editingId}`, payload);
       } else {
-        await api.post('/departments', payload);
+        res = await api.post('/departments', payload);
       }
+
+      const savedItem = res.data?.data;
+      if (savedItem) {
+        const selectedFaculty = (facultyRes?.data || []).find((f: any) => f.id === payload.faculty_id);
+        const formattedSaved = {
+          ...savedItem,
+          faculty_name_bangla: selectedFaculty ? selectedFaculty.name_bangla : ""
+        };
+
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          const list = current.data;
+          return {
+            ...current,
+            data: isEditMode
+              ? list.map((item: any) => item.id === editingId ? { ...item, ...formattedSaved } : item)
+              : [formattedSaved, ...list]
+          };
+        }, { revalidate: false });
+      }
+
       setIsModalOpen(false);
       setIsEditMode(false);
       setEditingId(null);
       setNewDepartment({ name_bangla: "", name_english: "", alias_bangla: "", alias_english: "", faculty_id: "", serial: "" });
-      await mutate(undefined, { revalidate: true });
       toast.success(isEditMode ? 'Department updated successfully' : 'Department created successfully');
+      await mutate();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save department');
-      await mutate(undefined, { revalidate: true });
+      await mutate();
     }
   };
 

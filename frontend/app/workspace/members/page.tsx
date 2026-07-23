@@ -96,13 +96,18 @@ export default function ManageMembersPage() {
   const handleDelete = (member: any) => {
     confirm("Delete Member", "Are you sure you want to delete this member?", async () => {
       try {
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          return { ...current, data: current.data.filter((item: any) => item.id !== member.id) };
+        }, { revalidate: false });
+
         await api.delete(`/members/${member.id}`);
-        await mutate(undefined, { revalidate: true });
         toast.success('Member deleted successfully');
+        await mutate();
       } catch (err) {
         console.error(err);
         toast.error('Failed to delete member');
-        await mutate(undefined, { revalidate: true });
+        await mutate();
       }
     });
   };
@@ -117,10 +122,10 @@ export default function ManageMembersPage() {
           const res = await api.post('/members/fetch-external');
           toast.dismiss(loadingToast);
           toast.success(res.data.message || "Synced members successfully");
-          await mutate(undefined, { revalidate: true });
+          await mutate();
         } catch (err: any) {
           toast.error(err.response?.data?.message || "Failed to sync members");
-          await mutate(undefined, { revalidate: true });
+          await mutate();
         }
       }
     );
@@ -129,20 +134,36 @@ export default function ManageMembersPage() {
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let res;
       if (isEditMode && editingId) {
-        await api.put(`/members/${editingId}`, newMember);
+        res = await api.put(`/members/${editingId}`, newMember);
       } else {
-        await api.post('/members', newMember);
+        res = await api.post('/members', newMember);
       }
+
+      const savedItem = res.data?.data;
+      if (savedItem) {
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          const list = current.data;
+          return {
+            ...current,
+            data: isEditMode
+              ? list.map((item: any) => item.id === editingId ? { ...item, ...savedItem } : item)
+              : [savedItem, ...list]
+          };
+        }, { revalidate: false });
+      }
+
       setIsModalOpen(false);
       setIsEditMode(false);
       setEditingId(null);
       setNewMember({ name: "", prefix: "", designation: "", department_id: "", office_id: "", email: "", member_type: "academic", serial: "" });
-      await mutate(undefined, { revalidate: true });
       toast.success(isEditMode ? 'Member updated successfully' : 'Member created successfully');
+      await mutate();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save member');
-      await mutate(undefined, { revalidate: true });
+      await mutate();
     }
   };
 

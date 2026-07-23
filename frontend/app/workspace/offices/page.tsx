@@ -67,13 +67,18 @@ export default function ManageOfficesPage() {
   const handleDelete = (office: any) => {
     confirm("Delete Office", "Are you sure you want to delete this office?", async () => {
       try {
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          return { ...current, data: current.data.filter((item: any) => item.id !== office.id) };
+        }, { revalidate: false });
+
         await api.delete(`/offices/${office.id}`);
-        await mutate(undefined, { revalidate: true });
         toast.success('Office deleted successfully');
+        await mutate();
       } catch (err) {
         console.error(err);
         toast.error('Failed to delete office');
-        await mutate(undefined, { revalidate: true });
+        await mutate();
       }
     });
   };
@@ -81,20 +86,36 @@ export default function ManageOfficesPage() {
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let res;
       if (isEditMode && editingId) {
-        await api.put(`/offices/${editingId}`, newOffice);
+        res = await api.put(`/offices/${editingId}`, newOffice);
       } else {
-        await api.post('/offices', newOffice);
+        res = await api.post('/offices', newOffice);
       }
+
+      const savedItem = res.data?.data;
+      if (savedItem) {
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          const list = current.data;
+          return {
+            ...current,
+            data: isEditMode
+              ? list.map((item: any) => item.id === editingId ? { ...item, ...savedItem } : item)
+              : [savedItem, ...list]
+          };
+        }, { revalidate: false });
+      }
+
       setIsModalOpen(false);
       setIsEditMode(false);
       setEditingId(null);
       setNewOffice({ name_bangla: "", name_english: "" });
-      await mutate(undefined, { revalidate: true });
       toast.success(isEditMode ? 'Office updated successfully' : 'Office created successfully');
+      await mutate();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save office');
-      await mutate(undefined, { revalidate: true });
+      await mutate();
     }
   };
 

@@ -80,12 +80,17 @@ export default function ManageTemplatesPage() {
   const handleDelete = (row: any) => {
     confirm("Delete Template", `Are you sure you want to delete this template?`, async () => {
       try {
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          return { ...current, data: current.data.filter((item: any) => item.id !== row.id) };
+        }, { revalidate: false });
+
         await api.delete(`/templates/${row.id}`);
-        await mutate(undefined, { revalidate: true });
         toast.success("Template deleted successfully");
+        await mutate();
       } catch (err: any) {
         toast.error(err.response?.data?.message || "Failed to delete template");
-        await mutate(undefined, { revalidate: true });
+        await mutate();
       }
     });
   };
@@ -97,18 +102,34 @@ export default function ManageTemplatesPage() {
     }
 
     try {
+      let res;
       if (isEditMode && editingId) {
-        await api.put(`/templates/${editingId}`, formData);
+        res = await api.put(`/templates/${editingId}`, formData);
         toast.success("Template updated successfully");
       } else {
-        await api.post("/templates", formData);
+        res = await api.post("/templates", formData);
         toast.success("Template created successfully");
       }
-      await mutate(undefined, { revalidate: true });
+
+      const savedItem = res.data?.data;
+      if (savedItem) {
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          const list = current.data;
+          return {
+            ...current,
+            data: isEditMode
+              ? list.map((item: any) => item.id === editingId ? { ...item, ...savedItem } : item)
+              : [savedItem, ...list]
+          };
+        }, { revalidate: false });
+      }
+
       setIsModalOpen(false);
+      await mutate();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save template");
-      await mutate(undefined, { revalidate: true });
+      await mutate();
     }
   };
 

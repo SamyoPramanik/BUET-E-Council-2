@@ -19,7 +19,8 @@ export default function ManageFacultiesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newFaculty, setNewFaculty] = useState({
     name_bangla: "",
-    name_english: ""
+    name_english: "",
+    serial: ""
   });
 
   const columns = [
@@ -60,20 +61,29 @@ export default function ManageFacultiesPage() {
   const handleEdit = (faculty: any) => {
     setIsEditMode(true);
     setEditingId(faculty.id);
-    setNewFaculty({ name_bangla: faculty.name_bangla, name_english: faculty.name_english });
+    setNewFaculty({
+      name_bangla: faculty.name_bangla || "",
+      name_english: faculty.name_english || "",
+      serial: faculty.serial ? String(faculty.serial) : ""
+    });
     setIsModalOpen(true);
   };
 
   const handleDelete = (faculty: any) => {
     confirm("Delete Faculty", "Are you sure you want to delete this faculty?", async () => {
       try {
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          return { ...current, data: current.data.filter((item: any) => item.id !== faculty.id) };
+        }, { revalidate: false });
+
         await api.delete(`/faculties/${faculty.id}`);
-        await mutate(undefined, { revalidate: true });
         toast.success('Faculty deleted successfully');
+        await mutate();
       } catch (err) {
         console.error(err);
         toast.error('Failed to delete faculty');
-        await mutate(undefined, { revalidate: true });
+        await mutate();
       }
     });
   };
@@ -81,20 +91,41 @@ export default function ManageFacultiesPage() {
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...newFaculty,
+        serial: newFaculty.serial === "" ? undefined : parseInt(newFaculty.serial, 10)
+      };
+
+      let res;
       if (isEditMode && editingId) {
-        await api.put(`/faculties/${editingId}`, newFaculty);
+        res = await api.put(`/faculties/${editingId}`, payload);
       } else {
-        await api.post('/faculties', newFaculty);
+        res = await api.post('/faculties', payload);
       }
+
+      const savedItem = res.data?.data;
+      if (savedItem) {
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          const list = current.data;
+          return {
+            ...current,
+            data: isEditMode
+              ? list.map((item: any) => item.id === editingId ? { ...item, ...savedItem } : item)
+              : [savedItem, ...list]
+          };
+        }, { revalidate: false });
+      }
+
       setIsModalOpen(false);
       setIsEditMode(false);
       setEditingId(null);
-      setNewFaculty({ name_bangla: "", name_english: "" });
-      await mutate(undefined, { revalidate: true });
+      setNewFaculty({ name_bangla: "", name_english: "", serial: "" });
       toast.success(isEditMode ? 'Faculty updated successfully' : 'Faculty created successfully');
+      await mutate();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save faculty');
-      await mutate(undefined, { revalidate: true });
+      await mutate();
     }
   };
 
@@ -121,7 +152,7 @@ export default function ManageFacultiesPage() {
         onAdd={canEdit ? () => {
           setIsEditMode(false);
           setEditingId(null);
-          setNewFaculty({ name_bangla: "", name_english: "" });
+          setNewFaculty({ name_bangla: "", name_english: "", serial: "" });
           setIsModalOpen(true);
         } : undefined}
         onEdit={canEdit ? handleEdit : undefined}
@@ -134,6 +165,17 @@ export default function ManageFacultiesPage() {
             <h3 className="text-lg font-semibold mb-4">{isEditMode ? "Edit Faculty" : "Add New Faculty"}</h3>
             <form onSubmit={handleAddSubmit} className="space-y-4">
               
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Serial No (Optional)</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 1, 2, 3 (Leave empty for auto-assign)"
+                  value={newFaculty.serial}
+                  onChange={e => setNewFaculty({...newFaculty, serial: e.target.value})}
+                  className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                />
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-medium">Name (Bangla)</label>
                 <input required value={newFaculty.name_bangla} onChange={e => setNewFaculty({...newFaculty, name_bangla: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />

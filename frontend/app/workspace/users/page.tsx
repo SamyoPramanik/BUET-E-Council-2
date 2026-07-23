@@ -51,10 +51,17 @@ export default function RoleAndUserManagementPage() {
     level_title: ""
   });
 
-  // User Filters State
+  // User Filters & State
+  const [usersList, setUsersList] = useState<any[]>([]);
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [memberTypeFilter, setMemberTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  useEffect(() => {
+    if (usersRes?.data) {
+      setUsersList(usersRes.data);
+    }
+  }, [usersRes]);
 
   // System Settings State
   const [minCompletedLevel, setMinCompletedLevel] = useState<string>("1");
@@ -93,22 +100,51 @@ export default function RoleAndUserManagementPage() {
         payload.role_id = userFormData.role_id || null;
       }
 
+      const selectedRole = roles.find((r: any) => r.id === payload.role_id);
+      const roleLevel = selectedRole ? selectedRole.level : null;
+      const levelTitle = selectedRole ? selectedRole.level_title : (payload.role === 'admin' ? 'Admin' : payload.role === 'viewer' ? 'Viewer' : 'Editor');
+
       if (isUserEditMode && editingUserId) {
+        setUsersList((prev) =>
+          prev.map((u: any) =>
+            u.id === editingUserId
+              ? {
+                  ...u,
+                  ...payload,
+                  role_level: roleLevel,
+                  level_title: levelTitle
+                }
+              : u
+          )
+        );
+        setIsUserModalOpen(false);
+
         await api.put(`/auth/users/${editingUserId}`, payload);
         toast.success("User updated successfully!");
       } else {
         const res = await api.post('/auth/signup', payload);
+        const newUser = res.data?.data;
+        if (newUser) {
+          setUsersList((prev) => [
+            {
+              ...newUser,
+              role_level: roleLevel,
+              level_title: levelTitle
+            },
+            ...prev
+          ]);
+        }
+        setIsUserModalOpen(false);
         toast.success("User created successfully!");
         if (res.data?.generated_password) {
           toast.info(`Generated password: ${res.data.generated_password}`);
         }
       }
 
-      setIsUserModalOpen(false);
-      await mutateUsers(undefined, { revalidate: true });
+      await mutateUsers();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save user");
-      await mutateUsers(undefined, { revalidate: true });
+      mutateUsers();
     }
   };
 
@@ -134,7 +170,7 @@ export default function RoleAndUserManagementPage() {
       await mutateUsers();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save role");
-      await mutateRoles();
+      mutateRoles();
     }
   };
 
@@ -159,12 +195,13 @@ export default function RoleAndUserManagementPage() {
   const handleDeleteUser = (u: any) => {
     confirm("Delete User", `Are you sure you want to delete user '${u.username}'?`, async () => {
       try {
+        setUsersList((prev) => prev.filter((item: any) => item.id !== u.id));
         await api.delete(`/auth/users/${u.id}`);
         toast.success("User deleted successfully.");
-        await mutateUsers(undefined, { revalidate: true });
+        mutateUsers();
       } catch (err: any) {
         toast.error(err.response?.data?.message || "Failed to delete user.");
-        await mutateUsers(undefined, { revalidate: true });
+        mutateUsers();
       }
     });
   };
@@ -291,7 +328,7 @@ export default function RoleAndUserManagementPage() {
       {activeTab === 'users' && (() => {
         const currentUserLevel = isAdmin ? 999999 : (currentUser?.role_level !== null && currentUser?.role_level !== undefined ? Number(currentUser.role_level) : -1);
 
-        const filteredUsers = users.filter((u: any) => {
+        const filteredUsers = usersList.filter((u: any) => {
           if (roleFilter !== 'all') {
             if (roleFilter === 'admin' && u.role !== 'admin') return false;
             if (roleFilter === 'viewer' && u.role !== 'viewer') return false;
@@ -394,7 +431,7 @@ export default function RoleAndUserManagementPage() {
                 { key: "status_display", label: "Status" }
               ]}
               data={formattedUsers}
-              title={`System Users (${users.length})`}
+              title={`System Users (${usersList.length})`}
               searchable
               searchPlaceholder="Search users by name or email..."
               filters={userFilters}

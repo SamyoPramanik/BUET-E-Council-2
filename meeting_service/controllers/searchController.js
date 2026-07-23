@@ -43,7 +43,7 @@ const runKeywordSearchRaw = async (queryText, filters, excludedKeys = []) => {
         AND ($5::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $5::numeric)
         AND ($6::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $6::numeric)
         AND ($7::uuid[] IS NULL OR a.id <> ALL($7::uuid[]))
-        AND ($8::text IS NULL OR m.type = $8)
+        AND ($8::text IS NULL OR m.type::text = $8)
     `;
 
     const agendaParams = [queryText, filters.tags, filters.dateFrom, filters.dateTo, filters.serialFrom, filters.serialTo, excludedAgendaIds.length ? excludedAgendaIds : null, filters.meetingType];
@@ -172,7 +172,7 @@ const runEntitySearchFast = async (queryText, filters, excludedKeys = []) => {
         AND ($5::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $5::numeric)
         AND ($6::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $6::numeric)
         AND ($7::uuid[] IS NULL OR a.id <> ALL($7::uuid[]))
-        AND ($8::text IS NULL OR m.type = $8)
+        AND ($8::text IS NULL OR m.type::text = $8)
     `;
 
     const agendaParams = [patternArray, filters.tags, filters.dateFrom, filters.dateTo, filters.serialFrom, filters.serialTo, excludedAgendaIds.length ? excludedAgendaIds : null, filters.meetingType];
@@ -219,7 +219,7 @@ const runSemanticSearchHNSW = async (queryVector, filters, excludedKeys = []) =>
           AND ($5::date IS NULL OR m.meeting_date <= $5::date)
           AND ($6::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $6::numeric)
           AND ($7::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $7::numeric)
-          AND ($8::text IS NULL OR m.type = $8)
+          AND ($8::text IS NULL OR m.type::text = $8)
         ORDER BY c.embedding <=> $1::vector ASC
         LIMIT ${RESULT_LIMIT}
     `;
@@ -272,9 +272,10 @@ const search = async (req, res, next) => {
                     AND ($3::date IS NULL OR m.meeting_date <= $3::date)
                     AND ($4::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $4::numeric)
                     AND ($5::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $5::numeric)
+                    AND ($6::text IS NULL OR m.type::text = $6)
                 `;
 
-                const agendaParams = [filters.tags, filters.dateFrom, filters.dateTo, filters.serialFrom, filters.serialTo];
+                const agendaParams = [filters.tags, filters.dateFrom, filters.dateTo, filters.serialFrom, filters.serialTo, filters.meetingType];
                 const agendaQuery = `
                     SELECT a.id as agenda_id, a.meeting_id, m.title, m.meeting_title, m.type, m.meeting_date, m.status,
                            'agenda' as matched_in,

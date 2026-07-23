@@ -9,7 +9,8 @@ import CustomSelect from "../CustomSelect";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
-import { canAuthorMeeting, canCompleteMeeting, canUnlockItem } from "../../lib/meetingAccess";
+import { canAuthorMeeting, canCompleteMeeting, canUnlockItem, canSendBack } from "../../lib/meetingAccess";
+import MeetingWorkflowBar from "./MeetingWorkflowBar";
 import { Trash2, Video, Lock, Unlock, ArrowRightLeft, CheckCircle2, ShieldAlert, CornerDownLeft, Clock, Users, UserCheck, FileText, Layers, KeyRound } from "lucide-react";
 
 const typeOptions = [
@@ -241,6 +242,8 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
         )}
       </div>
 
+      {meeting && <MeetingWorkflowBar meeting={meeting} onChanged={() => mutate()} />}
+
       {/* 2-Column Grid: Left (Meeting Info Form) | Right (Handover, Locking & Send-Back Section) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
@@ -335,7 +338,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
               <label className="text-sm font-medium flex items-center gap-2">
                 <Video className="w-4 h-4 text-primary" /> Online Meeting Link
               </label>
-              {canEditOnlineLink ? (
+              {!readOnly && canEditOnlineLink ? (
                 <input
                   type="url"
                   value={onlineMeetingLink}
@@ -357,7 +360,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
               )}
             </div>
 
-            {(!readOnly || canEditOnlineLink) && (
+            {!readOnly && (
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
@@ -392,8 +395,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
               </div>
             )}
 
-            {!isPast && (
-              <div className="space-y-4">
+            <div className="space-y-4">
                 
                 {/* Handover Actions (Requires Password Confirmation) */}
                 <div className="space-y-2">
@@ -479,37 +481,52 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                       />
 
                       <div className="flex flex-col gap-1.5 pt-1">
-                        <button
-                          onClick={() => handleSendBack('agenda')}
-                          disabled={actionLoading === 'send-back-agenda'}
-                          className="w-full text-left px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-900 dark:text-blue-200 border border-blue-600/30 rounded text-xs font-medium transition-colors disabled:opacity-40"
-                        >
-                          Send Back Agenda to {currentTargetTitle}
-                        </button>
+                        {(() => {
+                          const canSbAgenda = canSendBack(user, meeting.agenda_handover_level);
+                          const canSbSuppli = canSendBack(user, meeting.suppli_agenda_handover_level);
+                          const canSbRes = canSendBack(user, meeting.resolution_handover_level);
+                          const canSbResStatus = canSendBack(user, meeting.resolution_status_handover_level);
 
-                        <button
-                          onClick={() => handleSendBack('suppli-agenda')}
-                          disabled={actionLoading === 'send-back-suppli-agenda'}
-                          className="w-full text-left px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-900 dark:text-blue-200 border border-blue-600/30 rounded text-xs font-medium transition-colors disabled:opacity-40"
-                        >
-                          Send Back Suppli Agenda to {currentTargetTitle}
-                        </button>
+                          return (
+                            <>
+                              <button
+                                onClick={() => handleSendBack('agenda')}
+                                disabled={!canSbAgenda || actionLoading === 'send-back-agenda'}
+                                title={!canSbAgenda && meeting.agenda_handover_level !== null ? "Handed over by your level. Only upper levels can send back." : ""}
+                                className="w-full text-left px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-900 dark:text-blue-200 border border-blue-600/30 rounded text-xs font-medium transition-colors disabled:opacity-40"
+                              >
+                                Send Back Agenda to {currentTargetTitle}
+                              </button>
 
-                        <button
-                          onClick={() => handleSendBack('resolution')}
-                          disabled={actionLoading === 'send-back-resolution'}
-                          className="w-full text-left px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-900 dark:text-blue-200 border border-blue-600/30 rounded text-xs font-medium transition-colors disabled:opacity-40"
-                        >
-                          Send Back Resolution to {currentTargetTitle}
-                        </button>
+                              <button
+                                onClick={() => handleSendBack('suppli-agenda')}
+                                disabled={!canSbSuppli || actionLoading === 'send-back-suppli-agenda'}
+                                title={!canSbSuppli && meeting.suppli_agenda_handover_level !== null ? "Handed over by your level. Only upper levels can send back." : ""}
+                                className="w-full text-left px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-900 dark:text-blue-200 border border-blue-600/30 rounded text-xs font-medium transition-colors disabled:opacity-40"
+                              >
+                                Send Back Suppli Agenda to {currentTargetTitle}
+                              </button>
 
-                        <button
-                          onClick={() => handleSendBack('resolution-status')}
-                          disabled={actionLoading === 'send-back-resolution-status'}
-                          className="w-full text-left px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-900 dark:text-blue-200 border border-blue-600/30 rounded text-xs font-medium transition-colors disabled:opacity-40"
-                        >
-                          Send Back Resolution Status to {currentTargetTitle}
-                        </button>
+                              <button
+                                onClick={() => handleSendBack('resolution')}
+                                disabled={!canSbRes || actionLoading === 'send-back-resolution'}
+                                title={!canSbRes && meeting.resolution_handover_level !== null ? "Handed over by your level. Only upper levels can send back." : ""}
+                                className="w-full text-left px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-900 dark:text-blue-200 border border-blue-600/30 rounded text-xs font-medium transition-colors disabled:opacity-40"
+                              >
+                                Send Back Resolution to {currentTargetTitle}
+                              </button>
+
+                              <button
+                                onClick={() => handleSendBack('resolution-status')}
+                                disabled={!canSbResStatus || actionLoading === 'send-back-resolution-status'}
+                                title={!canSbResStatus && meeting.resolution_status_handover_level !== null ? "Handed over by your level. Only upper levels can send back." : ""}
+                                className="w-full text-left px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-900 dark:text-blue-200 border border-blue-600/30 rounded text-xs font-medium transition-colors disabled:opacity-40"
+                              >
+                                Send Back Resolution Status to {currentTargetTitle}
+                              </button>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   ) : (
@@ -705,7 +722,6 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                   </div>
                 )}
               </div>
-            )}
           </div>
         </div>
 

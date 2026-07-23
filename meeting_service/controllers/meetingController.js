@@ -1,6 +1,7 @@
 const CustomError = require('../errors/CustomError');
 const db = require('../db');
 const bcrypt = require('bcryptjs');
+const axios = require('axios');
 const { generatePdf: generateMeetingPdf, generateAttendanceSheet } = require('../utils/pdfGenerator');
 const storageService = require('../utils/storageService');
 const { sendMail } = require('../utils/mailer');
@@ -136,6 +137,40 @@ const getMeetingHistory = async (req, res, next) => {
         const labelForAudit = (log) => {
             const path = log.details?.path || '';
             const fields = log.details?.fields;
+
+            // Handover actions
+            if (path.includes('/handover-agenda')) return 'Handed over Main Agenda to upper levels';
+            if (path.includes('/handover-suppli-agenda')) return 'Handed over Supplementary Agenda to upper levels';
+            if (path.includes('/handover-resolution-status')) return 'Handed over Resolution Status to upper levels';
+            if (path.includes('/handover-resolution')) return 'Handed over Resolution to upper levels';
+
+            // Send back actions
+            if (path.includes('/send-back-agenda')) return 'Sent back Main Agenda to lower level';
+            if (path.includes('/send-back-suppli-agenda')) return 'Sent back Supplementary Agenda to lower level';
+            if (path.includes('/send-back-resolution-status')) return 'Sent back Resolution Status to lower level';
+            if (path.includes('/send-back-resolution')) return 'Sent back Resolution to lower level';
+
+            // Lock actions
+            if (path.includes('/lock-agenda')) return 'Locked Main Agenda';
+            if (path.includes('/lock-suppli-agenda')) return 'Locked Supplementary Agenda';
+            if (path.includes('/lock-resolution-status')) return 'Locked Resolution Status';
+            if (path.includes('/lock-resolution')) return 'Locked Resolution';
+            if (path.includes('/lock-meeting')) return 'Locked Meeting Info';
+            if (path.includes('/lock-invitees')) return 'Locked Invitees';
+            if (path.includes('/lock-presentees')) return 'Locked Presentees';
+            if (path.includes('/lock-conclusion')) return 'Locked Conclusion';
+
+            // Unlock actions
+            if (path.includes('/unlock-agenda')) return 'Unlocked Main Agenda';
+            if (path.includes('/unlock-suppli-agenda')) return 'Unlocked Supplementary Agenda';
+            if (path.includes('/unlock-resolution-status')) return 'Unlocked Resolution Status';
+            if (path.includes('/unlock-resolution')) return 'Unlocked Resolution';
+            if (path.includes('/unlock-meeting')) return 'Unlocked Meeting Info';
+            if (path.includes('/unlock-invitees')) return 'Unlocked Invitees';
+            if (path.includes('/unlock-presentees')) return 'Unlocked Presentees';
+            if (path.includes('/unlock-conclusion')) return 'Unlocked Conclusion';
+
+            // Legacy & workflow actions
             if (path.includes('/submit-resolution')) return 'Submitted the resolution up the chain';
             if (path.includes('/return-resolution')) return 'Sent the resolution back';
             if (path.includes('/approve-resolution')) return 'Approved the resolution';
@@ -235,19 +270,24 @@ const updateMeeting = async (req, res, next) => {
     }
 };
 
-// Separate from updateMeeting so any non-viewer role can set/change this any
-// time, regardless of meeting ownership, lock, or approval workflow state.
 const updateOnlineMeetingLink = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { online_meeting_link } = req.body;
+
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canEditMeeting) {
+            return next(new CustomError('Meeting info is locked. Online meeting link cannot be modified.', 403));
+        }
 
         const result = await db.query(
             'UPDATE meetings SET online_meeting_link = $1 WHERE id = $2 RETURNING *',
             [online_meeting_link || null, id]
         );
 
-        if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
         res.status(200).json({ success: true, message: 'Online meeting link updated', data: result.rows[0] });
     } catch (error) {
         next(error);
@@ -1174,17 +1214,38 @@ const bulkImportMeeting = async (req, res, next) => {
     }
 };
 
-const verifyHandoverPassword = async (userId, password) => {
+const verifyHandoverPassword = async (req, password) => {
     if (!password) {
         throw new CustomError('Password is required to confirm handover.', 400);
     }
-    const userRes = await db.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
-    if (userRes.rows.length === 0) {
-        throw new CustomError('User account not found.', 404);
+    const userId = req.user?.id;
+    if (!userId) {
+        throw new CustomError('User authentication required.', 401);
     }
-    const isValid = await bcrypt.compare(password, userRes.rows[0].password_hash);
-    if (!isValid) {
-        throw new CustomError('Incorrect password. Handover verification failed.', 401);
+
+    try {
+        const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://auth_service:8000';
+        const headers = {};
+        if (req.headers?.cookie) headers.cookie = req.headers.cookie;
+        if (req.headers?.authorization) headers.authorization = req.headers.authorization;
+
+        const authRes = await axios.post(`${authServiceUrl}/verify-password`, { password }, {
+            headers,
+            timeout: 3000
+        });
+        if (authRes.data?.success) return true;
+    } catch (err) {
+        if (err.response?.status === 401) {
+            throw new CustomError('Incorrect password. Handover verification failed.', 401);
+        }
+        const userRes = await db.query('SELECT password FROM users WHERE id = $1', [userId]);
+        if (userRes.rows.length === 0) {
+            throw new CustomError('User account not found.', 404);
+        }
+        const isValid = await bcrypt.compare(password, userRes.rows[0].password);
+        if (!isValid) {
+            throw new CustomError('Incorrect password. Handover verification failed.', 401);
+        }
     }
 };
 
@@ -1192,7 +1253,7 @@ const handoverAgenda = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { password } = req.body;
-        await verifyHandoverPassword(req.user.id, password);
+        await verifyHandoverPassword(req, password);
 
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
@@ -1214,7 +1275,7 @@ const handoverSuppliAgenda = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { password } = req.body;
-        await verifyHandoverPassword(req.user.id, password);
+        await verifyHandoverPassword(req, password);
 
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
@@ -1273,7 +1334,7 @@ const handoverResolution = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { password } = req.body;
-        await verifyHandoverPassword(req.user.id, password);
+        await verifyHandoverPassword(req, password);
 
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
@@ -1576,6 +1637,11 @@ const sendBackAgenda = async (req, res, next) => {
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
 
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canSendBackAgenda) {
+            return next(new CustomError('You cannot send back agenda. Only upper levels can send back handed over items.', 403));
+        }
+
         const targetLevelInt = parseInt(target_level, 10);
         if (Number.isNaN(targetLevelInt)) {
             return next(new CustomError('target_level must be a valid integer', 400));
@@ -1595,6 +1661,11 @@ const sendBackResolution = async (req, res, next) => {
         const { target_level } = req.body;
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canSendBackResolution) {
+            return next(new CustomError('You cannot send back resolution. Only upper levels can send back handed over items.', 403));
+        }
 
         const targetLevelInt = parseInt(target_level, 10);
         if (Number.isNaN(targetLevelInt)) {
@@ -1616,6 +1687,11 @@ const sendBackResolutionStatus = async (req, res, next) => {
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
 
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canSendBackResolutionStatus) {
+            return next(new CustomError('You cannot send back resolution status. Only upper levels can send back handed over items.', 403));
+        }
+
         const targetLevelInt = parseInt(target_level, 10);
         if (Number.isNaN(targetLevelInt)) {
             return next(new CustomError('target_level must be a valid integer', 400));
@@ -1633,7 +1709,7 @@ const handoverResolutionStatus = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { password } = req.body;
-        await verifyHandoverPassword(req.user.id, password);
+        await verifyHandoverPassword(req, password);
 
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
@@ -1694,6 +1770,11 @@ const sendBackSuppliAgenda = async (req, res, next) => {
         const { target_level } = req.body;
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canSendBackSuppliAgenda) {
+            return next(new CustomError('You cannot send back supplementary agenda. Only upper levels can send back handed over items.', 403));
+        }
 
         const targetLevelInt = parseInt(target_level, 10);
         if (Number.isNaN(targetLevelInt)) {

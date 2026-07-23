@@ -99,7 +99,6 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
-      HF_TOKEN: ${HF_TOKEN}
     # mem_limit: 8g
     # cpus: 4
     depends_on:

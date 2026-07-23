@@ -73,6 +73,14 @@ export const canUnlockItem = (user?: WorkflowUser | null, lockedLevel?: number |
   return Number(user.role_level) >= Number(lockedLevel);
 };
 
+export const canSendBack = (user?: WorkflowUser | null, handoverLevel?: number | null): boolean => {
+  if (handoverLevel === null || handoverLevel === undefined) return false;
+  if (!user) return false;
+  if (isAdminRole(user)) return true;
+  if (user.role_level === null || user.role_level === undefined) return false;
+  return Number(user.role_level) > Number(handoverLevel);
+};
+
 export const canEditMeeting = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
   if (!user || !meeting) return false;
   if (meeting.access) return meeting.access.canEditMeeting;
@@ -210,10 +218,12 @@ export const canEditConclusion = (user?: WorkflowUser | null, meeting?: Workflow
 
 export const canCompleteMeeting = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null, minLevel = 1): boolean => {
   if (!user || !meeting) return false;
-  if (meeting.access) return meeting.access.canMarkCompleted;
   if (isCompleted(meeting)) return false;
   if (isAdminRole(user)) return true;
   if (user.role === 'viewer') return false;
+  if (meeting.access && typeof meeting.access.canMarkCompleted === 'boolean') {
+    return meeting.access.canMarkCompleted;
+  }
   if (user.role_level === null || user.role_level === undefined) return false;
   return Number(user.role_level) >= minLevel;
 };

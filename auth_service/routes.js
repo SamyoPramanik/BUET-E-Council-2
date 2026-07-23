@@ -422,13 +422,26 @@ router.get('/me', requireAuth, async (req, res) => {
     }
 });
 
-// 8. GET /secure-test (Example of how to protect an endpoint)
-router.get('/secure-test', requireAuth, (req, res) => {
-    res.status(200).json({
-        success: true,
-        message: 'This is a secure endpoint!',
-        user: req.user
-    });
+// 8. POST /verify-password (used by services to verify credentials)
+router.post('/verify-password', requireAuth, async (req, res) => {
+    try {
+        const { password } = req.body;
+        if (!password) {
+            return res.status(400).json({ success: false, message: 'Password is required' });
+        }
+        const userRes = await db.query('SELECT password FROM users WHERE id = $1', [req.user.id]);
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        const isMatch = await bcrypt.compare(password, userRes.rows[0].password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Incorrect password' });
+        }
+        res.status(200).json({ success: true, message: 'Password verified successfully' });
+    } catch (err) {
+        console.error('Verify password error:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
 });
 
 // 9. GET /users (admin or upper-level editor users)

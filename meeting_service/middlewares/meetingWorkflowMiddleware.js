@@ -57,7 +57,8 @@ const loadMeeting = async (req) => {
                 agenda_handover_level, suppli_agenda_handover_level, resolution_handover_level, resolution_status_handover_level,
                 agenda_locked_level, suppli_agenda_locked_level, resolution_locked_level, resolution_status_locked_level, meeting_locked_level,
                 invitees_locked_level, presentees_locked_level, conclusion_locked_level,
-                is_completed, completed_at, completed_by
+                is_completed, completed_at, completed_by,
+                (SELECT value FROM system_settings WHERE key = 'min_completed_level') as min_completed_level
          FROM meetings WHERE id = $1`,
         [meetingId]
     );
@@ -142,22 +143,18 @@ const calculateMeetingAccess = (meeting, user) => {
     const userLevel = parseInt(user.role_level, 10);
     const isCompleted = meeting.is_completed === true;
 
-    if (isCompleted) {
-        return emptyAccess;
-    }
-
     const getLock = (lvl) => (lvl !== null && lvl !== undefined ? parseInt(lvl, 10) : null);
     const getHandover = (lvl) => (lvl !== null && lvl !== undefined ? parseInt(lvl, 10) : null);
 
     // Meeting editing check (Locking at L removes edit rights from < L, so >= L retains access)
     const meetingLock = getLock(meeting.meeting_locked_level);
-    const canEditMeeting = meetingLock === null || userLevel >= meetingLock;
+    const canEditMeeting = !isCompleted && (meetingLock === null || userLevel >= meetingLock);
     const canUnlockMeeting = meetingLock === null || userLevel >= meetingLock;
 
     // Agenda editing check (Handover: <= L loses access; Lock: < L loses access)
     const agendaHandover = getHandover(meeting.agenda_handover_level);
     const agendaLock = getLock(meeting.agenda_locked_level);
-    let canEditAgenda = true;
+    let canEditAgenda = !isCompleted;
     if (agendaHandover !== null && userLevel <= agendaHandover) canEditAgenda = false;
     if (agendaLock !== null && userLevel < agendaLock) canEditAgenda = false;
     const canUnlockAgenda = agendaLock === null || userLevel >= agendaLock;
@@ -165,7 +162,7 @@ const calculateMeetingAccess = (meeting, user) => {
     // Supplementary Agenda editing check
     const suppliHandover = getHandover(meeting.suppli_agenda_handover_level);
     const suppliLock = getLock(meeting.suppli_agenda_locked_level);
-    let canEditSuppliAgenda = true;
+    let canEditSuppliAgenda = !isCompleted;
     if (suppliHandover !== null && userLevel <= suppliHandover) canEditSuppliAgenda = false;
     if (suppliLock !== null && userLevel < suppliLock) canEditSuppliAgenda = false;
     const canUnlockSuppliAgenda = suppliLock === null || userLevel >= suppliLock;
@@ -173,7 +170,7 @@ const calculateMeetingAccess = (meeting, user) => {
     // Resolution editing check
     const resHandover = getHandover(meeting.resolution_handover_level);
     const resLock = getLock(meeting.resolution_locked_level);
-    let canEditResolution = true;
+    let canEditResolution = !isCompleted;
     if (resHandover !== null && userLevel <= resHandover) canEditResolution = false;
     if (resLock !== null && userLevel < resLock) canEditResolution = false;
     const canUnlockResolution = resLock === null || userLevel >= resLock;
@@ -181,25 +178,37 @@ const calculateMeetingAccess = (meeting, user) => {
     // Resolution Status editing check
     const resStatusHandover = getHandover(meeting.resolution_status_handover_level);
     const resStatusLock = getLock(meeting.resolution_status_locked_level);
-    let canEditResolutionStatus = true;
+    let canEditResolutionStatus = !isCompleted;
     if (resStatusHandover !== null && userLevel <= resStatusHandover) canEditResolutionStatus = false;
     if (resStatusLock !== null && userLevel < resStatusLock) canEditResolutionStatus = false;
     const canUnlockResolutionStatus = resStatusLock === null || userLevel >= resStatusLock;
 
     // Invitees editing check
     const inviteesLock = getLock(meeting.invitees_locked_level);
-    const canEditInvitees = inviteesLock === null || userLevel >= inviteesLock;
+    const canEditInvitees = !isCompleted && (inviteesLock === null || userLevel >= inviteesLock);
     const canUnlockInvitees = inviteesLock === null || userLevel >= inviteesLock;
 
     // Presentees editing check
     const presenteesLock = getLock(meeting.presentees_locked_level);
-    const canEditPresentees = presenteesLock === null || userLevel >= presenteesLock;
+    const canEditPresentees = !isCompleted && (presenteesLock === null || userLevel >= presenteesLock);
     const canUnlockPresentees = presenteesLock === null || userLevel >= presenteesLock;
 
     // Conclusion editing check
     const conclusionLock = getLock(meeting.conclusion_locked_level);
-    const canEditConclusion = conclusionLock === null || userLevel >= conclusionLock;
+    const canEditConclusion = !isCompleted && (conclusionLock === null || userLevel >= conclusionLock);
     const canUnlockConclusion = conclusionLock === null || userLevel >= conclusionLock;
+
+    // Send Back checks: Only strictly higher levels (> handoverLevel) or admin can send back a handed-over item.
+    const canSendBackAgenda = agendaHandover !== null && (user.role === 'admin' || userLevel > agendaHandover);
+    const canSendBackSuppliAgenda = suppliHandover !== null && (user.role === 'admin' || userLevel > suppliHandover);
+    const canSendBackResolution = resHandover !== null && (user.role === 'admin' || userLevel > resHandover);
+    const canSendBackResolutionStatus = resStatusHandover !== null && (user.role === 'admin' || userLevel > resStatusHandover);
+
+    // Mark Meeting Completed check
+    const minCompletedLevel = meeting.min_completed_level !== undefined && meeting.min_completed_level !== null
+        ? parseInt(meeting.min_completed_level, 10)
+        : 1;
+    const canMarkCompleted = !isCompleted && (user.role === 'admin' || userLevel >= minCompletedLevel);
 
     return {
         canEditMeeting,
@@ -210,10 +219,15 @@ const calculateMeetingAccess = (meeting, user) => {
         canEditInvitees,
         canEditPresentees,
         canEditConclusion,
+        canMarkCompleted,
         canHandoverAgenda: canEditAgenda,
         canHandoverSuppliAgenda: canEditSuppliAgenda,
         canHandoverResolution: canEditResolution,
         canHandoverResolutionStatus: canEditResolutionStatus,
+        canSendBackAgenda,
+        canSendBackSuppliAgenda,
+        canSendBackResolution,
+        canSendBackResolutionStatus,
         canLockAgenda: true,
         canLockSuppliAgenda: true,
         canLockResolution: true,

@@ -7,6 +7,12 @@ const { normalizeBanglaText } = require('../utils/searchIndexer');
 const RESULT_LIMIT = 30;
 const SNIPPET_OPTS = 'StartSel=<mark>, StopSel=</mark>, MaxWords=40, MinWords=15, MaxFragments=1';
 
+const viewerTypeRestriction = (user) => {
+    if (user?.role !== 'viewer') return null;
+    if (user?.member_type === 'syndicate') return null;
+    return 'academic';
+};
+
 const parseFilters = (req) => {
     const q = normalizeBanglaText(req.query.q || '');
     const scope = req.query.scope === 'agenda' ? 'agenda' : 'both';
@@ -19,7 +25,8 @@ const parseFilters = (req) => {
     const serialToVal = req.query.serialTo ? parseInt(req.query.serialTo, 10) : null;
     const serialFrom = Number.isNaN(serialFromVal) ? null : serialFromVal;
     const serialTo = Number.isNaN(serialToVal) ? null : serialToVal;
-    return { q, scope, tags, dateFrom, dateTo, serialFrom, serialTo };
+    const meetingType = viewerTypeRestriction(req.user);
+    return { q, scope, tags, dateFrom, dateTo, serialFrom, serialTo, meetingType };
 };
 
 // -------------------------------------------------------------
@@ -36,9 +43,10 @@ const runKeywordSearchRaw = async (queryText, filters, excludedKeys = []) => {
         AND ($5::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $5::numeric)
         AND ($6::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $6::numeric)
         AND ($7::uuid[] IS NULL OR a.id <> ALL($7::uuid[]))
+        AND ($8::text IS NULL OR m.type = $8)
     `;
 
-    const agendaParams = [queryText, filters.tags, filters.dateFrom, filters.dateTo, filters.serialFrom, filters.serialTo, excludedAgendaIds.length ? excludedAgendaIds : null];
+    const agendaParams = [queryText, filters.tags, filters.dateFrom, filters.dateTo, filters.serialFrom, filters.serialTo, excludedAgendaIds.length ? excludedAgendaIds : null, filters.meetingType];
     const agendaQuery = `
         SELECT a.id as agenda_id, a.meeting_id, m.title, m.meeting_title, m.type, m.meeting_date, m.status,
                'agenda' as matched_in,
@@ -164,9 +172,10 @@ const runEntitySearchFast = async (queryText, filters, excludedKeys = []) => {
         AND ($5::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $5::numeric)
         AND ($6::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $6::numeric)
         AND ($7::uuid[] IS NULL OR a.id <> ALL($7::uuid[]))
+        AND ($8::text IS NULL OR m.type = $8)
     `;
 
-    const agendaParams = [patternArray, filters.tags, filters.dateFrom, filters.dateTo, filters.serialFrom, filters.serialTo, excludedAgendaIds.length ? excludedAgendaIds : null];
+    const agendaParams = [patternArray, filters.tags, filters.dateFrom, filters.dateTo, filters.serialFrom, filters.serialTo, excludedAgendaIds.length ? excludedAgendaIds : null, filters.meetingType];
     const agendaQuery = `
         SELECT DISTINCT ON (a.id)
                a.id as agenda_id, a.meeting_id, m.title, m.meeting_title, m.type, m.meeting_date, m.status,
@@ -210,11 +219,12 @@ const runSemanticSearchHNSW = async (queryVector, filters, excludedKeys = []) =>
           AND ($5::date IS NULL OR m.meeting_date <= $5::date)
           AND ($6::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $6::numeric)
           AND ($7::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $7::numeric)
+          AND ($8::text IS NULL OR m.type = $8)
         ORDER BY c.embedding <=> $1::vector ASC
         LIMIT ${RESULT_LIMIT}
     `;
 
-    const agendaParams = [vectorLiteral, excludedAgendaIds.length ? excludedAgendaIds : null, filters.tags, filters.dateFrom, filters.dateTo, filters.serialFrom, filters.serialTo];
+    const agendaParams = [vectorLiteral, excludedAgendaIds.length ? excludedAgendaIds : null, filters.tags, filters.dateFrom, filters.dateTo, filters.serialFrom, filters.serialTo, filters.meetingType];
     const queries = [db.query(buildQuery('agenda_chunks', 'agenda'), agendaParams)];
 
     if (filters.scope === 'both') {

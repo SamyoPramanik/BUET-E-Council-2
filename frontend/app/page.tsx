@@ -9,11 +9,14 @@ import { useAuth } from "../hooks/useAuth";
 
 export default function HomePage() {
   const { user } = useAuth();
-  // A viewer scoped to a single member_type (academic/syndicate) only ever
-  // sees that type; 'none' (or no logged-in user at all) sees both, same as today.
-  const restrictedType = (user?.role === 'viewer' && user?.member_type && ['academic', 'syndicate'].includes(user.member_type))
-    ? (user.member_type as 'academic' | 'syndicate')
+  // Viewer and syndicate member can access both academic and syndicate meetings.
+  // Academic member viewer can see only academic meetings.
+  const restrictedType: 'academic' | 'syndicate' | null = (user?.role === 'viewer' && user?.member_type !== 'syndicate')
+    ? 'academic'
     : null;
+
+  const showAcademicTab = !restrictedType || (restrictedType as string) === 'academic';
+  const showSyndicateTab = !restrictedType || (restrictedType as string) === 'syndicate';
 
   const [activeTab, setActiveTab] = useState<'academic' | 'syndicate'>('academic');
 
@@ -46,7 +49,7 @@ export default function HomePage() {
         
         {/* Tabs — a viewer scoped to one member_type only gets that one tab */}
         <div className="flex space-x-1 mb-8 border-b border-border">
-          {(!restrictedType || restrictedType === 'academic') && (
+          {showAcademicTab && (
             <button
               onClick={() => setActiveTab('academic')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
@@ -58,7 +61,7 @@ export default function HomePage() {
               Academic Meeting
             </button>
           )}
-          {(!restrictedType || restrictedType === 'syndicate') && (
+          {showSyndicateTab && (
             <button
               onClick={() => setActiveTab('syndicate')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${

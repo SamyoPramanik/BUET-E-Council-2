@@ -15,10 +15,11 @@ const setAgendaTags = async (agendaId, tagIds) => {
     }
 };
 
-const viewerTypeRestriction = (user) =>
-    (user?.role === 'viewer' && ['academic', 'syndicate'].includes(user?.member_type))
-        ? user.member_type
-        : null;
+const viewerTypeRestriction = (user) => {
+    if (user?.role !== 'viewer') return null;
+    if (user?.member_type === 'syndicate') return null;
+    return 'academic';
+};
 
 const getAgendams = async (req, res, next) => {
     try {
@@ -51,17 +52,25 @@ const getAgendams = async (req, res, next) => {
         let params = [];
 
         if (meeting_id) {
-            query += ' WHERE meeting_id = $1';
+            query += ' WHERE a.meeting_id = $1';
             params.push(meeting_id);
 
             if (is_suppli !== undefined) {
-                query += ' AND is_suppli = $2';
+                query += ' AND a.is_suppli = $2';
                 params.push(is_suppli === 'true');
             }
 
-            query += ' ORDER BY is_suppli ASC, agenda_serial ASC';
+            query += ' ORDER BY a.is_suppli ASC, a.agenda_serial ASC';
+        } else if (req.user?.role === 'viewer') {
+            const restrictedType = viewerTypeRestriction(req.user);
+            query += ' JOIN meetings m ON m.id = a.meeting_id WHERE m.status != \'draft\'';
+            if (restrictedType) {
+                params.push(restrictedType);
+                query += ` AND m.type = $${params.length}`;
+            }
+            query += ' ORDER BY a.created_at DESC';
         } else {
-            query += ' ORDER BY created_at DESC';
+            query += ' ORDER BY a.created_at DESC';
         }
 
         const result = await db.query(query, params);
@@ -169,6 +178,24 @@ const getRevisions = async (req, res, next) => {
             return next(new CustomError('content_type is required', 400));
         }
 
+        const agendaRes = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [id]);
+        if (agendaRes.rows.length === 0) return next(new CustomError('Agenda not found', 404));
+        const meetingId = agendaRes.rows[0].meeting_id;
+
+        const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [meetingId]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingRes.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
+
         const result = await db.query(
             `SELECT r.*, u.username as modified_by_username
              FROM revisions r
@@ -243,6 +270,9 @@ const deleteAgendam = async (req, res, next) => {
         
         const meeting_id = findAgenda.rows[0].meeting_id;
 
+        const annexuresRes = await db.query('SELECT file_path FROM annexures WHERE content_id = $1', [id]);
+        const filePaths = annexuresRes.rows.map(r => r.file_path).filter(Boolean);
+
         await db.query('BEGIN');
         await db.query('DELETE FROM agenda WHERE id = $1', [id]);
 
@@ -259,6 +289,15 @@ const deleteAgendam = async (req, res, next) => {
         }
 
         await db.query('COMMIT');
+
+        for (const filePath of filePaths) {
+            try {
+                await storageService.deleteFile(filePath);
+            } catch (err) {
+                console.error("Failed to delete annexure file from storage on agenda delete:", err);
+            }
+        }
+
         await db.query('DELETE FROM search_cache');
         res.status(200).json({ success: true, message: 'Agendam deleted' });
     } catch (error) {
@@ -287,12 +326,20 @@ const getResolutions = async (req, res, next) => {
             }
         }
 
-        let query = 'SELECT id, meeting_id, agenda_serial, resolution, is_executed, execution_status FROM agenda WHERE resolution IS NOT NULL';
+        let query = 'SELECT a.id, a.meeting_id, a.agenda_serial, a.resolution, a.is_executed, a.execution_status FROM agenda a WHERE a.resolution IS NOT NULL';
         let params = [];
         
         if (meeting_id) {
-            query += ' AND meeting_id = $1 ORDER BY agenda_serial ASC';
+            query += ' AND a.meeting_id = $1 ORDER BY a.agenda_serial ASC';
             params.push(meeting_id);
+        } else if (req.user?.role === 'viewer') {
+            const restrictedType = viewerTypeRestriction(req.user);
+            query += ' JOIN meetings m ON m.id = a.meeting_id WHERE m.status != \'draft\'';
+            if (restrictedType) {
+                params.push(restrictedType);
+                query += ` AND m.type = $${params.length}`;
+            }
+            query += ' ORDER BY a.agenda_serial ASC';
         }
 
         const result = await db.query(query, params);

@@ -12,10 +12,11 @@ const { loadMeeting, calculateMeetingAccess } = require('../middlewares/meetingW
 
 // A viewer whose account is scoped to a specific member_type (academic/syndicate)
 // only sees meetings of that type; 'none' (and every non-viewer role) sees both.
-const viewerTypeRestriction = (user) =>
-    (user?.role === 'viewer' && ['academic', 'syndicate'].includes(user?.member_type))
-        ? user.member_type
-        : null;
+const viewerTypeRestriction = (user) => {
+    if (user?.role !== 'viewer') return null;
+    if (user?.member_type === 'syndicate') return null;
+    return 'academic';
+};
 
 const displayStageFor = (user, stage) => stage;
 
@@ -325,8 +326,27 @@ const updateOnlineMeetingLink = async (req, res, next) => {
 const deleteMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
+
+        const annexuresRes = await db.query(
+            `SELECT an.file_path
+             FROM annexures an
+             JOIN agenda a ON a.id = an.content_id
+             WHERE a.meeting_id = $1`,
+            [id]
+        );
+        const filePaths = annexuresRes.rows.map(r => r.file_path).filter(Boolean);
+
         const result = await db.query('DELETE FROM meetings WHERE id = $1 RETURNING *', [id]);
         if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+
+        for (const filePath of filePaths) {
+            try {
+                await storageService.deleteFile(filePath);
+            } catch (err) {
+                console.error("Failed to delete annexure file from storage on meeting delete:", err);
+            }
+        }
+
         res.status(200).json({ success: true, message: 'Meeting deleted' });
     } catch (error) {
         next(error);

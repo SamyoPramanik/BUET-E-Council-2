@@ -109,7 +109,11 @@ export default function PublicMeetingView() {
   if (meetingError) return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <div className="p-8 text-destructive font-medium mx-auto max-w-7xl">Error loading meeting data.</div>
+      <div className="p-8 text-destructive font-medium mx-auto max-w-7xl">
+        {meetingError.response?.status === 404 || meetingError.status === 404 || meetingError.response?.data?.message === 'Meeting not found'
+          ? "Meeting not found"
+          : "Error loading meeting data."}
+      </div>
     </div>
   );
 

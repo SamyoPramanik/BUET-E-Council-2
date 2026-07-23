@@ -15,10 +15,31 @@ const setAgendaTags = async (agendaId, tagIds) => {
     }
 };
 
+const viewerTypeRestriction = (user) =>
+    (user?.role === 'viewer' && ['academic', 'syndicate'].includes(user?.member_type))
+        ? user.member_type
+        : null;
+
 const getAgendams = async (req, res, next) => {
     try {
         const meeting_id = req.query.meeting_id;
         const is_suppli = req.query.is_suppli;
+
+        if (meeting_id) {
+            const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [meeting_id]);
+            if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+            const meeting = meetingRes.rows[0];
+
+            if (req.user?.role === 'viewer') {
+                if (meeting.status === 'draft') {
+                    return next(new CustomError('Meeting not found', 404));
+                }
+                const restrictedType = viewerTypeRestriction(req.user);
+                if (restrictedType && meeting.type !== restrictedType) {
+                    return next(new CustomError('Meeting not found', 404));
+                }
+            }
+        }
 
         let query = `
             SELECT a.*, COALESCE(
@@ -248,10 +269,24 @@ const deleteAgendam = async (req, res, next) => {
 
 const getResolutions = async (req, res, next) => {
     try {
-        // According to schema, resolution is just a column in the agenda table.
-        // We fetch agendas that have a resolution.
         const meeting_id = req.query.meeting_id;
         
+        if (meeting_id) {
+            const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [meeting_id]);
+            if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+            const meeting = meetingRes.rows[0];
+
+            if (req.user?.role === 'viewer') {
+                if (meeting.status === 'draft') {
+                    return next(new CustomError('Meeting not found', 404));
+                }
+                const restrictedType = viewerTypeRestriction(req.user);
+                if (restrictedType && meeting.type !== restrictedType) {
+                    return next(new CustomError('Meeting not found', 404));
+                }
+            }
+        }
+
         let query = 'SELECT id, meeting_id, agenda_serial, resolution, is_executed, execution_status FROM agenda WHERE resolution IS NOT NULL';
         let params = [];
         
@@ -376,6 +411,24 @@ const getAnnexures = async (req, res, next) => {
     try {
         const { id } = req.params;
         let { type } = req.query; // 'agenda' or 'resolution'
+
+        const agendaRes = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [id]);
+        if (agendaRes.rows.length === 0) return next(new CustomError('Agenda not found', 404));
+        const meetingId = agendaRes.rows[0].meeting_id;
+
+        const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [meetingId]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingRes.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
         
         if (type === 'agenda') type = 'agendaItem';
 

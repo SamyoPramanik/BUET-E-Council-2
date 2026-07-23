@@ -23,6 +23,10 @@ const meetingListFilter = (user) => {
     const conditions = [];
     const params = [];
 
+    if (user?.role === 'viewer') {
+        conditions.push("m.status != 'draft'");
+    }
+
     const restrictedType = viewerTypeRestriction(user);
     if (restrictedType) {
         params.push(restrictedType);
@@ -79,9 +83,14 @@ const getMeetingById = async (req, res, next) => {
 
         const meeting = result.rows[0];
 
-        const restrictedType = viewerTypeRestriction(req.user);
-        if (restrictedType && meeting.type !== restrictedType) {
-            return next(new CustomError('You do not have access to this meeting.', 403));
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
         }
 
         meeting.date = new Date(meeting.meeting_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -722,6 +731,20 @@ const bulkFetchInvitees = async (req, res, next) => {
 const getInvitees = async (req, res, next) => {
     try {
         const { id } = req.params;
+        const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [id]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingRes.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
+
         const result = await db.query(`
             SELECT i.*, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM invitees i
@@ -740,6 +763,20 @@ const getInvitees = async (req, res, next) => {
 const getInviteesEmails = async (req, res, next) => {
     try {
         const { id } = req.params;
+        const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [id]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingRes.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
+
         const result = await db.query(`
             SELECT i.id, i.name, i.email, i.designation, i.serial,
                    d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
@@ -881,6 +918,20 @@ const reorderInvitee = async (req, res, next) => {
 const getPresentees = async (req, res, next) => {
     try {
         const { id } = req.params;
+        const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [id]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingRes.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
+
         const result = await db.query(`
             SELECT i.*, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM invitees i
@@ -1047,9 +1098,19 @@ const generatePdf = async (req, res, next) => {
         const { id, type } = req.params; // type = agenda, resolution, attendance
         let pdfBuffer;
 
-        // Basic check if meeting exists (the generators fetch the full data themselves).
-        const meetingCheck = await db.query('SELECT id FROM meetings WHERE id = $1', [id]);
+        const meetingCheck = await db.query('SELECT id, status, type FROM meetings WHERE id = $1', [id]);
         if (meetingCheck.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingCheck.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
 
         if (type === 'agenda') {
             pdfBuffer = await generateMeetingPdf(id, false);

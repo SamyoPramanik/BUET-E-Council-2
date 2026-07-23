@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
 import { Mail, Plus, CheckCircle, Clock, Trash2, Users, ShieldCheck, Building, Check, X, ChevronDown, LayoutList, Layers, Pencil } from "lucide-react";
@@ -64,11 +64,30 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const [filterDepartment, setFilterDepartment] = useState("");
   const [filterOffice, setFilterOffice] = useState("");
 
-  const uniqueDesignations = Array.from(new Set(allMembers.map((m: any) => m.designation).filter(Boolean)));
-  const uniqueDepartments = Array.from(new Set(allMembers.map((m: any) => m.department_name).filter(Boolean)));
-  const uniqueOffices = Array.from(new Set(allMembers.map((m: any) => m.office_name).filter(Boolean)));
+  // Dynamically fetch invitees or presentees
+  const fetchUrl = isPast ? `/meetings/${meeting.id}/presentees` : `/meetings/${meeting.id}/invitees`;
+  const { data: inviteesRes, mutate: mutateInvitees } = useSWR(fetchUrl, fetcher, { fallbackData: { data: [] } });
+  const invitees = inviteesRes?.data || [];
 
-  const filteredMembers = allMembers.filter((m: any) => {
+  const { data: allInviteesRes } = useSWR(`/meetings/${meeting.id}/invitees`, fetcher);
+  const allMeetingInvitees = allInviteesRes?.data || [];
+
+  const pickerSourceList = isPast
+    ? allMeetingInvitees
+    : (!canEditInviteesAccess ? allMeetingInvitees.filter((m: any) => !m.is_present) : allMembers);
+
+  useEffect(() => {
+    if (isAddPresenteeModalOpen && isPast) {
+      const presentIds = allMeetingInvitees.filter((inv: any) => inv.is_present).map((inv: any) => inv.id);
+      setSelectedMembers(presentIds);
+    }
+  }, [isAddPresenteeModalOpen, isPast, allMeetingInvitees]);
+
+  const uniqueDesignations = Array.from(new Set(pickerSourceList.map((m: any) => m.designation).filter(Boolean)));
+  const uniqueDepartments = Array.from(new Set(pickerSourceList.map((m: any) => m.department_name).filter(Boolean)));
+  const uniqueOffices = Array.from(new Set(pickerSourceList.map((m: any) => m.office_name).filter(Boolean)));
+
+  const filteredMembers = pickerSourceList.filter((m: any) => {
     const matchesSearch = (m.name?.toLowerCase().includes(searchQuery.toLowerCase()) || m.designation?.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesDesignation = filterDesignation ? m.designation === filterDesignation : true;
     const matchesDepartment = filterDepartment ? m.department_name === filterDepartment : true;
@@ -127,11 +146,6 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   });
 
   const sortedMemberDeptGroups = Object.entries(memberDeptGroups).sort(([, a], [, b]) => a.serial - b.serial);
-
-  // Dynamically fetch invitees or presentees
-  const fetchUrl = isPast ? `/meetings/${meeting.id}/presentees` : `/meetings/${meeting.id}/invitees`;
-  const { data: inviteesRes, mutate: mutateInvitees } = useSWR(fetchUrl, fetcher, { fallbackData: { data: [] } });
-  const invitees = inviteesRes?.data || [];
 
   // Search + filters for the main invitees/presentees table (search handled by DataTable)
   const [tableDesignation, setTableDesignation] = useState("all");
@@ -479,6 +493,23 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const handleAddPresentees = async () => {
     setIsSavingPresentees(true);
     try {
+      if (isPast) {
+        await api.put(`/meetings/${meeting.id}/attendance`, { present_invitee_ids: selectedMembers });
+        toast.success("Presentees updated successfully");
+        setIsAddPresenteeModalOpen(false);
+        mutateInvitees();
+        return;
+      }
+      if (!canEditInviteesAccess) {
+        if (selectedMembers.length > 0) {
+          await api.post(`/meetings/${meeting.id}/presentees`, { invitee_ids: selectedMembers });
+          toast.success("Presentees added successfully");
+        }
+        setIsAddPresenteeModalOpen(false);
+        setSelectedMembers([]);
+        mutateInvitees();
+        return;
+      }
       // Find presentees to remove (they are in invitees but their member.id is NOT in selectedMembers)
       const presenteesToRemove = invitees.filter((p: any) => {
         const matchedMember = allMembers.find((m: any) => p.name === m.name && p.designation === m.designation);
@@ -542,6 +573,10 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
 
   const handleCreateCustomPresentee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditInviteesAccess) {
+      toast.error("Invitees are locked. Custom presentees cannot be added.");
+      return;
+    }
     setIsSavingCustom(true);
     try {
       const nameWithPrefix = customForm.prefix ? `${customForm.prefix} ${customForm.name}` : customForm.name;
@@ -627,7 +662,11 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
           <span className="text-xs text-muted-foreground">({members.length})</span>
         </div>
         {members.map((member: any) => {
-          const isAlreadyAdded = invitees.some((p: any) => p.name === member.name && p.designation === member.designation);
+          const isAlreadyAdded = isPast
+            ? member.is_present
+            : (!canEditInviteesAccess
+                ? false
+                : invitees.some((p: any) => p.name === member.name && p.designation === member.designation));
           return (
             <label key={member.id} className={`flex items-center gap-3 p-3 rounded-md border border-border ${isAlreadyAdded ? 'bg-muted/10' : 'hover:bg-muted/30'} cursor-pointer`}>
               <input
@@ -815,13 +854,8 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
           data={displayedInvitees}
           searchable
           searchPlaceholder="Search by name or designation..."
-          onReorderItem={!readOnly && noTableFiltersActive ? handleReorderInvitee : undefined}
-          isRowReorderable={(row: any) => {
-            if (readOnly) return false;
-            if (!canEditInviteesAccess) return false;
-            if (!canEditPresenteesAccess && row?.is_present) return false;
-            return true;
-          }}
+          onReorderItem={canEditInviteesAccess && noTableFiltersActive ? handleReorderInvitee : undefined}
+          isRowReorderable={() => canEditInviteesAccess}
           selectable={isBulkDeleteMode}
           selectedIds={selectedInviteeIds}
           onToggleSelect={handleToggleSelectInvitee}
@@ -944,25 +978,29 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                 {renderMemberGroup('অন্যান্য সদস্য', otherMembers, <Users className="w-4 h-4 text-muted-foreground" />)}
                 {filteredMembers.length === 0 && (
                   <div className="text-center text-sm text-muted-foreground py-8">
-                    <p className="mb-4">No members match the filters.</p>
-                    <button 
-                      onClick={() => setIsCreatingCustom(true)}
-                      className="bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium text-sm hover:opacity-90 transition-opacity flex items-center gap-2 mx-auto"
-                    >
-                      <Plus className="w-4 h-4" /> Create Custom {isPast ? 'Presentee' : 'Invitee'}
-                    </button>
+                    <p className="mb-4">No invited members match the filters.</p>
+                    {canEditInviteesAccess && (
+                      <button 
+                        onClick={() => setIsCreatingCustom(true)}
+                        className="bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium text-sm hover:opacity-90 transition-opacity flex items-center gap-2 mx-auto"
+                      >
+                        <Plus className="w-4 h-4" /> Create Custom {isPast ? 'Presentee' : 'Invitee'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
             </div>
             {filteredMembers.length > 0 && (
               <div className="p-6 border-t border-border shrink-0 flex justify-between items-center gap-3">
-                <button 
-                  onClick={() => setIsCreatingCustom(true)}
-                  className="text-sm font-medium text-primary hover:underline flex items-center gap-1"
-                >
-                  <Plus className="w-4 h-4" /> Create Custom
-                </button>
+                {canEditInviteesAccess ? (
+                  <button 
+                    onClick={() => setIsCreatingCustom(true)}
+                    className="text-sm font-medium text-primary hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="w-4 h-4" /> Create Custom
+                  </button>
+                ) : <div />}
                 <div className="flex gap-3">
                   <button 
                     onClick={() => setIsAddPresenteeModalOpen(false)} 

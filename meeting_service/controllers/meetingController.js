@@ -880,23 +880,9 @@ const updateInvitee = async (req, res, next) => {
             if (requestedSerial !== oldSerial) {
                 if (meeting) {
                     const access = calculateMeetingAccess(meeting, req.user);
-                    if (!access.canEditPresentees) {
-                        if (currentInvitee.is_present) {
-                            await client.query('ROLLBACK');
-                            return next(new CustomError('Access denied. Presentees are locked and cannot be reordered.', 403));
-                        }
-                        const minSerial = Math.min(oldSerial, requestedSerial);
-                        const maxSerial = Math.max(oldSerial, requestedSerial);
-                        const presenteeCheck = await client.query(
-                            `SELECT COUNT(*)::int as count
-                             FROM invitees
-                             WHERE meeting_id = $1 AND is_present = true AND serial >= $2 AND serial <= $3 AND id != $4`,
-                            [id, minSerial, maxSerial, inviteeId]
-                        );
-                        if (presenteeCheck.rows[0].count > 0) {
-                            await client.query('ROLLBACK');
-                            return next(new CustomError('Access denied. Order of presentees is locked.', 403));
-                        }
+                    if (!access.canEditInvitees) {
+                        await client.query('ROLLBACK');
+                        return next(new CustomError('Access denied. Invitees are locked for your level.', 403));
                     }
                 }
 
@@ -966,28 +952,10 @@ const reorderInvitee = async (req, res, next) => {
 
             if (meeting) {
                 const access = calculateMeetingAccess(meeting, req.user);
-                if (!access.canEditPresentees) {
-                    if (targetInvitee.is_present) {
-                        await client.query('ROLLBACK');
-                        client.release();
-                        return next(new CustomError('Access denied. Presentees are locked and cannot be reordered.', 403));
-                    }
-
-                    const minSerial = Math.min(oldSerial, requestedSerial);
-                    const maxSerial = Math.max(oldSerial, requestedSerial);
-
-                    const presenteeCheck = await client.query(
-                        `SELECT COUNT(*)::int as count
-                         FROM invitees
-                         WHERE meeting_id = $1 AND is_present = true AND serial >= $2 AND serial <= $3 AND id != $4`,
-                        [id, minSerial, maxSerial, inviteeId]
-                    );
-
-                    if (presenteeCheck.rows[0].count > 0) {
-                        await client.query('ROLLBACK');
-                        client.release();
-                        return next(new CustomError('Access denied. Order of presentees is locked and cannot be changed.', 403));
-                    }
+                if (!access.canEditInvitees) {
+                    await client.query('ROLLBACK');
+                    client.release();
+                    return next(new CustomError('Access denied. Invitees are locked for your level.', 403));
                 }
             }
 
@@ -1059,6 +1027,17 @@ const addPresentees = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { invitee_ids, presentees } = req.body;
+
+        const meeting = await loadMeeting(req);
+        if (meeting) {
+            const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditPresentees) {
+                return next(new CustomError('Access denied. Presentee data is locked for your level.', 403));
+            }
+            if (presentees && Array.isArray(presentees) && presentees.length > 0 && !access.canEditInvitees) {
+                return next(new CustomError('Access denied. Invitees are locked for your level. Custom presentees cannot be added.', 403));
+            }
+        }
 
         const client = await db.pool.connect();
         try {
@@ -1138,6 +1117,9 @@ const updatePresentee = async (req, res, next) => {
             if (!access.canEditPresentees) {
                 return next(new CustomError('Access denied. Presentee data is locked for your level.', 403));
             }
+            if (!access.canEditInvitees) {
+                return next(new CustomError('Access denied. Presentees cannot be edited when invitees are locked.', 403));
+            }
         }
 
         await client.query('BEGIN');
@@ -1196,6 +1178,14 @@ const updatePresentee = async (req, res, next) => {
 const removePresentee = async (req, res, next) => {
     try {
         const { id, presenteeId } = req.params;
+        const meeting = await loadMeeting(req);
+        if (meeting) {
+            const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditPresentees) {
+                return next(new CustomError('Access denied. Presentee data is locked for your level.', 403));
+            }
+        }
+
         const result = await db.query(
             'UPDATE invitees SET is_present = false WHERE id = $1 AND meeting_id = $2 RETURNING *',
             [presenteeId, id]

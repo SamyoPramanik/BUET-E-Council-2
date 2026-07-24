@@ -159,6 +159,12 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   return (
     <div className="mt-3 pt-3 border-t border-border/40">
       <ConfirmModal />
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        className="hidden"
+      />
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
           <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />

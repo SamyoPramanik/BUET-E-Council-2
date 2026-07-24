@@ -97,7 +97,7 @@ const findMatchingEntityTerms = async (queryText) => {
 
     const patternArray = ngrams.map(t => `%${t}%`);
 
-    const [departments, offices, members, faculties, presentees, aeRes] = await Promise.all([
+    const [departments, offices, members, faculties, invitees, aeRes] = await Promise.all([
         db.query(
             `SELECT DISTINCT name_bangla, name_english, alias_bangla, alias_english
              FROM departments
@@ -121,7 +121,7 @@ const findMatchingEntityTerms = async (queryText) => {
             [patternArray]
         ).catch(() => ({ rows: [] })),
         db.query(
-            `SELECT DISTINCT name FROM invitees WHERE is_present = true AND name ILIKE ANY($1)`,
+            `SELECT DISTINCT name FROM invitees WHERE name IS NOT NULL AND name ILIKE ANY($1)`,
             [patternArray]
         ).catch(() => ({ rows: [] })),
         db.query(
@@ -144,7 +144,7 @@ const findMatchingEntityTerms = async (queryText) => {
     for (const r of faculties.rows) {
         [r.name_bangla, r.name_english].filter(Boolean).forEach(t => terms.add(t));
     }
-    for (const r of presentees.rows) {
+    for (const r of invitees.rows) {
         if (r.name) terms.add(r.name);
     }
     for (const r of aeRes.rows) {

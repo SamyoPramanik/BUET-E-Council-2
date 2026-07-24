@@ -14,13 +14,27 @@ const auditLog = (entityType) => (req, res, next) => {
         const entityId = req.params.id || req.params.annexureId || req.params.resId
             || req.params.inviteeId || req.params.presenteeId || null;
 
-        // Capture which fields an update touched (e.g. "description", "status")
-        // so the per-meeting history can show *what* changed, not just "updated".
-        // Skip file uploads (multipart bodies carry no useful field list here).
-        let fields;
-        if (action === 'update' && req.body && typeof req.body === 'object' && !req.file) {
-            const keys = Object.keys(req.body);
-            if (keys.length) fields = keys;
+        let entityName = null;
+        const detailsObj = { method: req.method, path: req.originalUrl };
+
+        if (req.body && typeof req.body === 'object' && !req.file) {
+            entityName = req.body.title || req.body.name || req.body.name_bangla || req.body.name_english || (req.body.serial ? `Serial ${req.body.serial}` : null);
+
+            const safeBody = { ...req.body };
+            delete safeBody.password;
+            delete safeBody.token;
+
+            if (action === 'update') {
+                const keys = Object.keys(safeBody);
+                if (keys.length) detailsObj.fields = keys;
+                detailsObj.changes = safeBody;
+            } else if (action === 'create') {
+                detailsObj.summary = safeBody;
+            }
+        }
+
+        if (entityName) {
+            detailsObj.entity_name = String(entityName);
         }
 
         db.query(
@@ -32,7 +46,7 @@ const auditLog = (entityType) => (req, res, next) => {
                 action,
                 entityType,
                 entityId,
-                JSON.stringify({ method: req.method, path: req.originalUrl, ...(fields ? { fields } : {}) }),
+                JSON.stringify(detailsObj),
                 req.ip
             ]
         ).catch(err => console.error('[audit] failed to log action:', err.message));

@@ -96,7 +96,7 @@ export default function DataTable({
 
   const sortedData = useMemo(() => {
     if (!sortConfig) return data;
-    
+
     return [...data].sort((a, b) => {
       if (a[sortConfig.key] < b[sortConfig.key]) {
         return sortConfig.direction === 'asc' ? -1 : 1;
@@ -138,7 +138,7 @@ export default function DataTable({
     const sourceIndexStr = e.dataTransfer.getData('text/plain');
     if (!sourceIndexStr) return;
     const sourceIndex = parseInt(sourceIndexStr, 10);
-    
+
     if (isNaN(sourceIndex) || sourceIndex === targetIndex) return;
 
     const sourceRow = filteredData[sourceIndex];
@@ -188,7 +188,7 @@ export default function DataTable({
       {(title || onDownloadCsv || onUploadCsv || onFetchApi || onAdd) && (
         <div className="flex items-center justify-between">
           {title && <h2 className="text-2xl font-semibold text-foreground tracking-tight">{title}</h2>}
-          
+
           <div className="flex space-x-2">
             {customActions}
             {onDownloadCsv && (
@@ -197,7 +197,7 @@ export default function DataTable({
                 Download CSV
               </button>
             )}
-            
+
             {onUploadCsv && (
               <>
                 <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
@@ -265,7 +265,7 @@ export default function DataTable({
                 )}
                 {columns.map(col => (
                   <th key={col.key} className="px-6 py-3 font-semibold">
-                    <div 
+                    <div
                       className={`flex items-center space-x-1 ${col.sortable !== false ? 'cursor-pointer hover:text-foreground select-none' : ''}`}
                       onClick={() => col.sortable !== false && handleSort(col.key)}
                     >
@@ -289,7 +289,7 @@ export default function DataTable({
               {filteredData.map((row, index) => {
                 const isRowDraggable = canRowDrag(row);
                 return (
-                  <tr 
+                  <tr
                     key={row.id || index}
                     draggable={isRowDraggable}
                     onDragStart={(e) => handleDragStart(e, index)}
@@ -307,58 +307,58 @@ export default function DataTable({
                       </td>
                     )}
 
-                  {selectable && (
-                    <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={!!selectedIds?.has(row.id)}
-                        onChange={() => onToggleSelect && onToggleSelect(row.id)}
-                        className="cursor-pointer"
-                      />
-                    </td>
-                  )}
+                    {selectable && (
+                      <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={!!selectedIds?.has(row.id)}
+                          onChange={() => onToggleSelect && onToggleSelect(row.id)}
+                          className="cursor-pointer"
+                        />
+                      </td>
+                    )}
 
-                  {columns.map(col => (
-                    <td key={col.key} className="px-6 py-4 text-sm text-foreground">
-                      {row[col.key]}
-                    </td>
-                  ))}
+                    {columns.map(col => (
+                      <td key={col.key} className="px-6 py-4 text-sm text-foreground">
+                        {row[col.key]}
+                      </td>
+                    ))}
 
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end space-x-2">
-                      {onView && !selectable && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onView(row); }}
-                          className="p-1 text-muted-foreground hover:text-primary transition-colors"
-                          title="View"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                      )}
-                      {onEdit && !selectable && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onEdit(row); }}
-                          className="p-1 text-muted-foreground hover:text-primary transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      )}
-                      {onDelete && !selectable && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onDelete(row); }}
-                          className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-              
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end space-x-2">
+                        {onView && !selectable && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onView(row); }}
+                            className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                            title="View"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        )}
+                        {onEdit && !selectable && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onEdit(row); }}
+                            className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
+                        {onDelete && !selectable && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onDelete(row); }}
+                            className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
               {filteredData.length === 0 && (
                 <tr>
                   <td colSpan={columns.length + (reorderEnabled ? 1 : 0) + (selectable ? 1 : 0) + 1} className="px-6 py-8 text-center text-muted-foreground">

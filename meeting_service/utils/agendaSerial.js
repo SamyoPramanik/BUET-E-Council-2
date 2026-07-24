@@ -15,9 +15,16 @@ const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '
 // at least minWidth digits (default 2, e.g. 1 -> "০১"). Display-only: the
 // underlying agenda_serial column stays a plain integer for ordering/arithmetic.
 function toBanglaDigits(n, minWidth = 2) {
-    const num = Number(n) || 0;
-    const padded = String(num).padStart(minWidth, '0');
-    return padded.split('').map(d => BANGLA_DIGITS[Number(d)]).join('');
+    if (n === null || n === undefined) return '';
+    if (typeof n === 'number') {
+        const padded = String(n).padStart(minWidth, '0');
+        return padded.replace(/\d/g, d => BANGLA_DIGITS[Number(d)]);
+    }
+    let str = String(n);
+    if (/^\d+$/.test(str) && minWidth > 0) {
+        str = str.padStart(minWidth, '0');
+    }
+    return str.replace(/\d/g, d => BANGLA_DIGITS[Number(d)]);
 }
 
 // Given the first agendum's raw OCR text, extracts the meeting-wide proposal

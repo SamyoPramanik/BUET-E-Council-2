@@ -113,9 +113,9 @@ const getFileStream = async (fileName) => {
 };
 
 /**
- * Get a presigned URL to view/download a file
+ * Get a presigned URL to view/download a file (expires in 15 minutes by default)
  */
-const getFileUrl = async (fileName, expiresIn = 3600) => {
+const getFileUrl = async (fileName, expiresIn = 900) => {
     const params = {
         Bucket: BUCKET_NAME,
         Key: fileName,
@@ -123,8 +123,16 @@ const getFileUrl = async (fileName, expiresIn = 3600) => {
 
     try {
         const command = new GetObjectCommand(params);
-        const url = await getSignedUrl(s3Client, command, { expiresIn });
-        return url;
+        const rawUrl = await getSignedUrl(s3Client, command, { expiresIn });
+        const parsed = new URL(rawUrl);
+        const bucketPathPrefix = `/${BUCKET_NAME}/`;
+        let keyPath = parsed.pathname;
+        if (keyPath.startsWith(bucketPathPrefix)) {
+            keyPath = keyPath.substring(bucketPathPrefix.length);
+        } else if (keyPath.startsWith('/')) {
+            keyPath = keyPath.substring(1);
+        }
+        return `/storage/${keyPath}${parsed.search}`;
     } catch (error) {
         console.error("Error generating presigned URL:", error);
         throw error;

@@ -97,6 +97,16 @@ const getMeetingById = async (req, res, next) => {
         meeting.date = new Date(meeting.meeting_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         meeting.access = calculateMeetingAccess(meeting, req.user);
 
+        if (meeting.agenda_pdf_link) {
+            try { meeting.agenda_pdf_url = await storageService.getFileUrl(meeting.agenda_pdf_link, 900); } catch (_) {}
+        }
+        if (meeting.resolution_pdf_link) {
+            try { meeting.resolution_pdf_url = await storageService.getFileUrl(meeting.resolution_pdf_link, 900); } catch (_) {}
+        }
+        if (meeting.resolution_status_pdf_link) {
+            try { meeting.resolution_status_pdf_url = await storageService.getFileUrl(meeting.resolution_status_pdf_link, 900); } catch (_) {}
+        }
+
         res.status(200).json({ success: true, data: meeting });
     } catch (error) {
         next(error);

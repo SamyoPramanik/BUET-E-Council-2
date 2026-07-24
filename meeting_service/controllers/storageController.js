@@ -8,6 +8,11 @@ const viewerTypeRestriction = (user) => {
 };
 
 const checkFileAccess = async (key, user) => {
+    // Audit log archives are restricted strictly to admin and superadmin roles
+    if (key.startsWith('audit-log-archives/') || key.startsWith('audit-log-archives')) {
+        return (user?.role === 'admin' || user?.role === 'superadmin');
+    }
+
     if (user?.role !== 'viewer') return true;
 
     let meeting = null;
@@ -54,13 +59,33 @@ const checkFileAccess = async (key, user) => {
         if (meeting.status === 'draft') return false;
         const restrictedType = viewerTypeRestriction(user);
         if (restrictedType && meeting.type !== restrictedType) return false;
+        return true;
     }
 
-    return true;
+    // Viewers cannot access unlinked or non-existent meeting keys
+    return false;
 };
 
-// Streams a stored file through our own authenticated server instead of exposing
-// the bucket directly, so only logged-in users (via authMiddleware) can fetch it.
+// Generates a short-lived (15-min) presigned URL after checking file access permissions
+const getSignedUrlForKey = async (req, res, next) => {
+    try {
+        let key = req.query.key || req.params.key;
+        if (Array.isArray(key)) key = key.join('/');
+        if (!key) return res.status(400).json({ success: false, message: 'File key is required' });
+
+        const canAccess = await checkFileAccess(key, req.user);
+        if (!canAccess) {
+            return res.status(403).json({ success: false, message: 'Access denied for file' });
+        }
+
+        const url = await storageService.getFileUrl(key, 900);
+        res.status(200).json({ success: true, url, expiresIn: 900 });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Streams a stored file through our authenticated server (fallback / legacy path)
 const streamFile = async (req, res, next) => {
     try {
         const keyParts = req.params.key;
@@ -88,4 +113,4 @@ const streamFile = async (req, res, next) => {
     }
 };
 
-module.exports = { streamFile };
+module.exports = { streamFile, getSignedUrlForKey, checkFileAccess };

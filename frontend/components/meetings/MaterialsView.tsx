@@ -162,7 +162,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
               <h3 className="font-semibold">Signed Agenda</h3>
             </div>
             {meeting.agenda_pdf_link ? (
-              <a href={`/storage/${meeting.agenda_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
+              <a href={meeting.agenda_pdf_url || `/storage/${meeting.agenda_pdf_link}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
                 <Eye className="w-4 h-4" /> View Current PDF
               </a>
             ) : (
@@ -189,7 +189,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
               <h3 className="font-semibold">Signed Resolution</h3>
             </div>
             {meeting.resolution_pdf_link ? (
-              <a href={`/storage/${meeting.resolution_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
+              <a href={meeting.resolution_pdf_url || `/storage/${meeting.resolution_pdf_link}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
                 <Eye className="w-4 h-4" /> View Current PDF
               </a>
             ) : (
@@ -216,7 +216,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
               <h3 className="font-semibold">Signed Resolution Status</h3>
             </div>
             {meeting.resolution_status_pdf_link ? (
-              <a href={`/storage/${meeting.resolution_status_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
+              <a href={meeting.resolution_status_pdf_url || `/storage/${meeting.resolution_status_pdf_link}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
                 <Eye className="w-4 h-4" /> View Current PDF
               </a>
             ) : (

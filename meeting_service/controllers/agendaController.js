@@ -510,7 +510,7 @@ const getAnnexures = async (req, res, next) => {
         const annexures = await Promise.all(result.rows.map(async (annexure) => {
             if (annexure.file_path) {
                 try {
-                    annexure.url = `/storage/${annexure.file_path}`;
+                    annexure.url = await storageService.getFileUrl(annexure.file_path, 900);
                 } catch (err) {
                     annexure.url = null;
                 }

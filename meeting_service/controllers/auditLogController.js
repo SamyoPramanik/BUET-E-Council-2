@@ -62,12 +62,12 @@ const getAuditLogs = async (req, res, next) => {
 const getAuditLogArchives = async (req, res, next) => {
     try {
         const files = await storageService.listFiles(ARCHIVE_PREFIX);
-        const data = files.map(f => ({
+        const data = await Promise.all(files.map(async f => ({
             week: f.key.replace(ARCHIVE_PREFIX, '').replace('.json', ''),
             size: f.size,
             lastModified: f.lastModified,
-            url: `/storage/${f.key}`
-        }));
+            url: await storageService.getFileUrl(f.key, 900)
+        })));
         res.status(200).json({ success: true, data });
     } catch (error) {
         next(error);

@@ -149,6 +149,7 @@ CREATE TYPE account_status AS ENUM ('active', 'inactive');
    - Lock fields: `agenda_locked_level`, `suppli_agenda_locked_level`, `resolution_locked_level`, `resolution_status_locked_level`, `meeting_locked_level`, `invitees_locked_level`, `presentees_locked_level`, `conclusion_locked_level`
 3. **`agenda`**: Agenda and resolution content. Automatically maintains generated `content_tsv` and `resolution_tsv` tsvector columns using PostgreSQL's `simple` text search dictionary.
 4. **`agenda_chunks` & `resolution_chunks`**: Stores text chunks and their 1024-dimensional float vector embeddings output by `BAAI/bge-m3`.
+5. **`invitees`**: Unified entity managing both meeting invitees and attendance presentee records (`is_present BOOLEAN DEFAULT false`). Automatically mirrors seniority serial from linked `members` (`member_id`) via database trigger `trg_sync_invitee_serial`. Note that the legacy `presentees` table has been removed.
 
 ---
 
@@ -238,7 +239,7 @@ Handover is designed for **stage-by-stage review escalation**:
 When a higher-level reviewer (e.g. Level 2 or Level 3) reviews a handed-over section and determines that modifications are required by lower-level authors:
 
 - **Send-Back Condition**: User Level $L_{user} > L_{handover}$ (or `admin`).
-- **Execution Flow**: The reviewer sends a `POST /api/meetings/:id/send-back` request specifying the section target.
+- **Execution Flow**: The reviewer sends a section-specific send-back request (`POST /api/meetings/:id/send-back-agenda`, `POST /api/meetings/:id/send-back-suppli-agenda`, `POST /api/meetings/:id/send-back-resolution`, or `POST /api/meetings/:id/send-back-resolution-status`).
 - **Database Effect**: `handover_level` is reset (or decremented to a lower integer).
 - **Access Restored**: Editing rights immediately return to lower-level authors ($L_{user} \le L_{handover\_old}$), allowing them to update the draft.
 
@@ -433,13 +434,24 @@ Implementation: [`meeting_service/utils/pdfGenerator.js`](file:///media/samyo-pr
 
 ---
 
-### 3.5 MinIO S3 Object Storage & Media Proxy
+### 3.5 MinIO S3 Object Storage & Authenticated Stream Proxy
 
-Implementation: [`meeting_service/utils/storageService.js`](file:///media/samyo-pramanik/New%20Volume2/buet-ecouncil2/meeting_service/utils/storageService.js), [`nginx/nginx.conf`](file:///media/samyo-pramanik/New%20Volume2/buet-ecouncil2/nginx/nginx.conf)
+Implementation: [`meeting_service/utils/storageService.js`](file:///media/samyo-pramanik/New%20Volume2/buet-ecouncil2/meeting_service/utils/storageService.js), [`meeting_service/controllers/storageController.js`](file:///media/samyo-pramanik/New%20Volume2/buet-ecouncil2/meeting_service/controllers/storageController.js), [`meeting_service/routes/storageRoutes.js`](file:///media/samyo-pramanik/New%20Volume2/buet-ecouncil2/meeting_service/routes/storageRoutes.js), [`nginx/nginx.conf`](file:///media/samyo-pramanik/New%20Volume2/buet-ecouncil2/nginx/nginx.conf)
 
-1. Files uploaded as annexures are written to MinIO via `@aws-sdk/client-s3`.
-2. File access is protected: `meeting_service` checks user authorization and issues temporary AWS SigV4 presigned URLs valid for 15 minutes.
-3. NGINX proxies `/storage/` directly to MinIO, permitting signature validation while keeping MinIO administrative consoles hidden behind the internal network.
+1. **File Storage Backend**:
+   - Files uploaded as annexures (`annexures/<agenda_id>/...`), signed meeting materials (`materials/<meeting_id>/...`), or audit log archives (`audit-log-archives/...`) are written to MinIO via `@aws-sdk/client-s3`.
+   - Upload and deletion operations are restricted to authorized workflow roles (`requireMeetingOperator` middleware enforcing Editor, Operator, Admin, or Superadmin permissions).
+2. **Authenticated Gateway Proxy Architecture**:
+   - Public access to MinIO port `9000` is completely disabled. MinIO remains internal to the Docker network.
+   - NGINX intercepts external request paths under `/storage/(.*)` and rewrites them to `/api/storage/$1`, proxying directly to `meeting_service:8001`.
+3. **Session Authentication & Granular Access Control (`checkFileAccess`)**:
+   - All file requests are processed through `storageRoutes.js` with `authMiddleware` enforcing valid session tokens (via `Authorization: Bearer` headers, `token` query parameters, or HttpOnly session cookies).
+   - `checkFileAccess(key, user)` evaluates permissions dynamically against the database:
+     - **Draft Protection**: Viewers (`role === 'viewer'`) are strictly blocked from accessing files belonging to draft meetings (`status === 'draft'`), returning HTTP 404 (File not found).
+     - **Member-Type Scoping**: Viewers with `member_type === 'academic'` are restricted strictly to `academic` meeting files; viewers with `member_type === 'syndicate'`, `none`, or unassigned can access both `academic` and `syndicate` completed meeting files.
+4. **Direct Authenticated Streaming (`streamFile`)**:
+   - Authorized requests invoke `storageService.getFileStream(key)` using `@aws-sdk/client-s3` `GetObjectCommand`.
+   - `meeting_service` sets appropriate HTTP headers (`Content-Type`, `Content-Length`) and pipes the binary stream directly to the client response (`stream.pipe(res)`), ensuring zero exposure of bucket credentials or unauthenticated links.
 
 ---
 
@@ -462,8 +474,10 @@ export const DEPARTMENT_MERGE_RULES = [
 
 ### 3.7 Audit Logging & Session Management
 
+- **Pure Token-Based Authentication**: Cookies are completely eliminated. Authentication and authorization rely exclusively on session tokens stored client-side in browser `sessionStorage` (with `localStorage` fallback to initialize new tabs with the latest session).
+- **Tab-Isolated Session Propagation**: API requests attach the tab's `sessionStorage` token via `Authorization: Bearer <token>` headers, and file navigation links attach `?token=<token>`, guaranteeing strict session isolation across tabs.
 - **Audit Logs**: Shared PostgreSQL `audit_logs` table tracking `userId`, `username`, `action`, `entityType`, `entityId`, `details` (JSONB), and `ipAddress`.
-- **Active Session Management**: Users can inspect active device sessions, IP addresses, and remote locations, with the option to remotely terminate individual sessions or execute global logout across all devices (`/signout-all`).
+- **Active Session Tracking**: Users can inspect active device sessions, IP addresses, and remote locations, with the option to remotely terminate individual sessions or execute global logout across all devices (`/signout-all`).
 
 ---
 
@@ -477,6 +491,7 @@ export const DEPARTMENT_MERGE_RULES = [
 | `POST` | `/api/auth/signout` | Authenticated | Terminate current session |
 | `POST` | `/api/auth/signout-all` | Authenticated | Terminate all sessions for the user |
 | `GET` | `/api/auth/me` | Authenticated | Retrieve current user profile and role level |
+| `POST` | `/api/auth/verify-password` | Authenticated | Verify user session password |
 | `PUT` | `/api/auth/me` | Authenticated | Update user email or change password |
 | `GET` | `/api/auth/sessions` | Authenticated | List all active sessions for current user |
 | `DELETE` | `/api/auth/sessions/:id` | Authenticated | Terminate a specific remote session |
@@ -503,17 +518,37 @@ export const DEPARTMENT_MERGE_RULES = [
 |---|---|---|
 | `GET` | `/api/meetings` | List council meetings (supports type/status filtering) |
 | `POST` | `/api/meetings` | Create a new council meeting |
+| `POST` | `/api/meetings/bulk-import` | Bulk import historical meetings from structured JSON |
 | `GET` | `/api/meetings/:id` | Get detailed meeting information including access rights |
+| `GET` | `/api/meetings/:id/history` | View audit trail and history log for a specific meeting |
 | `PUT` | `/api/meetings/:id` | Update meeting title, date, or metadata |
+| `PUT` | `/api/meetings/:id/online-link` | Update online video conference link |
 | `DELETE` | `/api/meetings/:id` | Delete meeting and associated agendas/annexures |
-| `POST` | `/api/meetings/:id/handover` | Hand over meeting section to higher level |
-| `POST` | `/api/meetings/:id/send-back` | Send back meeting section to lower level |
-| `POST` | `/api/meetings/:id/lock` | Lock a specific meeting section |
-| `POST` | `/api/meetings/:id/unlock` | Unlock a locked meeting section |
+| `POST` | `/api/meetings/:id/handover-agenda` | Hand over main agendas to higher level |
+| `POST` | `/api/meetings/:id/handover-suppli-agenda` | Hand over supplementary agendas to higher level |
+| `POST` | `/api/meetings/:id/handover-resolution` | Hand over resolutions to higher level |
+| `POST` | `/api/meetings/:id/handover-resolution-status` | Hand over resolution execution tracking to higher level |
+| `POST` | `/api/meetings/:id/send-back-agenda` | Send back main agendas to lower level |
+| `POST` | `/api/meetings/:id/send-back-suppli-agenda` | Send back supplementary agendas to lower level |
+| `POST` | `/api/meetings/:id/send-back-resolution` | Send back resolutions to lower level |
+| `POST` | `/api/meetings/:id/send-back-resolution-status` | Send back resolution execution status to lower level |
+| `POST` | `/api/meetings/:id/lock-:section` | Lock section (`agenda`, `suppli-agenda`, `resolution`, `resolution-status`, `meeting`, `invitees`, `presentees`, `conclusion`) |
+| `POST` | `/api/meetings/:id/unlock-:section` | Unlock section (`agenda`, `suppli-agenda`, `resolution`, `resolution-status`, `meeting`, `invitees`, `presentees`, `conclusion`) |
 | `POST` | `/api/meetings/:id/complete` | Finalize and complete meeting |
-| `GET` | `/api/meetings/:id/agenda-pdf` | Download rendered Agenda Book PDF |
-| `GET` | `/api/meetings/:id/resolution-pdf` | Download rendered Official Resolution PDF |
-| `GET` | `/api/meetings/:id/resolution-status-pdf` | Download Resolution Status Report PDF |
+| `GET` | `/api/meetings/:id/pdf/:type` | Download rendered PDF (`agenda`, `resolution`, or `resolution-status`) |
+| `POST` | `/api/meetings/:id/send-email` | Send agenda booklet via email |
+| `POST` | `/api/meetings/:id/materials/upload` | Upload signed meeting materials attachment |
+| `GET` | `/api/meetings/:id/invitees` | List meeting invitees |
+| `POST` | `/api/meetings/:id/invitees` | Add invitees/members to meeting |
+| `PUT` | `/api/meetings/:id/invitees/:inviteeId` | Update invitee details |
+| `DELETE` | `/api/meetings/:id/invitees/:inviteeId` | Remove invitee from meeting |
+| `PUT` | `/api/meetings/:id/invitees/:inviteeId/reorder` | Reorder invitee seniority serial |
+| `POST` | `/api/meetings/:id/invitees/bulk-fetch` | Bulk fetch invitees from member list |
+| `GET` | `/api/meetings/:id/presentees` | List presentees for meeting |
+| `POST` | `/api/meetings/:id/presentees` | Add presentees to meeting |
+| `PUT` | `/api/meetings/:id/presentees/:presenteeId` | Update presentee status |
+| `DELETE` | `/api/meetings/:id/presentees/:presenteeId` | Remove presentee from meeting |
+| `PUT` | `/api/meetings/:id/attendance` | Batch save attendance status |
 | `POST` | `/api/agendas` | Add an agenda item to a meeting |
 | `PUT` | `/api/agendas/:id` | Update agenda item content or resolution |
 | `DELETE` | `/api/agendas/:id` | Remove agenda item |
@@ -524,6 +559,18 @@ export const DEPARTMENT_MERGE_RULES = [
 | `POST` | `/api/members` | Add a new member |
 | `PUT` | `/api/members/:id` | Update member information |
 | `PUT` | `/api/members/reorder` | Reorder member seniority serials |
+| `POST` | `/api/members/fetch-external` | Fetch external members |
+| `POST` | `/api/departments/upload-csv` | Bulk import departments from CSV |
+| `GET` | `/api/departments/download-csv` | Export department catalog as CSV |
+| `POST` | `/api/offices/upload-csv` | Bulk import offices from CSV |
+| `GET` | `/api/offices/download-csv` | Export office registry as CSV |
+| `POST` | `/api/faculties/upload-csv` | Bulk import faculties from CSV |
+| `GET` | `/api/faculties/download-csv` | Export faculty catalog as CSV |
+| `GET` | `/api/templates/search` | Search template library |
+| `PATCH` | `/api/templates/:id/visibility` | Update template visibility |
+| `POST` | `/api/templates/:id/use` | Increment template use count |
+| `GET` | `/api/audit-logs` | Retrieve system audit logs |
+| `GET` | `/api/audit-logs/archives` | Retrieve audit log archive downloads (Admin only) |
 
 ---
 
@@ -535,11 +582,12 @@ export const DEPARTMENT_MERGE_RULES = [
 
 ---
 
-### 4.4 Storage API (`/storage`)
+### 4.4 Storage API (`/api/storage` & `/storage`)
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/storage/:bucket/:key` | Proxied request to MinIO for file download/viewing via presigned URL |
+| Method | Endpoint | Access Level | Description |
+|---|---|---|---|
+| `GET` | `/storage/*key` | Authenticated | Public gateway entrypoint. NGINX rewrites `/storage/(.*)` to `/api/storage/$1` and proxies to `meeting_service` |
+| `GET` | `/api/storage/*key` | Authenticated | Validates session authentication & `checkFileAccess` permissions, streaming the file payload directly from MinIO with `Content-Type` headers |
 
 ---
 

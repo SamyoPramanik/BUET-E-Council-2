@@ -123,14 +123,14 @@
 
 | Layer | Technology | Description |
 |---|---|---|
-| **Reverse Proxy & Gateway** | NGINX Alpine | Route dispatching, SSL, presigned S3 proxying, payload limits |
+| **Reverse Proxy & Gateway** | NGINX Alpine | Route dispatching, SSL, authenticated file proxying, payload limits |
 | **Frontend Framework** | Next.js 15 (App Router) | React 19, TypeScript, Tailwind CSS, SWR, TipTap Editor |
 | **Authentication Service** | Node.js / Express | Session management, password hashing (bcrypt), CSV import, email |
 | **Meeting Service** | Node.js / Express | Core domain logic, level workflow engine, PDF generation (Puppeteer) |
 | **Background Queue** | Redis 7 & BullMQ | Asynchronous search index processing and resource-throttled queueing |
 | **Embedding Service** | Python 3.11 / FastAPI | Sentence-Transformers (`BAAI/bge-m3`), PyTorch, 1024-dim vectors |
 | **Database** | PostgreSQL 16 | `pgvector` (HNSW indexing), `pg_trgm`, `uuid-ossp`, stored triggers |
-| **Object Storage** | MinIO (S3 compatible) | Annexure storage, signature uploads, AWS SDK SigV4 presigned URLs |
+| **Object Storage** | MinIO (S3 compatible) | Annexure storage, signature uploads, authenticated stream proxying |
 
 ---
 
@@ -164,10 +164,10 @@ cp .env.example .env
 Verify/update sensitive variables in `.env` as needed:
 
 ```env
-POSTGRES_USER=ecouncil_user
-POSTGRES_PASSWORD=secure_postgres_password
+POSTGRES_USER=admin
+POSTGRES_PASSWORD=buet_admin_pass
 POSTGRES_DB=ecouncil_db
-DATABASE_URL=postgres://ecouncil_user:secure_postgres_password@db:5432/ecouncil_db
+DATABASE_URL=postgresql://admin:buet_admin_pass@db:5432/ecouncil_db
 
 SECRET_KEY=your_random_super_secret_key
 ALLOWED_ORIGINS=http://localhost:9001
@@ -443,7 +443,7 @@ All external traffic enters through the NGINX reverse proxy on host port **`9001
 | `/api/tags/*` | `meeting_service:8001` | System Tag Catalog |
 | `/api/search/*` | `meeting_service:8001` | 3-Tier Search Orchestration |
 | `/api/audit-logs/*` | `meeting_service:8001` | System Audit Trails |
-| `/storage/*` | `minio:9000` | Annexures & Attachment Object Storage |
+| `/storage/*` | `meeting_service:8001` | Rewritten by NGINX to `/api/storage/*` & gated via `authMiddleware` |
 
 ---
 
@@ -451,9 +451,9 @@ All external traffic enters through the NGINX reverse proxy on host port **`9001
 
 | Variable | Default Value | Description |
 |---|---|---|
-| `POSTGRES_USER` | `postgres` | Database superuser username |
-| `POSTGRES_PASSWORD` | `postgres` | Database superuser password |
-| `POSTGRES_DB` | `ecouncil` | PostgreSQL database name |
+| `POSTGRES_USER` | `admin` | Database superuser username |
+| `POSTGRES_PASSWORD` | `buet_admin_pass` | Database superuser password |
+| `POSTGRES_DB` | `ecouncil_db` | PostgreSQL database name |
 | `DATABASE_URL` | `postgres://...` | Connection URI for microservices |
 | `SECRET_KEY` | - | Session encryption key |
 | `ALLOWED_ORIGINS` | `http://localhost:9001` | CORS allowed origins |

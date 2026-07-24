@@ -310,6 +310,7 @@ CREATE TABLE annexures (
     file_path VARCHAR(255),
     summary TEXT,
     annexure_serial INTEGER DEFAULT 1,
+    is_excluded_in_resolution BOOLEAN DEFAULT FALSE,
     uploaded_by UUID REFERENCES users (id) ON DELETE SET NULL,
     upload_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -376,7 +377,8 @@ CREATE INDEX idx_members_name_trgm ON members USING GIN (name gin_trgm_ops);
 CREATE INDEX idx_faculties_trgm ON faculties USING GIN (
     (name_bangla || ' ' || coalesce(name_english, '')) gin_trgm_ops
 );
-CREATE INDEX idx_presentees_name_trgm ON presentees USING GIN (name gin_trgm_ops);
+-- CREATE INDEX idx_presentees_name_trgm ON presentees USING GIN (name gin_trgm_ops);
+
 
 INSERT INTO
     users (
@@ -769,7 +771,44 @@ VALUES (
         27,
         'উপ-উপাচার্য, বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়',
         'Pro-Vice Chancellor, Bangladesh University of Engineering and Technology'
-    );
+    )
+ON CONFLICT (name_bangla) DO UPDATE SET serial = EXCLUDED.serial;
+
+-- Explicitly ensure serial numbers 24, 26, and 27 are assigned
+UPDATE offices SET serial = 24 WHERE name_bangla LIKE '%স্নাতকোত্তর স্টাডিজ অনুষদ%' OR name_english LIKE '%Post Graduate Studies%';
+UPDATE offices SET serial = 26 WHERE name_bangla LIKE 'উপাচার্য%' OR name_english LIKE 'Vice Chancellor%';
+UPDATE offices SET serial = 27 WHERE name_bangla LIKE 'উপ-উপাচার্য%' OR name_english LIKE 'Pro-Vice Chancellor%';
+
+-- Merge references to duplicate English/typo offices into canonical records and delete duplicates
+DO $$
+DECLARE
+    vc_id UUID;
+    pro_vc_id UUID;
+    pg_id UUID;
+BEGIN
+    SELECT id INTO vc_id FROM offices WHERE serial = 26 LIMIT 1;
+    SELECT id INTO pro_vc_id FROM offices WHERE serial = 27 LIMIT 1;
+    SELECT id INTO pg_id FROM offices WHERE serial = 24 LIMIT 1;
+
+    IF vc_id IS NOT NULL THEN
+        UPDATE members SET office_id = vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Vice Chancellor%' OR name_bangla LIKE '%Vice Chancellor%'));
+        UPDATE invitees SET office_id = vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Vice Chancellor%' OR name_bangla LIKE '%Vice Chancellor%'));
+        DELETE FROM offices WHERE serial IS NULL AND (name_english LIKE '%Vice Chancellor%' OR name_bangla LIKE '%Vice Chancellor%');
+    END IF;
+
+    IF pro_vc_id IS NOT NULL THEN
+        UPDATE members SET office_id = pro_vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Pro-Vice Chancellor%' OR name_bangla LIKE '%Pro-Vice Chancellor%'));
+        UPDATE invitees SET office_id = pro_vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Pro-Vice Chancellor%' OR name_bangla LIKE '%Pro-Vice Chancellor%'));
+        DELETE FROM offices WHERE serial IS NULL AND (name_english LIKE '%Pro-Vice Chancellor%' OR name_bangla LIKE '%Pro-Vice Chancellor%');
+    END IF;
+
+    IF pg_id IS NOT NULL THEN
+        UPDATE members SET office_id = pg_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Post Graduate%' OR name_bangla LIKE '%Post Graduate%'));
+        UPDATE invitees SET office_id = pg_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Post Graduate%' OR name_bangla LIKE '%Post Graduate%'));
+        DELETE FROM offices WHERE serial IS NULL AND (name_english LIKE '%Post Graduate%' OR name_bangla LIKE '%Post Graduate%');
+    END IF;
+END $$;
+
 
 -- Migration: Automatic invalidation of search_cache on any meeting or agenda changes
 CREATE OR REPLACE FUNCTION clear_search_cache_trigger_fn()

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import { FileJson, X, Check, AlertCircle, Plus, Loader2, FileWarning } from "lucide-react";
 import api, { fetcher } from "../../lib/api";
 import useSWR from "swr";
 import { toast } from "sonner";
 import SearchableSelect from "../SearchableSelect";
-import { resolveDepartmentByMergeRule } from "../../lib/departmentMergeRules";
-import { resolveOfficeByMergeRule } from "../../lib/officeMergeRules";
+import { resolveDepartmentByMergeRule, saveCustomDepartmentRule } from "../../lib/departmentMergeRules";
+import { resolveOfficeByMergeRule, saveCustomOfficeRule } from "../../lib/officeMergeRules";
 
 interface ImportItem {
   key: string;
@@ -57,6 +57,54 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
   const departments = deptRes?.data || [];
   const offices = officeRes?.data || [];
   const faculties = facultyRes?.data || [];
+
+  useEffect(() => {
+    if (items.length === 0 || (departments.length === 0 && offices.length === 0)) return;
+
+    setItems(prevItems => prevItems.map(item => {
+      if (item.status === 'failed' || (item.unresolvedDepts.length === 0 && item.unresolvedOffices.length === 0)) {
+        return item;
+      }
+
+      const deptMapping = { ...item.deptMapping };
+      const officeMapping = { ...item.officeMapping };
+      const unresolvedDepts: string[] = [];
+      const unresolvedOffices: string[] = [];
+
+      item.unresolvedDepts.forEach(d => {
+        const found = departments.find((existing: any) => existing.name_english?.toLowerCase() === d.toLowerCase() || existing.name_bangla?.toLowerCase() === d.toLowerCase());
+        if (found) {
+          deptMapping[d] = found.id;
+          return;
+        }
+        const mergeRuleMatch = resolveDepartmentByMergeRule(d, departments);
+        if (mergeRuleMatch) deptMapping[d] = mergeRuleMatch;
+        else unresolvedDepts.push(d);
+      });
+
+      item.unresolvedOffices.forEach(o => {
+        const found = offices.find((existing: any) => existing.name_english?.toLowerCase() === o.toLowerCase() || existing.name_bangla?.toLowerCase() === o.toLowerCase());
+        if (found) {
+          officeMapping[o] = found.id;
+          return;
+        }
+        const mergeRuleMatch = resolveOfficeByMergeRule(o, offices);
+        if (mergeRuleMatch) officeMapping[o] = mergeRuleMatch;
+        else unresolvedOffices.push(o);
+      });
+
+      const status = (unresolvedDepts.length === 0 && unresolvedOffices.length === 0) ? 'ready' : 'needs-resolution';
+
+      return {
+        ...item,
+        deptMapping,
+        officeMapping,
+        unresolvedDepts,
+        unresolvedOffices,
+        status
+      };
+    }));
+  }, [departments, offices]);
 
   const buildImportItem = (fileName: string, key: string, rawText: string): ImportItem => {
     try {
@@ -112,7 +160,7 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
     }
   };
 
-  const handleFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFilesChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
@@ -146,9 +194,9 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
   };
 
   // Applying a resolution (map-to-existing or create-new) for a given
-  // original name propagates to every file in the batch that has the same
-  // unresolved name, so the user only resolves each department/office once.
+  // original name propagates to every file in the batch and saves to merge rules.
   const resolveDeptEverywhere = (name: string, deptId: string) => {
+    saveCustomDepartmentRule(name, deptId);
     setItems(prev => prev.map(item => {
       if (!item.unresolvedDepts.includes(name)) return item;
       const unresolvedDepts = item.unresolvedDepts.filter(d => d !== name);
@@ -159,6 +207,7 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
   };
 
   const resolveOfficeEverywhere = (name: string, officeId: string) => {
+    saveCustomOfficeRule(name, officeId);
     setItems(prev => prev.map(item => {
       if (!item.unresolvedOffices.includes(name)) return item;
       const unresolvedOffices = item.unresolvedOffices.filter(o => o !== name);
@@ -167,6 +216,7 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
       return { ...item, officeMapping, unresolvedOffices, status };
     }));
   };
+
 
   const submitEntityForm = async () => {
     if (!editingEntity) return;

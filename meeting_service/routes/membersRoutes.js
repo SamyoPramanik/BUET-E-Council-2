@@ -3,10 +3,13 @@ const { authMiddleware } = require('../middlewares/authMiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
 const membersController = require('../controllers/membersController');
 
+const { auditLog } = require('../middlewares/auditMiddleware');
+
 const router = express.Router();
 const canEdit = requireRole('admin', 'moderator');
 
 router.use(authMiddleware);
+router.use(auditLog('member'));
 
 router.get('/', membersController.getMembers);
 router.post('/fetch-external', canEdit, membersController.fetchExternalMembers);

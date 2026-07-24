@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const axios = require('axios');
 const { generatePdf: generateMeetingPdf, generateAttendanceSheet } = require('../utils/pdfGenerator');
 const storageService = require('../utils/storageService');
+const meetingFileSystem = require('../utils/meetingFileSystem');
 const { sendMail } = require('../utils/mailer');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
@@ -121,7 +122,11 @@ const getMeetingHistory = async (req, res, next) => {
         const [auditRes, revisionRes, annexRes] = await Promise.all([
             db.query(
                 `SELECT username, action, details, created_at FROM audit_logs
-                 WHERE entity_type = 'meeting' AND entity_id = $1 ORDER BY created_at DESC`,
+                 WHERE (entity_type = 'meeting' AND entity_id = $1::uuid)
+                    OR (entity_type = 'agenda' AND entity_id IN (
+                          SELECT id FROM agenda WHERE meeting_id = $1::uuid
+                    ))
+                 ORDER BY created_at DESC`,
                 [id]
             ),
             db.query(
@@ -147,6 +152,19 @@ const getMeetingHistory = async (req, res, next) => {
         const labelForAudit = (log) => {
             const path = log.details?.path || '';
             const fields = log.details?.fields;
+
+            // Annexure actions
+            if (path.includes('/annexures')) {
+                if (path.includes('mode=resolution')) {
+                    if (path.includes('action=revoke') || path.includes('action=include')) {
+                        return 'Restored annexure in resolution';
+                    }
+                    return 'Excluded annexure from resolution';
+                }
+                if (path.includes('reorder')) return 'Reordered annexures';
+                if (log.action === 'delete') return 'Deleted an annexure';
+                if (log.action === 'create' || log.action === 'upload') return 'Uploaded an annexure';
+            }
 
             // Handover actions
             if (path.includes('/handover-agenda')) return 'Handed over Main Agenda to upper levels';
@@ -237,7 +255,11 @@ const createMeeting = async (req, res, next) => {
              VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
             [title, meeting_title || null, meeting_date, type, status || 'draft', req.user?.id || null]
         );
-        res.status(201).json({ success: true, message: 'Meeting created', data: result.rows[0] });
+
+        const newMeeting = result.rows[0];
+        meetingFileSystem.createMeetingDir(newMeeting);
+
+        res.status(201).json({ success: true, message: 'Meeting created', data: newMeeting });
     } catch (error) {
         next(error);
     }
@@ -290,6 +312,10 @@ const updateMeeting = async (req, res, next) => {
         );
 
         await client.query('COMMIT');
+
+        // Sync filesystem directory & status PDFs
+        await meetingFileSystem.syncMeetingStatusPdfs(id, { generatePdf: generateMeetingPdf });
+
         res.status(200).json({ success: true, message: 'Meeting updated successfully', data: result.rows[0] });
     } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
@@ -338,6 +364,11 @@ const deleteMeeting = async (req, res, next) => {
 
         const result = await db.query('DELETE FROM meetings WHERE id = $1 RETURNING *', [id]);
         if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+
+        const deletedMeeting = result.rows[0];
+
+        // Remove meeting folder from filesystem
+        meetingFileSystem.deleteMeetingDir(deletedMeeting);
 
         for (const filePath of filePaths) {
             try {

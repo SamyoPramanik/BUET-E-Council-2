@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { pool } = require('../db');
 const storageService = require('./storageService');
+const meetingFileSystem = require('./meetingFileSystem');
 const { toBanglaDigits } = require('./agendaSerial');
 
 const getFontBase64 = () => {
@@ -35,7 +36,7 @@ const getBrowser = async () => {
             const existing = await browserPromise;
             if (existing.connected) return existing;
             // Stale/disconnected instance: best-effort teardown before relaunching.
-            existing.close().catch(() => {});
+            existing.close().catch(() => { });
         } catch (e) {
             // Previous launch failed; fall through and relaunch.
         }
@@ -83,9 +84,9 @@ const renderPdf = async (html) => {
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             if (req.isNavigationRequest() || req.url().startsWith('data:')) {
-                req.continue().catch(() => {});
+                req.continue().catch(() => { });
             } else {
-                req.abort().catch(() => {});
+                req.abort().catch(() => { });
             }
         });
 
@@ -104,7 +105,7 @@ const renderPdf = async (html) => {
     } finally {
         // Close the page but keep the shared browser alive for reuse. Never let a
         // cleanup failure mask the original error or crash the process.
-        await page.close().catch(() => {});
+        await page.close().catch(() => { });
     }
 };
 
@@ -121,7 +122,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v5';
+const PDF_TEMPLATE_VERSION = 'v14';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -169,7 +170,41 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             WHERE p.meeting_id = $1 AND p.is_present = true
             ORDER BY p.serial ASC NULLS LAST
         `;
-        const agendasQuery = `SELECT agenda_serial, content, resolution, is_suppli FROM agenda WHERE meeting_id = $1 ORDER BY agenda_serial ASC`;
+        const agendasQuery = `
+            SELECT 
+                a.id,
+                a.agenda_serial, 
+                a.content, 
+                a.resolution, 
+                a.is_suppli,
+                COALESCE(
+                    (
+                        SELECT json_agg(
+                            json_build_object(
+                                'id', an.id,
+                                'annexure_serial', an.annexure_serial,
+                                'is_excluded_in_resolution', an.is_excluded_in_resolution,
+                                'global_serial', (
+                                    SELECT COUNT(*)::int
+                                    FROM annexures prev_an
+                                    JOIN agenda prev_a ON prev_a.id = prev_an.content_id
+                                    WHERE prev_a.meeting_id = a.meeting_id
+                                      AND (
+                                        (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
+                                        (a.is_suppli, a.agenda_serial, an.annexure_serial)
+                                      )
+                                ) + 1
+                            ) ORDER BY an.annexure_serial ASC
+                        )
+                        FROM annexures an
+                        WHERE an.content_id = a.id
+                    ),
+                    '[]'
+                ) AS annexures
+            FROM agenda a
+            WHERE a.meeting_id = $1
+            ORDER BY a.is_suppli ASC, a.agenda_serial ASC
+        `;
 
         // These queries are independent, so run them in parallel.
         const [meetingResult, presenteesResult, agendasResult] = await Promise.all([
@@ -290,10 +325,30 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         // names already carry their own title, e.g. "অধ্যাপক ডঃ ..."), and appends an
         // extraLabel when present (dean's specific office, head's specific department, or the
         // short office label for a dean/head also shown within a dept section).
-        const getDisplayName = (item) => {
+        const formatMeetingSerial = (rawTitle) => {
+            if (!rawTitle) return '';
+            let str = String(rawTitle).trim();
+            // Strip common English prefix/suffix like "Meeting", "th", "st", "nd", "rd" if present
+            str = str.replace(/^(meeting\s*|councel\s*|council\s*)/i, '')
+                .replace(/^(\d+)(st|nd|rd|th)$/i, '$1')
+                .trim();
+            return toBanglaDigits(str);
+        };
+
+        const getDisplayName = (item, isOthers = false) => {
             let displayName = item.name;
-            if (item.designation && normalize(item.designation).includes(normalize('সহযোগী অধ্যাপক')) && !normalize(displayName).startsWith(normalize('অধ্যাপক'))) {
-                displayName = `${displayName}, সহযোগী অধ্যাপক`;
+            if (isOthers) {
+                const details = [];
+                if (item.designation) details.push(item.designation);
+                if (item.department && item.department !== 'Unknown') details.push(item.department);
+                if (item.office && item.office !== 'Unknown' && item.office !== item.department) details.push(item.office);
+                if (details.length > 0) {
+                    displayName = `${displayName}, <br/>${details.join(', ')}`;
+                }
+            } else {
+                if (item.designation && normalize(item.designation).includes(normalize('সহযোগী অধ্যাপক')) && !normalize(displayName).startsWith(normalize('অধ্যাপক'))) {
+                    displayName = `${displayName}, <br/>সহযোগী অধ্যাপক`;
+                }
             }
             if (item.extraLabel) {
                 displayName = `${displayName} (${item.extraLabel})`;
@@ -301,12 +356,12 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             return displayName;
         };
 
-        const renderSection = (title, items) => {
+        const renderSection = (title, items, isOthers = false) => {
             if (!items || items.length === 0) return '';
             let html = `<div class="presentee-section"><div class="section-title"><u>${title}</u></div>`;
             items.forEach(item => {
                 html += `<div class="presentee-row">
-                    <div class="p-name">${getDisplayName(item)}</div>
+                    <div class="p-name">${getDisplayName(item, isOthers)}</div>
                     <div class="p-suffix">${getSuffix(item)}</div>
                 </div>`;
             });
@@ -314,8 +369,9 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             return html;
         };
 
-        const meetingDate = new Date(meeting.meeting_date).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' });
-        const serialNo = meeting.title || 'Untitled';
+        const meetingDate = toBanglaDigits(new Date(meeting.meeting_date).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' }));
+        const serialNo = formatMeetingSerial(meeting.title || 'Untitled');
+        const meetingSerialLabel = (serialNo.includes('সভা') || serialNo.includes('কাউন্সিল')) ? serialNo : `${serialNo}নং সভার`;
 
         // Agenda (pre-meeting notice) and resolution (post-meeting minutes) are
         // different documents, not the same content with an extra line: they
@@ -330,7 +386,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
 
         const renderAgendaBlock = (ag) => `
             <div class="agenda-block">
-                <div class="agenda-title">প্রস্তাবনা নং ${ag.agenda_serial || ''}</div>
+                <div class="agenda-title">প্রস্তাবনা নং ${(meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</div>
                 <div class="agenda-content">${ag.content || ''}</div>
                 ${isResolution ? `
                 <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
@@ -398,33 +454,53 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         </head>
         <body>
             <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title">${meetingDate} তারিখে ${dateVerb} ${serialNo}নং সভার ${docLabel}</div>
+            <div class="text-center sub-title">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
 
-            ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}
+            ${isResolution ? `
+                ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}
 
-            <div class="presentees-header">উপস্থিত সদস্যবৃন্দ</div>
-            <div class="columns-container">
-                ${renderSection('প্রশাসন', admins)}
-                ${renderSection('সকল ডিন', deans)}
-                ${renderSection('সকল বিভাগীয় প্রধান', heads)}
-                ${Object.entries(depts)
+                <div class="presentees-header">উপস্থিত সদস্যবৃন্দ</div>
+                <div class="columns-container">
+                    ${renderSection('প্রশাসন', admins)}
+                    ${renderSection('সকল ডিন', deans)}
+                    ${renderSection('সকল বিভাগীয় প্রধান', heads)}
+                    ${Object.entries(depts)
                     .sort(([, a], [, b]) => (a.serial ?? Infinity) - (b.serial ?? Infinity))
                     .map(([deptName, dept]) => renderSection(deptName, dept.members)).join('')}
-                ${renderSection('অন্যান্য সদস্য', others)}
-            </div>
+                    ${renderSection('অন্যান্য সদস্য', others, true)}
+                </div>
+            ` : ''}
 
-            <div class="disclaimer">এই তালিকা সিনিওরিটি হিসেবে গণ্য হবে না।</div>
+            ${agendas.map(ag => {
+                const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
+                    .filter(an => !isResolution || !an.is_excluded_in_resolution)
+                    .sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
+                const annexureTags = validAnnexures.length > 0
+                    ? validAnnexures.map(an => `পরিশিষ্ট-${toBanglaDigits(an.global_serial || an.annexure_serial)}`).join(', ')
+                    : null;
 
-            ${agendas.map(ag => `
+                let contentHtml = ag.content || '';
+                if (annexureTags) {
+                    const tagString = ` <b>(${annexureTags})</b>`;
+                    if (contentHtml.trim().endsWith('</p>')) {
+                        const lastIndex = contentHtml.lastIndexOf('</p>');
+                        contentHtml = contentHtml.substring(0, lastIndex) + tagString + contentHtml.substring(lastIndex);
+                    } else {
+                        contentHtml += tagString;
+                    }
+                }
+
+                return `
                 <div class="agenda-block">
-                    <div class="agenda-title">প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + toBanglaDigits(ag.agenda_serial)}</div>
-                    <div class="agenda-content">${ag.content || ''}</div>
+                    <div class="agenda-title">প্রস্তাবনা নং ${(meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</div>
+                    <div class="agenda-content">${contentHtml}</div>
                     ${isResolution ? `
                     <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
                     <div class="agenda-resolution">${ag.resolution || ''}</div>
                     ` : ''}
                 </div>
-            `).join('')}
+                `;
+            }).join('')}
         </body>
         </html>
         `;
@@ -432,6 +508,11 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const pdfBuffer = await renderPdf(html);
         // Cache for future requests (best-effort; keyed by the content fingerprint).
         await storeCachedPdf(cacheKey, pdfBuffer, fingerprint);
+        try {
+            await meetingFileSystem.saveMeetingPdf(meetingId, type, pdfBuffer);
+        } catch (e) {
+            console.error('Error saving meeting PDF to filesystem:', e);
+        }
         return pdfBuffer;
 
     } catch (error) {
@@ -485,17 +566,17 @@ const generateAttendanceSheet = async (meetingId) => {
                 officeStr = parts.slice(1).join(',').trim();
             }
             if (!extractedName) extractedName = 'Unknown';
-            
+
             // Collect full details for display
             let details = [];
             if (p.designation) details.push(p.designation);
             if (p.department_name) details.push(p.department_name);
             if (officeStr) details.push(officeStr);
             const detailStr = details.length > 0 ? `(${details.join(', ')})` : '';
-            
-            const pObj = { 
-                name: extractedName, 
-                office: officeStr, 
+
+            const pObj = {
+                name: extractedName,
+                office: officeStr,
                 designation: p.designation,
                 detailStr: detailStr,
                 serial: p.serial
@@ -536,18 +617,33 @@ const generateAttendanceSheet = async (meetingId) => {
         const fontBase64 = FONT_BASE64;
         const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); }` : '';
 
+        const formatMeetingSerial = (rawTitle) => {
+            if (!rawTitle) return '';
+            let str = String(rawTitle).trim();
+            str = str.replace(/^(meeting\s*|councel\s*|council\s*)/i, '')
+                .replace(/^(\d+)(st|nd|rd|th)$/i, '$1')
+                .trim();
+            return toBanglaDigits(str);
+        };
+
+        const serialNo = formatMeetingSerial(meeting.title || 'Untitled');
+        const attendanceSubTitle = (serialNo.includes('সভা') || serialNo.includes('কাউন্সিল')) ? serialNo : `${serialNo}নং সভার উপস্থিতি পত্র`;
+
         const renderTableSection = (title, items) => {
             if (!items || items.length === 0) return '';
             let html = `
-                <div class="section-title">${title}</div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 70%;">Name (Designation, Department, Office)</th>
-                            <th style="width: 30%;">Signature</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                <div class="attendance-page">
+                    <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+                    <div class="text-center sub-title">${attendanceSubTitle}</div>
+                    <div class="section-title">${title}</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 70%;">নাম (পদবী, বিভাগ, অফিস)</th>
+                                <th style="width: 30%;">স্বাক্ষর</th>
+                            </tr>
+                        </thead>
+                        <tbody>
             `;
             items.forEach(item => {
                 html += `
@@ -560,11 +656,9 @@ const generateAttendanceSheet = async (meetingId) => {
                     </tr>
                 `;
             });
-            html += `</tbody></table>`;
+            html += `</tbody></table></div>`;
             return html;
         };
-
-        const serialNo = meeting.title || 'Untitled';
 
         let html = `
         <!DOCTYPE html>
@@ -586,11 +680,18 @@ const generateAttendanceSheet = async (meetingId) => {
                 .section-title {
                     font-size: 16px;
                     font-weight: bold;
-                    margin-top: 20px;
+                    margin-top: 10px;
                     margin-bottom: 10px;
                     text-decoration: underline;
                 }
                 
+                .attendance-page {
+                    page-break-after: always;
+                }
+                .attendance-page:last-child {
+                    page-break-after: avoid;
+                }
+
                 table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
                 table, th, td { border: 1px solid black; }
                 th, td { padding: 8px; text-align: left; vertical-align: middle; }
@@ -598,9 +699,6 @@ const generateAttendanceSheet = async (meetingId) => {
             </style>
         </head>
         <body>
-            <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title">${serialNo}</div>
-            
             ${renderTableSection('প্রশাসন', admins)}
             ${renderTableSection('সকল ডিন', deans)}
             ${renderTableSection('সকল বিভাগীয় প্রধান', heads)}

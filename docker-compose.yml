@@ -64,6 +64,8 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       MAIL_FROM: ${MAIL_FROM:-no-reply@buet-ecouncil.local}
+    volumes:
+      - ./meetings:/meetings
     ports:
       - "8001:8001"
     depends_on:

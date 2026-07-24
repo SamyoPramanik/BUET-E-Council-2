@@ -292,7 +292,45 @@ const requireMeetingAuthor = async (req, res, next) => {
     }
 };
 
-const requireMeetingOperator = requireMeetingAuthor;
+const requireMeetingOperator = async (req, res, next) => {
+    try {
+        if (!req.user) return next(new CustomError('You are not logged in.', 401));
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found.', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+
+        if (req.query?.mode === 'resolution') {
+            if (!access.canEditResolution && !access.canEditAgenda && !access.canEditMeeting) {
+                return next(new CustomError('Access denied. Resolution editing is restricted.', 403));
+            }
+            return next();
+        }
+
+        let isSuppliTarget = false;
+        if (req.baseUrl.includes('/agendas')) {
+            if (req.method === 'POST' && (req.body?.is_suppli === true || req.body?.is_suppli === 'true')) {
+                isSuppliTarget = true;
+            } else if (req.params.id) {
+                const r = await db.query('SELECT is_suppli FROM agenda WHERE id = $1', [req.params.id]);
+                if (r.rows[0]?.is_suppli) isSuppliTarget = true;
+            }
+        }
+
+        if (isSuppliTarget) {
+            if (!access.canEditSuppliAgenda) {
+                return next(new CustomError('Access denied. Supplementary agenda is locked for your level.', 403));
+            }
+        } else {
+            if (!access.canEditAgenda && !access.canEditMeeting) {
+                return next(new CustomError('Access denied. Meeting or agenda editing is restricted.', 403));
+            }
+        }
+        return next();
+    } catch (err) {
+        next(err);
+    }
+};
 
 const requireResolutionEditor = async (req, res, next) => {
     try {

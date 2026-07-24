@@ -54,6 +54,18 @@ export default function AuditLogPage() {
     );
   }
 
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const parseDetails = (rawDetails: any) => {
+    if (!rawDetails) return null;
+    if (typeof rawDetails === 'object') return rawDetails;
+    try {
+      return JSON.parse(rawDetails);
+    } catch {
+      return null;
+    }
+  };
+
   const logs = response?.data || [];
   const pagination = response?.pagination;
 
@@ -101,6 +113,9 @@ export default function AuditLogPage() {
             <option value="">Any</option>
             <option value="meeting">Meeting</option>
             <option value="agenda">Agenda</option>
+            <option value="member">Member</option>
+            <option value="office">Office</option>
+            <option value="department">Department</option>
             <option value="user">User</option>
             <option value="auth">Auth</option>
           </select>
@@ -136,36 +151,62 @@ export default function AuditLogPage() {
                 <th className="px-6 py-3 font-semibold">User</th>
                 <th className="px-6 py-3 font-semibold">Action</th>
                 <th className="px-6 py-3 font-semibold">Entity</th>
+                <th className="px-6 py-3 font-semibold">Details & Changes</th>
                 <th className="px-6 py-3 font-semibold">IP</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loadingLogs && (
-                <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
+                <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">Loading...</td></tr>
               )}
               {!loadingLogs && logs.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">No matching audit log entries.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">No matching audit log entries.</td></tr>
               )}
-              {logs.map((log: any) => (
-                <tr key={log.id} className="hover:bg-accent/50 transition-colors">
-                  <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">
-                    {new Date(log.created_at).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 text-sm font-medium text-foreground">
-                    {log.username || "—"}
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${ACTION_STYLES[log.action] || "bg-muted text-muted-foreground"}`}>
-                      {log.action.replace("_", " ")}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    <span className="capitalize">{log.entity_type}</span>
-                    {log.entity_id && <span className="text-xs opacity-60"> · {log.entity_id.slice(0, 8)}</span>}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">{log.ip_address || "—"}</td>
-                </tr>
-              ))}
+              {logs.map((log: any) => {
+                const details = parseDetails(log.details);
+                const isExpanded = expandedId === log.id;
+                const entityName = details?.entity_name || (log.entity_id ? `${log.entity_type} #${log.entity_id.slice(0, 8)}` : null);
+
+                return (
+                  <tr 
+                    key={log.id} 
+                    onClick={() => setExpandedId(isExpanded ? null : log.id)}
+                    className="hover:bg-accent/50 transition-colors cursor-pointer"
+                  >
+                    <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">
+                      {new Date(log.created_at).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-foreground">
+                      {log.username || "—"}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${ACTION_STYLES[log.action] || "bg-muted text-muted-foreground"}`}>
+                        {log.action.replace("_", " ")}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      <span className="capitalize font-medium text-foreground">{log.entity_type}</span>
+                      {entityName && <div className="text-xs text-muted-foreground truncate max-w-[200px]">{entityName}</div>}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      <div className="space-y-1">
+                        {details?.path && <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground mr-2">{details.method} {details.path}</span>}
+                        {details?.fields && (
+                          <div className="text-xs text-sky-600 dark:text-sky-400">
+                            Touched: {details.fields.join(", ")}
+                          </div>
+                        )}
+                        {isExpanded && (
+                          <pre className="mt-2 p-2 bg-muted/60 rounded text-xs overflow-x-auto text-foreground font-mono max-h-48">
+                            {JSON.stringify(details, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">{log.ip_address || "—"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

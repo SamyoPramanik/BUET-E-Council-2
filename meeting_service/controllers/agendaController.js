@@ -1,6 +1,7 @@
 const CustomError = require('../errors/CustomError');
 const db = require('../db');
 const storageService = require('../utils/storageService');
+const meetingFileSystem = require('../utils/meetingFileSystem');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
 
@@ -481,23 +482,24 @@ const getAnnexures = async (req, res, next) => {
 
         let query = `SELECT an.*, a.is_suppli, u.username AS uploaded_by_username,
                             (
-                              SELECT COUNT(*)::int
-                              FROM annexures prev_an
-                              JOIN agenda prev_a ON prev_a.id = prev_an.content_id
-                              WHERE prev_a.meeting_id = a.meeting_id
-                                AND prev_an.annexure_type = an.annexure_type
-                                AND (
-                                  (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
-                                  (a.is_suppli, a.agenda_serial, an.annexure_serial)
-                                )
-                            ) + 1 AS global_serial
-                     FROM annexures an
-                     JOIN agenda a ON a.id = an.content_id
-                     LEFT JOIN users u ON u.id = an.uploaded_by
-                     WHERE an.content_id = $1`;
+                               SELECT COUNT(*)::int
+                               FROM annexures prev_an
+                               JOIN agenda prev_a ON prev_a.id = prev_an.content_id
+                               WHERE prev_a.meeting_id = a.meeting_id
+                                 AND (
+                                   (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
+                                   (a.is_suppli, a.agenda_serial, an.annexure_serial)
+                                 )
+                             ) + 1 AS global_serial
+                      FROM annexures an
+                      JOIN agenda a ON a.id = an.content_id
+                      LEFT JOIN users u ON u.id = an.uploaded_by
+                      WHERE an.content_id = $1`;
         let params = [id];
 
-        if (type) {
+        if (type === 'resolution') {
+            // Return all annexures so resolution view can render excluded ones as blurred with a revoke option
+        } else if (type) {
             query += ' AND an.annexure_type = $2';
             params.push(type);
         }
@@ -555,6 +557,12 @@ const uploadAnnexure = async (req, res, next) => {
             [id, annexure_type, file.originalname, fileKey, summary || '', nextSerial, req.user?.id || null]
         );
 
+        // Sync annexure to filesystem
+        const agendaRes = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [id]);
+        if (agendaRes.rows.length > 0) {
+            await meetingFileSystem.syncMeetingAnnexures(agendaRes.rows[0].meeting_id);
+        }
+
         res.status(201).json({ success: true, message: 'Annexure added successfully', data: result.rows[0] });
     } catch (error) {
         next(error);
@@ -564,18 +572,52 @@ const uploadAnnexure = async (req, res, next) => {
 const deleteAnnexure = async (req, res, next) => {
     try {
         const { annexureId } = req.params;
+        const { mode } = req.query;
+
+        if (mode === 'resolution') {
+            const { action } = req.query;
+            let excludeVal;
+            if (action === 'revoke' || action === 'include') {
+                excludeVal = false;
+            } else if (action === 'exclude') {
+                excludeVal = true;
+            } else {
+                const curr = await db.query('SELECT is_excluded_in_resolution FROM annexures WHERE id = $1', [annexureId]);
+                if (curr.rows.length === 0) return next(new CustomError('Annexure not found', 404));
+                excludeVal = !curr.rows[0].is_excluded_in_resolution;
+            }
+
+            const updateResult = await db.query(
+                'UPDATE annexures SET is_excluded_in_resolution = $1 WHERE id = $2 RETURNING *',
+                [excludeVal, annexureId]
+            );
+            if (updateResult.rows.length === 0) return next(new CustomError('Annexure not found', 404));
+
+            return res.status(200).json({
+                success: true,
+                message: excludeVal ? 'Annexure excluded from resolution' : 'Annexure restored in resolution',
+                data: updateResult.rows[0]
+            });
+        }
 
         const result = await db.query('DELETE FROM annexures WHERE id = $1 RETURNING *', [annexureId]);
         
         if (result.rows.length === 0) return next(new CustomError('Annexure not found', 404));
 
         const deletedAnnexure = result.rows[0];
+
         if (deletedAnnexure.file_path) {
             try {
                 await storageService.deleteFile(deletedAnnexure.file_path);
             } catch (err) {
                 console.error("Failed to delete file from storage:", err);
             }
+        }
+
+        // Sync filesystem meeting directory
+        const agendaRes = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [deletedAnnexure.content_id]);
+        if (agendaRes.rows.length > 0) {
+            await meetingFileSystem.syncMeetingAnnexures(agendaRes.rows[0].meeting_id);
         }
 
         res.status(200).json({ success: true, message: 'Annexure deleted' });
@@ -593,6 +635,7 @@ const reorderAnnexures = async (req, res, next) => {
         }
 
         const client = await db.pool.connect();
+        let meetingIdToSync = null;
         try {
             await client.query('BEGIN');
             for (const item of items) {
@@ -602,13 +645,28 @@ const reorderAnnexures = async (req, res, next) => {
                 );
             }
             await client.query('COMMIT');
-            res.status(200).json({ success: true, message: 'Reordered successfully' });
+
+            if (items.length > 0) {
+                const checkRes = await db.query(
+                    'SELECT a.meeting_id FROM annexures an JOIN agenda a ON a.id = an.content_id WHERE an.id = $1',
+                    [items[0].id]
+                );
+                if (checkRes.rows.length > 0) {
+                    meetingIdToSync = checkRes.rows[0].meeting_id;
+                }
+            }
         } catch (err) {
             await client.query('ROLLBACK');
             throw err;
         } finally {
             client.release();
         }
+
+        if (meetingIdToSync) {
+            await meetingFileSystem.syncMeetingAnnexures(meetingIdToSync);
+        }
+
+        res.status(200).json({ success: true, message: 'Reordered successfully' });
     } catch (error) {
         next(error);
     }

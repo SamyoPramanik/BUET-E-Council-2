@@ -44,7 +44,11 @@ CREATE TABLE system_settings (
     value TEXT NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-INSERT INTO system_settings (key, value) VALUES ('min_completed_level', '1') ON CONFLICT DO NOTHING;
+
+INSERT INTO
+    system_settings (key, value)
+VALUES ('min_completed_level', '1')
+ON CONFLICT DO NOTHING;
 
 -- Users Table
 CREATE TABLE users (
@@ -126,7 +130,9 @@ CREATE TABLE meetings (
     conclusion TEXT,
     meeting_date TIMESTAMP WITH TIME ZONE NOT NULL,
     type meeting_type NOT NULL,
-    status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'ongoing', 'past')),
+    status VARCHAR(20) DEFAULT 'draft' CHECK (
+        status IN ('draft', 'ongoing', 'past')
+    ),
     meeting_link VARCHAR(255),
     online_meeting_link VARCHAR(255),
     agenda_prefix VARCHAR(10),
@@ -155,13 +161,6 @@ CREATE TABLE meetings (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE meetings ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'draft';
-ALTER TABLE meetings ADD COLUMN IF NOT EXISTS invitees_locked_level INTEGER DEFAULT NULL;
-ALTER TABLE meetings ADD COLUMN IF NOT EXISTS presentees_locked_level INTEGER DEFAULT NULL;
-ALTER TABLE meetings ADD COLUMN IF NOT EXISTS conclusion_locked_level INTEGER DEFAULT NULL;
-ALTER TABLE meetings ADD COLUMN IF NOT EXISTS suppli_agenda_handover_level INTEGER DEFAULT NULL;
-ALTER TABLE meetings ADD COLUMN IF NOT EXISTS suppli_agenda_locked_level INTEGER DEFAULT NULL;
-
 -- Content Table (Stores the core text data)
 CREATE TABLE agenda (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
@@ -183,8 +182,18 @@ CREATE TABLE agenda (
     -- Generated full-text search vectors. 'simple' config (no stemming) is
     -- used because it tokenizes Bangla and English equally well without an
     -- English-specific stemmer distorting Bangla tokens.
-    content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(content_plain, ''))) STORED,
-    resolution_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(resolution_plain, ''))) STORED
+    content_tsv tsvector GENERATED ALWAYS AS (
+        to_tsvector(
+            'simple',
+            coalesce(content_plain, '')
+        )
+    ) STORED,
+    resolution_tsv tsvector GENERATED ALWAYS AS (
+        to_tsvector(
+            'simple',
+            coalesce(resolution_plain, '')
+        )
+    ) STORED
 );
 
 -- Tags Table (user-facing agenda tagging)
@@ -223,12 +232,16 @@ CREATE TABLE resolution_chunks (
 
 -- Pre-indexed agenda entities table
 CREATE TABLE agenda_entities (
-    agenda_id UUID REFERENCES agenda(id) ON DELETE CASCADE,
+    agenda_id UUID REFERENCES agenda (id) ON DELETE CASCADE,
     entity_type VARCHAR(50) NOT NULL,
     entity_id UUID,
     entity_name_bangla VARCHAR(255),
     entity_name_english VARCHAR(255),
-    PRIMARY KEY (agenda_id, entity_type, entity_id)
+    PRIMARY KEY (
+        agenda_id,
+        entity_type,
+        entity_id
+    )
 );
 
 -- Search results cache, keyed by a hash of the query + filters. Wiped
@@ -310,6 +323,7 @@ CREATE TABLE annexures (
     file_path VARCHAR(255),
     summary TEXT,
     annexure_serial INTEGER DEFAULT 1,
+    is_excluded_in_resolution BOOLEAN DEFAULT FALSE,
     uploaded_by UUID REFERENCES users (id) ON DELETE SET NULL,
     upload_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -334,31 +348,38 @@ CREATE TABLE audit_logs (
 -- None of these foreign-key columns get an automatic index in Postgres, and
 -- all of them are hit by the search/history queries below.
 CREATE INDEX idx_audit_logs_created_at ON audit_logs (created_at DESC);
+
 CREATE INDEX idx_audit_logs_user_id ON audit_logs (user_id);
+
 CREATE INDEX idx_agenda_meeting_id ON agenda (meeting_id);
 -- Hit by sync_invitee_serial() on every member serial change.
 CREATE INDEX idx_invitees_member_id ON invitees (member_id);
+
 CREATE INDEX idx_agenda_tags_tag_id ON agenda_tags (tag_id);
+
 CREATE INDEX idx_agenda_chunks_agenda_id ON agenda_chunks (agenda_id);
+
 CREATE INDEX idx_resolution_chunks_agenda_id ON resolution_chunks (agenda_id);
+
 CREATE INDEX idx_revisions_content_id ON revisions (content_id);
 
 -- Fast HNSW indexes for vector cosine distance matching
-CREATE INDEX idx_agenda_chunks_hnsw 
-ON agenda_chunks USING hnsw (embedding vector_cosine_ops) 
+CREATE INDEX idx_agenda_chunks_hnsw ON agenda_chunks USING hnsw (embedding vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 
-CREATE INDEX idx_resolution_chunks_hnsw 
-ON resolution_chunks USING hnsw (embedding vector_cosine_ops) 
+CREATE INDEX idx_resolution_chunks_hnsw ON resolution_chunks USING hnsw (embedding vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 
 -- Fast trigram index on pre-extracted entity names
 CREATE INDEX idx_agenda_entities_trgm ON agenda_entities USING GIN (
-    (entity_name_bangla || ' ' || COALESCE(entity_name_english, '')) gin_trgm_ops
+    (
+        entity_name_bangla || ' ' || COALESCE(entity_name_english, '')
+    ) gin_trgm_ops
 );
 
 -- Full-text search over agenda/resolution plain-text mirrors.
 CREATE INDEX idx_agenda_content_tsv ON agenda USING GIN (content_tsv);
+
 CREATE INDEX idx_agenda_resolution_tsv ON agenda USING GIN (resolution_tsv);
 
 -- Trigram indexes for fuzzy/substring entity matching (department, office,
@@ -369,14 +390,22 @@ CREATE INDEX idx_departments_trgm ON departments USING GIN (
         name_bangla || ' ' || coalesce(name_english, '') || ' ' || coalesce(alias_bangla, '') || ' ' || coalesce(alias_english, '')
     ) gin_trgm_ops
 );
+
 CREATE INDEX idx_offices_trgm ON offices USING GIN (
-    (name_bangla || ' ' || coalesce(name_english, '')) gin_trgm_ops
+    (
+        name_bangla || ' ' || coalesce(name_english, '')
+    ) gin_trgm_ops
 );
+
 CREATE INDEX idx_members_name_trgm ON members USING GIN (name gin_trgm_ops);
+
 CREATE INDEX idx_faculties_trgm ON faculties USING GIN (
-    (name_bangla || ' ' || coalesce(name_english, '')) gin_trgm_ops
+    (
+        name_bangla || ' ' || coalesce(name_english, '')
+    ) gin_trgm_ops
 );
-CREATE INDEX idx_presentees_name_trgm ON presentees USING GIN (name gin_trgm_ops);
+
+CREATE INDEX idx_invitees_name_trgm ON invitees USING GIN (name gin_trgm_ops);
 
 INSERT INTO
     users (
@@ -769,7 +798,64 @@ VALUES (
         27,
         'উপ-উপাচার্য, বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়',
         'Pro-Vice Chancellor, Bangladesh University of Engineering and Technology'
-    );
+    )
+ON CONFLICT (name_bangla) DO
+UPDATE
+SET
+    serial = EXCLUDED.serial;
+
+-- Explicitly ensure serial numbers 24, 26, and 27 are assigned
+UPDATE offices
+SET
+    serial = 24
+WHERE
+    name_bangla LIKE '%স্নাতকোত্তর স্টাডিজ অনুষদ%'
+    OR name_english LIKE '%Post Graduate Studies%';
+
+UPDATE offices
+SET
+    serial = 26
+WHERE
+    name_bangla LIKE 'উপাচার্য%'
+    OR name_english LIKE 'Vice Chancellor%';
+
+UPDATE offices
+SET
+    serial = 27
+WHERE
+    name_bangla LIKE 'উপ-উপাচার্য%'
+    OR name_english LIKE 'Pro-Vice Chancellor%';
+
+-- Merge references to duplicate English/typo offices into canonical records and delete duplicates
+DO $$
+DECLARE
+    vc_id UUID;
+    pro_vc_id UUID;
+    pg_id UUID;
+BEGIN
+    SELECT id INTO vc_id FROM offices WHERE serial = 26 LIMIT 1;
+    SELECT id INTO pro_vc_id FROM offices WHERE serial = 27 LIMIT 1;
+    SELECT id INTO pg_id FROM offices WHERE serial = 24 LIMIT 1;
+
+    IF vc_id IS NOT NULL THEN
+        UPDATE members SET office_id = vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Vice Chancellor%' OR name_bangla LIKE '%Vice Chancellor%'));
+        UPDATE invitees SET office_id = vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Vice Chancellor%' OR name_bangla LIKE '%Vice Chancellor%'));
+        DELETE FROM offices WHERE serial IS NULL AND (name_english LIKE '%Vice Chancellor%' OR name_bangla LIKE '%Vice Chancellor%');
+    END IF;
+
+    IF pro_vc_id IS NOT NULL THEN
+        UPDATE members SET office_id = pro_vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Pro-Vice Chancellor%' OR name_bangla LIKE '%Pro-Vice Chancellor%'));
+        UPDATE invitees SET office_id = pro_vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Pro-Vice Chancellor%' OR name_bangla LIKE '%Pro-Vice Chancellor%'));
+        DELETE FROM offices WHERE serial IS NULL AND (name_english LIKE '%Pro-Vice Chancellor%' OR name_bangla LIKE '%Pro-Vice Chancellor%');
+    END IF;
+
+    IF pg_id IS NOT NULL THEN
+        UPDATE members SET office_id = pg_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Post Graduate%' OR name_bangla LIKE '%Post Graduate%'));
+        UPDATE invitees SET office_id = pg_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Post Graduate%' OR name_bangla LIKE '%Post Graduate%'));
+        DELETE FROM offices WHERE serial IS NULL AND (name_english LIKE '%Post Graduate%' OR name_bangla LIKE '%Post Graduate%');
+    END IF;
+END $$;
+
 
 -- Migration: Automatic invalidation of search_cache on any meeting or agenda changes
 CREATE OR REPLACE FUNCTION clear_search_cache_trigger_fn()
@@ -781,31 +867,37 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_clear_search_cache_meetings ON meetings;
+
 CREATE TRIGGER trg_clear_search_cache_meetings
 AFTER INSERT OR UPDATE OR DELETE ON meetings
 FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
 
 DROP TRIGGER IF EXISTS trg_clear_search_cache_agenda ON agenda;
+
 CREATE TRIGGER trg_clear_search_cache_agenda
 AFTER INSERT OR UPDATE OR DELETE ON agenda
 FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
 
 DROP TRIGGER IF EXISTS trg_clear_search_cache_users ON users;
+
 CREATE TRIGGER trg_clear_search_cache_users
 AFTER INSERT OR UPDATE OR DELETE ON users
 FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
 
 DROP TRIGGER IF EXISTS trg_clear_search_cache_annexures ON annexures;
+
 CREATE TRIGGER trg_clear_search_cache_annexures
 AFTER INSERT OR UPDATE OR DELETE ON annexures
 FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
 
 DROP TRIGGER IF EXISTS trg_clear_search_cache_invitees ON invitees;
+
 CREATE TRIGGER trg_clear_search_cache_invitees
 AFTER INSERT OR UPDATE OR DELETE ON invitees
 FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
 
 DROP TRIGGER IF EXISTS trg_clear_search_cache_agenda_tags ON agenda_tags;
+
 CREATE TRIGGER trg_clear_search_cache_agenda_tags
 AFTER INSERT OR UPDATE OR DELETE ON agenda_tags
 FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();

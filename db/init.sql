@@ -209,7 +209,7 @@ CREATE TABLE agenda_tags (
     PRIMARY KEY (agenda_id, tag_id)
 );
 
--- Chunked semantic-search embeddings (sentence-transformers/LaBSE, 768-dim).
+-- Chunked semantic-search embeddings (BAAI/bge-m3, 1024-dim).
 -- Long agenda/resolution text is split into chunks so each embedding stays
 -- within the model's effective input length.
 CREATE TABLE agenda_chunks (

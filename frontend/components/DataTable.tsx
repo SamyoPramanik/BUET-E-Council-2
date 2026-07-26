@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { GripVertical, Pencil, Trash2, Eye, Upload, Download, ArrowUpDown, ArrowUp, ArrowDown, Search } from 'lucide-react';
 
 interface Column {
@@ -20,7 +20,7 @@ interface DataTableProps {
   // the moved row's original index and its drop target index instead, so the
   // caller can derive a serial from its actual new neighbors. Takes priority
   // over onReorder if both are passed.
-  onReorderItem?: (sourceIndex: number, targetIndex: number) => void;
+  onReorderItem?: (sourceIndex: number, targetIndex: number) => Promise<void> | void;
   onUploadCsv?: (file: File) => void;
   onDownloadCsv?: () => void;
   onAdd?: () => void;
@@ -39,6 +39,7 @@ interface DataTableProps {
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
   onToggleSelectAll?: (visibleIds: string[], selectAll: boolean) => void;
+  isRowReorderable?: (row: any) => boolean;
 }
 
 export default function DataTable({
@@ -62,7 +63,8 @@ export default function DataTable({
   selectable,
   selectedIds,
   onToggleSelect,
-  onToggleSelectAll
+  onToggleSelectAll,
+  isRowReorderable
 }: DataTableProps) {
   const [data, setData] = useState(initialData);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -70,19 +72,22 @@ export default function DataTable({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reorderEnabled = !selectable && !!(onReorder || onReorderItem);
 
-  // Update local state when initialData changes (from SWR)
-  // We use a simple effect here just in case, though ideally SWR handles it better if we pass it down
-  // For simplicity, we just sync them if initialData changes length or items.
-  if (data.length !== initialData.length) {
-      setData(initialData);
-  }
+  useEffect(() => {
+    setData(initialData);
+  }, [initialData]);
+
+  const canRowDrag = (row: any) => {
+    if (!reorderEnabled) return false;
+    if (isRowReorderable) return isRowReorderable(row);
+    if (row.reorderable !== undefined) return !!row.reorderable;
+    return true;
+  };
 
   const handleSort = (key: string) => {
     let direction: 'asc' | 'desc' = 'asc';
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc';
     } else if (sortConfig && sortConfig.key === key && sortConfig.direction === 'desc') {
-      // Third click removes sorting
       setSortConfig(null);
       return;
     }
@@ -91,7 +96,7 @@ export default function DataTable({
 
   const sortedData = useMemo(() => {
     if (!sortConfig) return data;
-    
+
     return [...data].sort((a, b) => {
       if (a[sortConfig.key] < b[sortConfig.key]) {
         return sortConfig.direction === 'asc' ? -1 : 1;
@@ -103,7 +108,6 @@ export default function DataTable({
     });
   }, [data, sortConfig]);
 
-  // Client-side search across the visible columns (opt-in via `searchable`).
   const filteredData = useMemo(() => {
     if (!searchable || !query.trim()) return sortedData;
     const q = query.trim().toLowerCase();
@@ -116,6 +120,11 @@ export default function DataTable({
   const isIndeterminate = selectable && !isAllSelected && filteredData.some(row => selectedIds?.has(row.id));
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
+    const row = filteredData[index];
+    if (!canRowDrag(row)) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData('text/plain', index.toString());
     e.currentTarget.classList.add('opacity-50');
   };
@@ -124,12 +133,22 @@ export default function DataTable({
     e.currentTarget.classList.remove('opacity-50');
   };
 
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+  const handleDrop = async (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
-    const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
-    
-    if (sourceIndex === targetIndex) return;
+    const sourceIndexStr = e.dataTransfer.getData('text/plain');
+    if (!sourceIndexStr) return;
+    const sourceIndex = parseInt(sourceIndexStr, 10);
 
+    if (isNaN(sourceIndex) || sourceIndex === targetIndex) return;
+
+    const sourceRow = filteredData[sourceIndex];
+    const targetRow = filteredData[targetIndex];
+
+    if (!canRowDrag(sourceRow) || !canRowDrag(targetRow)) {
+      return;
+    }
+
+    const oldData = [...data];
     const newData = [...data];
     const [movedItem] = newData.splice(sourceIndex, 1);
     newData.splice(targetIndex, 0, movedItem);
@@ -137,9 +156,12 @@ export default function DataTable({
     setData(newData);
 
     if (onReorderItem) {
-      onReorderItem(sourceIndex, targetIndex);
+      try {
+        await onReorderItem(sourceIndex, targetIndex);
+      } catch (err) {
+        setData(oldData);
+      }
     } else if (onReorder) {
-      // Re-calculate serials (assuming 1-indexed based on array position)
       const reorderedItems = newData.map((item, index) => ({
         id: item.id,
         serial: index + 1
@@ -166,7 +188,7 @@ export default function DataTable({
       {(title || onDownloadCsv || onUploadCsv || onFetchApi || onAdd) && (
         <div className="flex items-center justify-between">
           {title && <h2 className="text-2xl font-semibold text-foreground tracking-tight">{title}</h2>}
-          
+
           <div className="flex space-x-2">
             {customActions}
             {onDownloadCsv && (
@@ -175,7 +197,7 @@ export default function DataTable({
                 Download CSV
               </button>
             )}
-            
+
             {onUploadCsv && (
               <>
                 <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
@@ -243,7 +265,7 @@ export default function DataTable({
                 )}
                 {columns.map(col => (
                   <th key={col.key} className="px-6 py-3 font-semibold">
-                    <div 
+                    <div
                       className={`flex items-center space-x-1 ${col.sortable !== false ? 'cursor-pointer hover:text-foreground select-none' : ''}`}
                       onClick={() => col.sortable !== false && handleSort(col.key)}
                     >
@@ -264,74 +286,79 @@ export default function DataTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredData.map((row, index) => (
-                <tr 
-                  key={row.id || index}
-                  draggable={reorderEnabled}
-                  onDragStart={(e) => handleDragStart(e, index)}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, index)}
-                  onClick={() => selectable ? (onToggleSelect && onToggleSelect(row.id)) : (onEdit && onEdit(row))}
-                  className={`hover:bg-accent/50 transition-colors bg-card ${(onEdit || selectable) ? 'cursor-pointer' : ''}`}
-                >
-                  {reorderEnabled && (
-                    <td className="px-4 py-4 cursor-grab active:cursor-grabbing text-muted-foreground flex items-center justify-center">
-                      <GripVertical className="w-4 h-4 opacity-50 hover:opacity-100" />
-                    </td>
-                  )}
+              {filteredData.map((row, index) => {
+                const isRowDraggable = canRowDrag(row);
+                return (
+                  <tr
+                    key={row.id || index}
+                    draggable={isRowDraggable}
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, index)}
+                    onClick={() => selectable ? (onToggleSelect && onToggleSelect(row.id)) : (onEdit && onEdit(row))}
+                    className={`hover:bg-accent/50 transition-colors bg-card ${(onEdit || selectable) ? 'cursor-pointer' : ''}`}
+                  >
+                    {reorderEnabled && (
+                      <td className="px-4 py-4 text-muted-foreground flex items-center justify-center">
+                        {isRowDraggable ? (
+                          <GripVertical className="w-4 h-4 opacity-50 hover:opacity-100 cursor-grab active:cursor-grabbing" />
+                        ) : null}
+                      </td>
+                    )}
 
-                  {selectable && (
-                    <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={!!selectedIds?.has(row.id)}
-                        onChange={() => onToggleSelect && onToggleSelect(row.id)}
-                        className="cursor-pointer"
-                      />
-                    </td>
-                  )}
+                    {selectable && (
+                      <td className="px-4 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={!!selectedIds?.has(row.id)}
+                          onChange={() => onToggleSelect && onToggleSelect(row.id)}
+                          className="cursor-pointer"
+                        />
+                      </td>
+                    )}
 
-                  {columns.map(col => (
-                    <td key={col.key} className="px-6 py-4 text-sm text-foreground">
-                      {row[col.key]}
-                    </td>
-                  ))}
+                    {columns.map(col => (
+                      <td key={col.key} className="px-6 py-4 text-sm text-foreground">
+                        {row[col.key]}
+                      </td>
+                    ))}
 
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end space-x-2">
-                      {onView && !selectable && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onView(row); }}
-                          className="p-1 text-muted-foreground hover:text-primary transition-colors"
-                          title="View"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                      )}
-                      {onEdit && !selectable && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onEdit(row); }}
-                          className="p-1 text-muted-foreground hover:text-primary transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      )}
-                      {onDelete && !selectable && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onDelete(row); }}
-                          className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end space-x-2">
+                        {onView && !selectable && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onView(row); }}
+                            className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                            title="View"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        )}
+                        {onEdit && !selectable && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onEdit(row); }}
+                            className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
+                        {onDelete && !selectable && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onDelete(row); }}
+                            className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
               {filteredData.length === 0 && (
                 <tr>
                   <td colSpan={columns.length + (reorderEnabled ? 1 : 0) + (selectable ? 1 : 0) + 1} className="px-6 py-8 text-center text-muted-foreground">

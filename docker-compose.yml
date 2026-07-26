@@ -64,6 +64,8 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       MAIL_FROM: ${MAIL_FROM:-no-reply@buet-ecouncil.local}
+    volumes:
+      - ./meetings:/meetings
     ports:
       - "8001:8001"
     depends_on:
@@ -126,6 +128,9 @@ services:
       dockerfile: Dockerfile
       args:
         HF_TOKEN: ${HF_TOKEN:-}
+        MODEL_NAME: ${MODEL_NAME:-BAAI/bge-m3}
+    environment:
+      MODEL_NAME: ${MODEL_NAME:-BAAI/bge-m3}
     # Not published to the host: only meeting_service talks to it, over the
     # internal compose network (same reasoning as MinIO below).
     healthcheck:

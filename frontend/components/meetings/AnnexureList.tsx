@@ -3,15 +3,19 @@
 import { useState, useRef } from "react";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
-import { Paperclip, Trash2, GripVertical, Plus, File, ExternalLink, Loader2 } from "lucide-react";
+import { Paperclip, Trash2, GripVertical, Plus, File, ExternalLink, Loader2, MinusCircle, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
+import { toBanglaDigits } from "../../lib/banglaNumerals";
 
 interface Annexure {
   id: string;
   file_name: string;
   url: string | null;
   annexure_serial: number;
+  global_serial?: number | null;
+  is_suppli?: boolean | null;
+  is_excluded_in_resolution?: boolean;
   uploaded_by_username?: string | null;
   upload_date?: string | null;
 }
@@ -25,6 +29,21 @@ interface AnnexureListProps {
 export default function AnnexureList({ contentId, type, readOnly = false }: AnnexureListProps) {
   const { data: response, mutate } = useSWR(`/agendas/${contentId}/annexures?type=${type}`, fetcher, { fallbackData: { data: [] } });
   const annexures: Annexure[] = response?.data || [];
+
+  const validAnnexures = (type === 'resolution'
+    ? annexures.filter(an => !an.is_excluded_in_resolution)
+    : annexures
+  ).sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
+
+  const banglaAnnexureTags = validAnnexures.length > 0
+    ? validAnnexures.map(an => `পরিশিষ্ট-${toBanglaDigits(an.global_serial || an.annexure_serial)}`).join(', ')
+    : null;
+
+  const getDisplayName = (annexure: Annexure) => {
+    const num = annexure.global_serial || annexure.annexure_serial;
+    const prefix = (type !== 'resolution' && annexure.is_suppli) ? `Supple. Annexure-${num}` : `Annexure-${num}`;
+    return `${prefix}. ${annexure.file_name}`;
+  };
   
   const [isUploading, setIsUploading] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -67,14 +86,31 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
     });
   };
 
-  // Drag and drop sorting handlers
+  const handleToggleExclude = async (annexure: Annexure) => {
+    const isExcluded = !!annexure.is_excluded_in_resolution;
+    const action = isExcluded ? 'revoke' : 'exclude';
+
+    const updatedAnnexures = annexures.map(an => 
+      an.id === annexure.id ? { ...an, is_excluded_in_resolution: !isExcluded } : an
+    );
+    mutate({ ...response, data: updatedAnnexures }, false);
+
+    try {
+      await api.delete(`/agendas/annexures/${annexure.id}?mode=resolution&action=${action}`);
+      toast.success(isExcluded ? "Annexure restored in resolution" : "Annexure excluded from resolution");
+      mutate();
+    } catch (err) {
+      toast.error("Failed to update annexure resolution status");
+      mutate();
+    }
+  };
+
   const handleDragStart = (e: React.DragEvent, id: string) => {
     setDraggedId(id);
     e.dataTransfer.effectAllowed = 'move';
-    // Small delay to prevent the dragged item from instantly disappearing from layout
     setTimeout(() => {
       if (e.target instanceof HTMLElement) {
-        e.target.style.opacity = '0.5';
+        e.target.style.opacity = '0.4';
       }
     }, 0);
   };
@@ -87,7 +123,8 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   };
 
   const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault(); // Necessary to allow dropping
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
   };
 
   const handleDrop = async (e: React.DragEvent, targetId: string) => {
@@ -98,120 +135,173 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
     const draggedIndex = items.findIndex(item => item.id === draggedId);
     const targetIndex = items.findIndex(item => item.id === targetId);
 
-    // Reorder array
-    const [draggedItem] = items.splice(draggedIndex, 1);
-    items.splice(targetIndex, 0, draggedItem);
+    if (draggedIndex === -1 || targetIndex === -1) return;
 
-    // Reassign serials
-    const newOrder = items.map((item, index) => ({
-      id: item.id,
-      annexure_serial: index + 1
-    }));
+    const [reorderedItem] = items.splice(draggedIndex, 1);
+    items.splice(targetIndex, 0, reorderedItem);
 
-    // Optimistically update UI
     mutate({ data: items.map((item, index) => ({ ...item, annexure_serial: index + 1 })) }, false);
 
-    // Sync with backend
     try {
-      await api.put(`/agendas/annexures/reorder`, { items: newOrder });
+      const newOrder = items.map((item, index) => ({
+        id: item.id,
+        annexure_serial: index + 1
+      }));
+      await api.put('/agendas/annexures/reorder', { items: newOrder });
+      toast.success("Annexures reordered successfully");
+      mutate();
     } catch (error) {
-      toast.error("Failed to save reordered annexures");
-      mutate(); // revert on failure
+      toast.error("Failed to reorder annexures");
+      mutate();
     }
   };
 
   return (
-    <div className="mt-6 border-t border-border pt-6 animate-in fade-in duration-300">
+    <div className="mt-3 pt-3 border-t border-border/40">
       <ConfirmModal />
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold flex items-center gap-2 text-foreground">
-          <Paperclip className="w-4 h-4" /> 
-          Annexures ({annexures.length})
-        </h3>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
+          <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+            Annexures {annexures.length > 0 && `(${validAnnexures.length}/${annexures.length})`}
+          </h4>
+        </div>
         
-        <div>
-          <input 
-            type="file" 
-            className="hidden" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload} 
-          />
-          {!readOnly && (
+        <div className="flex items-center gap-2">
+          {banglaAnnexureTags && (
+            <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
+              {banglaAnnexureTags}
+            </span>
+          )}
+
+          {!readOnly && type === 'agenda' && (
             <button 
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              className="text-[11px] font-medium bg-secondary/80 text-secondary-foreground hover:bg-secondary px-2.5 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
             >
-              {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
               Add Annexure
             </button>
           )}
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {annexures.length === 0 ? (
-          <div className="text-center py-6 bg-muted/30 border border-dashed border-border rounded-lg">
-            <p className="text-xs text-muted-foreground">No annexures attached yet.</p>
+          <div className="text-center py-3 bg-muted/20 border border-dashed border-border/40 rounded">
+            <p className="text-[11px] text-muted-foreground/70">No annexures attached yet.</p>
           </div>
         ) : (
-          annexures.map((annexure) => (
-            <div 
-              key={annexure.id}
-              draggable={!readOnly}
-              onDragStart={(e) => !readOnly && handleDragStart(e, annexure.id)}
-              onDragEnd={(!readOnly) ? handleDragEnd : undefined}
-              onDragOver={(!readOnly) ? handleDragOver : undefined}
-              onDrop={(e) => !readOnly && handleDrop(e, annexure.id)}
-              className={`flex items-center gap-3 p-3 bg-card border border-border rounded-md group hover:border-primary/30 transition-colors shadow-sm ${(!readOnly) ? 'cursor-grab active:cursor-grabbing' : ''}`}
-            >
-              {!readOnly && (
-                <div className="text-muted-foreground/50 group-hover:text-muted-foreground cursor-grab">
-                  <GripVertical className="w-4 h-4" />
+          annexures.map((annexure) => {
+            const isResolutionView = type === 'resolution';
+            const isExcluded = isResolutionView && !!annexure.is_excluded_in_resolution;
+
+            return (
+              <div 
+                key={annexure.id}
+                draggable={!readOnly && !isResolutionView}
+                onDragStart={(e) => !readOnly && !isResolutionView && handleDragStart(e, annexure.id)}
+                onDragEnd={(!readOnly && !isResolutionView) ? handleDragEnd : undefined}
+                onDragOver={(!readOnly && !isResolutionView) ? handleDragOver : undefined}
+                onDrop={(e) => !readOnly && !isResolutionView && handleDrop(e, annexure.id)}
+                className={`relative flex items-center gap-2 p-1.5 px-2.5 rounded group transition-all overflow-hidden ${
+                  isExcluded 
+                    ? 'bg-red-500/10 border border-red-500/30 backdrop-blur-[1px] opacity-60 hover:opacity-85' 
+                    : 'bg-card/40 border border-border/40 hover:border-primary/30'
+                } ${(!readOnly && !isResolutionView) ? 'cursor-grab active:cursor-grabbing' : ''}`}
+              >
+                {!readOnly && !isResolutionView && (
+                  <div className="text-muted-foreground/40 group-hover:text-muted-foreground cursor-grab">
+                    <GripVertical className="w-3.5 h-3.5" />
+                  </div>
+                )}
+                
+                <div className={`relative p-1 rounded ${isExcluded ? 'bg-red-500/20 text-red-500' : 'bg-muted text-muted-foreground'}`}>
+                  <File className="w-3.5 h-3.5" />
                 </div>
-              )}
-              <div className="bg-primary/10 p-1.5 rounded text-primary">
-                <File className="w-4 h-4" />
+
+                <div className="flex-1 min-w-0 relative py-0.5">
+                  {isExcluded && (
+                    <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[1.5px] bg-red-500/80 pointer-events-none z-10" />
+                  )}
+                  {annexure.url ? (
+                    <a 
+                      href={annexure.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className={`text-xs font-normal hover:underline truncate block ${
+                        isExcluded ? 'text-red-400 font-medium' : 'text-foreground/80 hover:text-primary'
+                      }`}
+                    >
+                      {getDisplayName(annexure)} {isExcluded ? ' (Excluded from Resolution)' : ''}
+                    </a>
+                  ) : (
+                    <p className={`text-xs font-normal truncate ${isExcluded ? 'text-red-400 font-medium' : 'text-foreground/80'}`}>
+                      {getDisplayName(annexure)} {isExcluded ? ' (Excluded from Resolution)' : ''}
+                    </p>
+                  )}
+                  {annexure.uploaded_by_username && (
+                    <p className="text-[10px] text-muted-foreground/60 truncate">
+                      Uploaded by {annexure.uploaded_by_username}
+                      {annexure.upload_date ? ` · ${new Date(annexure.upload_date).toLocaleDateString()}` : ""}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 relative z-20 transition-opacity">
+                  {annexure.url && (
+                    <a 
+                      href={annexure.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="p-1.5 text-muted-foreground hover:text-primary bg-muted rounded-md transition-colors"
+                      title="View File"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                  
+                  {!readOnly && (
+                    isResolutionView ? (
+                      isExcluded ? (
+                        <button
+                          onClick={() => handleToggleExclude(annexure)}
+                          className="p-1.5 text-xs text-emerald-600 hover:text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-md transition-colors flex items-center gap-1 font-medium"
+                          title="Revoke Exclusion (Restore in Resolution)"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Revoke</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleToggleExclude(annexure)}
+                          className="p-1.5 text-muted-foreground hover:text-red-500 bg-muted rounded-md transition-colors"
+                          title="Exclude from Resolution"
+                        >
+                          <MinusCircle className="w-3.5 h-3.5 text-red-500" />
+                        </button>
+                      )
+                    ) : (
+                      <button
+                        onClick={() => handleDelete(annexure.id)}
+                        className="p-1.5 text-muted-foreground hover:text-destructive bg-muted rounded-md transition-colors"
+                        title="Delete Annexure"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                {annexure.url ? (
-                  <a href={annexure.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary hover:underline truncate block">
-                    {annexure.file_name}
-                  </a>
-                ) : (
-                  <p className="text-sm font-medium text-foreground truncate">{annexure.file_name}</p>
-                )}
-                {annexure.uploaded_by_username && (
-                  <p className="text-xs text-muted-foreground truncate">
-                    Uploaded by {annexure.uploaded_by_username}
-                    {annexure.upload_date ? ` · ${new Date(annexure.upload_date).toLocaleDateString()}` : ""}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                {annexure.url && (
-                  <a 
-                    href={annexure.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="p-1.5 text-muted-foreground hover:text-primary bg-muted rounded-md transition-colors"
-                    title="View File"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
-                {!readOnly && (
-                  <button
-                    onClick={() => handleDelete(annexure.id)}
-                    className="p-1.5 text-muted-foreground hover:text-destructive bg-muted rounded-md transition-colors"
-                    title="Delete Annexure"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

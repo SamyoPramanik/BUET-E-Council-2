@@ -10,6 +10,8 @@ const pool = new Pool(process.env.DATABASE_URL ? {
     port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
 });
 
+pool.query('ALTER TABLE invitees ALTER COLUMN name DROP NOT NULL; DROP TABLE IF EXISTS presentees CASCADE;').catch(() => {});
+
 module.exports = {
     query: (text, params) => pool.query(text, params),
     pool

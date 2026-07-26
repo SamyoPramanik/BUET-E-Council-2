@@ -7,10 +7,12 @@ const authMiddleware = async (req, res, next) => {
     try {
         let token;
         
-        if (req.cookies && req.cookies.session_token) {
-            token = req.cookies.session_token;
-        } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             token = req.headers.authorization.split(' ')[1];
+        } else if (req.query && req.query.token) {
+            token = req.query.token;
+        } else if (req.cookies && req.cookies.session_token) {
+            token = req.cookies.session_token;
         }
 
         if (!token) {
@@ -21,7 +23,7 @@ const authMiddleware = async (req, res, next) => {
         try {
             const response = await axios.get(`${auth_service_url}/api/auth/me`, {
                 headers: {
-                    Cookie: `session_token=${token}`
+                    Authorization: `Bearer ${token}`
                 }
             });
 

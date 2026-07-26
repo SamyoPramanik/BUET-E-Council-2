@@ -4,10 +4,13 @@ const { requireRole } = require('../middlewares/roleMiddleware');
 const officeController = require('../controllers/officeController');
 const { upload } = require('../utils/fileManager');
 
+const { auditLog } = require('../middlewares/auditMiddleware');
+
 const router = express.Router();
 const canEdit = requireRole('admin', 'moderator');
 
 router.use(authMiddleware);
+router.use(auditLog('office'));
 
 router.get('/', officeController.getOffices);
 router.post('/', canEdit, officeController.createOffice);

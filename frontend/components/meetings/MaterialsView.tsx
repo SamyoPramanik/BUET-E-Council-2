@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { FileText, FileCheck, Users, Loader2, Upload, Download, Eye } from "lucide-react";
-import api from "../../lib/api";
+import api, { getTabSessionToken } from "../../lib/api";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { useAuth } from "../../hooks/useAuth";
@@ -12,6 +12,7 @@ import AttendanceSheetOptionsModal from "./AttendanceSheetOptionsModal";
 export default function MaterialsView({ meeting }: { meeting: any }) {
   const { user } = useAuth();
   const canEdit = canOperateMeeting(user, meeting);
+  const token = typeof window !== 'undefined' ? getTabSessionToken() : null;
   const [generating, setGenerating] = useState<string | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -200,7 +201,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
               <h3 className="font-semibold">Signed Agenda</h3>
             </div>
             {meeting.agenda_pdf_link ? (
-              <a href={`/storage/${meeting.agenda_pdf_link}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
+              <a href={`/storage/${meeting.agenda_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
                 <Eye className="w-4 h-4" /> View Current PDF
               </a>
             ) : (
@@ -227,7 +228,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
               <h3 className="font-semibold">Signed Resolution</h3>
             </div>
             {meeting.resolution_pdf_link ? (
-              <a href={`/storage/${meeting.resolution_pdf_link}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
+              <a href={`/storage/${meeting.resolution_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
                 <Eye className="w-4 h-4" /> View Current PDF
               </a>
             ) : (
@@ -254,7 +255,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
               <h3 className="font-semibold">Signed Resolution Status</h3>
             </div>
             {meeting.resolution_status_pdf_link ? (
-              <a href={`/storage/${meeting.resolution_status_pdf_link}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
+              <a href={`/storage/${meeting.resolution_status_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
                 <Eye className="w-4 h-4" /> View Current PDF
               </a>
             ) : (

@@ -14,6 +14,7 @@ import TemplateDrawer from "../TemplateDrawer";
 import { useAuth } from "../../hooks/useAuth";
 import { canEditResolution } from "../../lib/meetingAccess";
 import { useConfirm } from "../../hooks/useConfirm";
+import { toBanglaDigits } from "../../lib/banglaNumerals";
 
 export default function ResolutionView({ meeting }: { meeting: any }) {
   const { user } = useAuth();
@@ -29,6 +30,8 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
     }
     return a.is_suppli ? 1 : -1;
   });
+
+  const mainAgendaCount = (agendas || []).filter((a: any) => !a.is_suppli).length;
 
   const { data: tagsResponse, mutate: mutateTags } = useSWR('/tags', fetcher, { fallbackData: { data: [] } });
   const allTags = tagsResponse?.data || [];
@@ -49,8 +52,8 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
       const tag = res.data.data;
       mutateTags();
       setEditTagIds(prev => [...prev, tag.id]);
-    } catch (err) {
-      toast.error("Failed to create tag");
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message || err.response?.data?.message || "Failed to create tag");
     }
   };
 
@@ -134,14 +137,19 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
           </div>
         </div>
       ) : (
-        agendas.map((agenda: any, index: number) => (
-          <div key={agenda.id} className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm group">
+        agendas.map((agenda: any, index: number) => {
+          const displaySerial = agenda.is_suppli
+            ? mainAgendaCount + (agenda.agenda_serial || index + 1)
+            : (agenda.agenda_serial || index + 1);
 
-            {/* Top Section (Read-Only Agenda) */}
-            <div className="mb-6">
-              <h3 className="font-semibold text-sm text-primary uppercase tracking-wider mb-2">
-                {agenda.is_suppli ? 'Suppli Ag-' : 'Ag-'}{agenda.agenda_serial || index + 1}
-              </h3>
+          return (
+            <div key={agenda.id} className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm group">
+
+                {/* Top Section (Read-Only Agenda) */}
+                <div className="mb-6">
+                  <h3 className="font-semibold text-base text-primary mb-2">
+                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + toBanglaDigits(displaySerial)}
+                  </h3>
               {agenda.tags && agenda.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {agenda.tags.map((tag: any) => (
@@ -155,10 +163,6 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 <div dangerouslySetInnerHTML={{ __html: agenda.content ? sanitizeHtml(agenda.content) : "<p class='italic opacity-50'>Empty agenda...</p>" }} />
               </div>
 
-              {/* Agenda Annexures (Read-Only) */}
-              <div className="border-border/50 pt-2">
-                <AnnexureList contentId={agenda.id} type="agenda" readOnly={true} />
-              </div>
             </div>
 
             {/* Bottom Section (The Resolution) */}
@@ -322,9 +326,10 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 </div>
               </div>
             )}
-
           </div>
-        )))}
+        );
+      })
+      )}
 
       <TemplateDrawer
         isOpen={isDrawerOpen}

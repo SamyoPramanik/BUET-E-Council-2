@@ -10,7 +10,9 @@ const errorHandler = require('./middlewares/errorHandler');
 const { verifyOrigin, ALLOWED_ORIGINS } = require('./middlewares/csrfMiddleware');
 
 // PDF service (Chromium warm-up)
-const { warmUp: warmUpPdf } = require('./utils/pdfGenerator');
+const pdfGenerator = require('./utils/pdfGenerator');
+const { warmUp: warmUpPdf } = pdfGenerator;
+const { syncAllMeetings } = require('./utils/meetingFileSystem');
 
 // Weekly audit_logs export (see utils/auditArchiver.js). Runs here, not in
 // the embedding worker, since audit logging has nothing to do with
@@ -48,6 +50,7 @@ if (require.main === module) {
         // Warm up Chromium in the background so the first PDF request is fast.
         // Fire-and-forget: this never blocks startup and is safe if it fails.
         warmUpPdf();
+        syncAllMeetings(pdfGenerator).catch(err => console.error('Initial syncAllMeetings error:', err));
     });
 
     const auditArchiverHandle = startWeeklyAuditArchiver();

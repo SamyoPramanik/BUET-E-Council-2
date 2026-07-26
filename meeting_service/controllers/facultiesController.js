@@ -22,18 +22,32 @@ const createFaculty = async (req, res, next) => {
         }
 
         let assignedSerial = serial;
-        if (!assignedSerial) {
+        if (assignedSerial === undefined || assignedSerial === null || assignedSerial === '') {
             const maxSerialResult = await db.query('SELECT MAX(serial) as max_serial FROM faculties');
             assignedSerial = (maxSerialResult.rows[0].max_serial || 0) + 1;
+        } else {
+            assignedSerial = parseInt(assignedSerial, 10);
+        }
+
+        await db.query('BEGIN');
+
+        if (!isNaN(assignedSerial)) {
+            const taken = await db.query('SELECT id FROM faculties WHERE serial = $1', [assignedSerial]);
+            if (taken.rows.length > 0) {
+                await db.query('UPDATE faculties SET serial = serial + 1 WHERE serial >= $1', [assignedSerial]);
+            }
         }
 
         const result = await db.query(
             'INSERT INTO faculties (name_bangla, name_english, serial) VALUES ($1, $2, $3) RETURNING *',
             [name_bangla, name_english, assignedSerial]
         );
+
+        await db.query('COMMIT');
         
         res.status(201).json({ success: true, message: 'Faculty created', data: result.rows[0] });
     } catch (error) {
+        await db.query('ROLLBACK').catch(() => {});
         if (error.code === '23505') {
             return next(new CustomError('Faculty already exists', 409));
         }
@@ -46,17 +60,44 @@ const updateFaculty = async (req, res, next) => {
         const { id } = req.params;
         const { name_bangla, name_english, serial } = req.body;
 
-        const result = await db.query(
-            'UPDATE faculties SET name_bangla = COALESCE($1, name_bangla), name_english = COALESCE($2, name_english), serial = COALESCE($3, serial) WHERE id = $4 RETURNING *',
-            [name_bangla, name_english, serial, id]
-        );
+        await db.query('BEGIN');
+
+        let targetSerial = undefined;
+        if (serial !== undefined && serial !== null && serial !== '') {
+            targetSerial = parseInt(serial, 10);
+            const currentFac = await db.query('SELECT serial FROM faculties WHERE id = $1', [id]);
+            const currentSerial = currentFac.rows[0]?.serial;
+
+            if (currentSerial !== targetSerial && !isNaN(targetSerial)) {
+                const taken = await db.query('SELECT id FROM faculties WHERE serial = $1 AND id != $2', [targetSerial, id]);
+                if (taken.rows.length > 0) {
+                    await db.query('UPDATE faculties SET serial = serial + 1 WHERE serial >= $1 AND id != $2', [targetSerial, id]);
+                }
+            }
+        }
+
+        let result;
+        if (targetSerial !== undefined && !isNaN(targetSerial)) {
+            result = await db.query(
+                'UPDATE faculties SET name_bangla = COALESCE($1, name_bangla), name_english = COALESCE($2, name_english), serial = $3 WHERE id = $4 RETURNING *',
+                [name_bangla || null, name_english || null, targetSerial, id]
+            );
+        } else {
+            result = await db.query(
+                'UPDATE faculties SET name_bangla = COALESCE($1, name_bangla), name_english = COALESCE($2, name_english) WHERE id = $3 RETURNING *',
+                [name_bangla || null, name_english || null, id]
+            );
+        }
+
+        await db.query('COMMIT');
 
         if (result.rows.length === 0) {
             return next(new CustomError('Faculty not found', 404));
         }
 
-        res.status(200).json({ success: true, message: 'Faculty updated', data: result.rows[0] });
+        return res.status(200).json({ success: true, message: 'Faculty updated', data: result.rows[0] });
     } catch (error) {
+        await db.query('ROLLBACK').catch(() => {});
         if (error.code === '23505') {
             return next(new CustomError('Faculty already exists with those names', 409));
         }

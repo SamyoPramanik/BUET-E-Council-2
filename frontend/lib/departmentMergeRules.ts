@@ -45,19 +45,64 @@ export const DEPARTMENT_MERGE_RULES: MergeRule[] = [
 ];
 
 /**
- * Resolves a raw (unmatched) department string to a department id using the
- * MERGE_RULES.md regex table. Returns null if no rule matches, or if the
- * matching rule's target department isn't present in the given department list.
+ * Storage key for user-created / manual department merge mappings
+ */
+const CUSTOM_DEPT_RULES_KEY = "custom_dept_merge_rules";
+
+export function getCustomDepartmentRules(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(CUSTOM_DEPT_RULES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveCustomDepartmentRule(rawName: string, targetDeptId: string) {
+  if (typeof window === "undefined" || !rawName || !targetDeptId) return;
+  try {
+    const current = getCustomDepartmentRules();
+    const normalized = rawName.replace(/\s+/g, ' ').trim().toLowerCase();
+    current[normalized] = targetDeptId;
+    localStorage.setItem(CUSTOM_DEPT_RULES_KEY, JSON.stringify(current));
+  } catch (e) {
+    console.error("Failed to save custom department rule", e);
+  }
+}
+
+/**
+ * Resolves a raw (unmatched) department string to a department id using both
+ * custom saved mappings and static MERGE_RULES.md regex table.
  */
 export function resolveDepartmentByMergeRule(
   rawName: string,
-  departments: Array<{ id: string; name_english?: string }>
+  departments: Array<{ id: string; name_english?: string; name_bangla?: string }>
 ): string | null {
-  const rule = DEPARTMENT_MERGE_RULES.find((r) => r.pattern.test(rawName));
+  if (!rawName) return null;
+  const normalizedRaw = rawName.replace(/\s+/g, ' ').trim();
+  const normalizedRawKey = normalizedRaw.toLowerCase();
+
+  // 1. Check custom user-saved mappings first
+  const customRules = getCustomDepartmentRules();
+  if (customRules[normalizedRawKey]) {
+    const matchedDept = departments.find((d) => d.id === customRules[normalizedRawKey]);
+    if (matchedDept) return matchedDept.id;
+  }
+
+  // 2. Check static predefined rules
+  const rule = DEPARTMENT_MERGE_RULES.find((r) => r.pattern.test(normalizedRaw));
   if (!rule) return null;
 
-  const target = departments.find(
-    (d) => d.name_english?.toLowerCase() === rule.target.toLowerCase()
-  );
+  const targetName = rule.target.replace(/\s+/g, ' ').trim().toLowerCase();
+
+  const target = departments.find((d) => {
+    const eName = d.name_english?.replace(/\s+/g, ' ').trim().toLowerCase();
+    const bName = d.name_bangla?.replace(/\s+/g, ' ').trim().toLowerCase();
+    return eName === targetName || bName === targetName || eName?.includes(targetName) || targetName.includes(eName || '___never___');
+  });
+
   return target ? target.id : null;
 }
+
+

@@ -7,11 +7,11 @@ import api from "../../lib/api";
 import { toast } from "sonner";
 import TemplateDrawer from "../TemplateDrawer";
 import { useAuth } from "../../hooks/useAuth";
-import { canAuthorMeeting } from "../../lib/meetingAccess";
+import { canEditMeeting, canEditConclusion } from "../../lib/meetingAccess";
 
 export default function DescriptionView({ meeting, type, mutate }: { meeting: any, type: string, mutate: any }) {
   const { user } = useAuth();
-  const canEdit = canAuthorMeeting(user, meeting);
+  const canEdit = type === 'conclusion' ? canEditConclusion(user, meeting) : canEditMeeting(user, meeting);
   const [content, setContent] = useState("");
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -43,12 +43,12 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
   };
 
   return (
-    <div className="max-w-5xl h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
+    <div className="max-w-5xl h-full min-h-[calc(100vh-220px)] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500 pb-8">
       <div className="flex justify-between items-center mb-6 shrink-0">
         <h2 className="text-2xl font-bold">{title}</h2>
       </div>
 
-      <div className="flex-1 flex flex-col bg-card border border-border rounded-lg shadow-sm overflow-hidden relative">
+      <div className="flex-1 flex flex-col bg-card border border-border rounded-lg shadow-sm overflow-hidden relative min-h-[450px]">
         <RichTextEditor
           content={content}
           editable={!readOnly}
@@ -56,7 +56,7 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
             setContent(html);
             setIsDirty(true);
           }}
-          className="p-8"
+          className="p-8 flex-1 min-h-[350px]"
         />
 
         {/* Action Area */}

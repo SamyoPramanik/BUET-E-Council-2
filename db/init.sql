@@ -6,24 +6,11 @@ CREATE EXTENSION IF NOT EXISTS "vector";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- 2. Define Enum Types
-CREATE TYPE user_role AS ENUM ('admin', 'superadmin', 'moderator', 'file_initiator', 'viewer');
-
--- Approval escalation stage of a meeting "file". Editing rights follow the
--- stage: the file climbs initiator -> moderator -> admin, and an admin/superadmin
--- finally approves it. admin/superadmin can always edit and can hand the file
--- back down the chain, recording who did so in return_source so the receiver
--- knows which reviewer to re-submit to.
-CREATE TYPE meeting_stage AS ENUM ('initiator', 'moderator', 'admin', 'approved');
+CREATE TYPE user_role AS ENUM ('admin', 'viewer', 'editor', 'superadmin', 'moderator', 'file_initiator');
 
 CREATE TYPE member_type_enum AS ENUM ('academic', 'syndicate', 'none');
 
 CREATE TYPE meeting_type AS ENUM ('syndicate', 'academic');
-
--- Lifecycle of a meeting, derived from the approval workflow rather than picked
--- by hand: 'draft' while the agenda is being prepared and approved, 'ongoing'
--- the moment an admin/superadmin approves the agenda, and 'past' only when an
--- admin hits "Mark Meeting Completed".
-CREATE TYPE meeting_status AS ENUM ('draft', 'ongoing', 'past');
 
 CREATE TYPE annexure_type AS ENUM ('agendaItem', 'resolution');
 
@@ -43,6 +30,26 @@ CREATE TYPE account_status AS ENUM ('active', 'inactive');
 
 -- 3. Create Tables
 
+-- Roles Table (Level-based permissions for editors)
+CREATE TABLE roles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    level INTEGER NOT NULL UNIQUE,
+    level_title VARCHAR(100) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- System Settings Table
+CREATE TABLE system_settings (
+    key VARCHAR(50) PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO
+    system_settings (key, value)
+VALUES ('min_completed_level', '1')
+ON CONFLICT DO NOTHING;
+
 -- Users Table
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
@@ -50,6 +57,7 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE,
     password VARCHAR(255) NOT NULL, -- Store hashed passwords only
     role user_role NOT NULL DEFAULT 'viewer',
+    role_id UUID REFERENCES roles (id) ON DELETE SET NULL,
     member_type member_type_enum NOT NULL DEFAULT 'none',
     status account_status NOT NULL DEFAULT 'active',
     legacy_username VARCHAR(100) UNIQUE,
@@ -122,43 +130,34 @@ CREATE TABLE meetings (
     conclusion TEXT,
     meeting_date TIMESTAMP WITH TIME ZONE NOT NULL,
     type meeting_type NOT NULL,
+    status VARCHAR(20) DEFAULT 'draft' CHECK (
+        status IN ('draft', 'ongoing', 'past')
+    ),
     meeting_link VARCHAR(255),
-    -- Video-call link (Zoom/Meet/Teams) for attending remotely, editable any
-    -- time by any non-viewer role independent of the meeting's lock/workflow
-    -- state (see PUT /meetings/:id/online-link).
     online_meeting_link VARCHAR(255),
-    -- Meeting-wide proposal-code prefix (e.g. "২১০৬"), the same for every
-    -- agendum in this meeting. Extracted from the first OCR-imported
-    -- agendum's leading "প্রস্তাব নং <4 Bangla digits>" marker, or entered
-    -- manually via Meeting Info. NULL means each agendum falls back to
-    -- showing its own agenda_serial (in Bangla digits) instead.
     agenda_prefix VARCHAR(10),
     agenda_pdf_link VARCHAR(255),
     transcript VARCHAR(255),
     resolution_pdf_link VARCHAR(255),
     resolution_status_pdf_link VARCHAR(255),
-    status meeting_status NOT NULL DEFAULT 'draft',
     legacy_meeting_no NUMERIC UNIQUE,
-    -- Approval workflow: the initiator who created the file and the current
-    -- escalation stage. return_source records who handed the file back down to
-    -- the initiator ('moderator' | 'admin'), so the initiator re-submits to the
-    -- same party. Per-role send-back notes are shown together when both exist.
     created_by UUID REFERENCES users (id) ON DELETE SET NULL,
-    stage meeting_stage NOT NULL DEFAULT 'initiator',
-    return_source VARCHAR(20),
-    moderator_note TEXT,
-    admin_note TEXT,
-    -- Resolution approval: a SECOND escalation chain that opens once the agenda
-    -- is approved (status 'ongoing'), running the same initiator -> moderator ->
-    -- admin route with its own stage, return source and per-role send-back
-    -- notes. Reaching 'approved' freezes the resolution for good.
-    resolution_stage meeting_stage NOT NULL DEFAULT 'initiator',
-    resolution_return_source VARCHAR(20),
-    resolution_moderator_note TEXT,
-    resolution_admin_note TEXT,
-    submitted_at TIMESTAMP WITH TIME ZONE,
-    reviewed_by UUID REFERENCES users (id) ON DELETE SET NULL,
-    reviewed_at TIMESTAMP WITH TIME ZONE,
+    -- Level-based Handover & Locking controls
+    agenda_handover_level INTEGER DEFAULT NULL,
+    suppli_agenda_handover_level INTEGER DEFAULT NULL,
+    resolution_handover_level INTEGER DEFAULT NULL,
+    resolution_status_handover_level INTEGER DEFAULT NULL,
+    agenda_locked_level INTEGER DEFAULT NULL,
+    suppli_agenda_locked_level INTEGER DEFAULT NULL,
+    resolution_locked_level INTEGER DEFAULT NULL,
+    resolution_status_locked_level INTEGER DEFAULT NULL,
+    meeting_locked_level INTEGER DEFAULT NULL,
+    invitees_locked_level INTEGER DEFAULT NULL,
+    presentees_locked_level INTEGER DEFAULT NULL,
+    conclusion_locked_level INTEGER DEFAULT NULL,
+    is_completed BOOLEAN DEFAULT FALSE,
+    completed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+    completed_by UUID REFERENCES users (id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -183,8 +182,18 @@ CREATE TABLE agenda (
     -- Generated full-text search vectors. 'simple' config (no stemming) is
     -- used because it tokenizes Bangla and English equally well without an
     -- English-specific stemmer distorting Bangla tokens.
-    content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(content_plain, ''))) STORED,
-    resolution_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(resolution_plain, ''))) STORED
+    content_tsv tsvector GENERATED ALWAYS AS (
+        to_tsvector(
+            'simple',
+            coalesce(content_plain, '')
+        )
+    ) STORED,
+    resolution_tsv tsvector GENERATED ALWAYS AS (
+        to_tsvector(
+            'simple',
+            coalesce(resolution_plain, '')
+        )
+    ) STORED
 );
 
 -- Tags Table (user-facing agenda tagging)
@@ -208,7 +217,7 @@ CREATE TABLE agenda_chunks (
     agenda_id UUID REFERENCES agenda (id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     chunk_text TEXT NOT NULL,
-    embedding vector (768),
+    embedding vector (1024),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -217,8 +226,22 @@ CREATE TABLE resolution_chunks (
     agenda_id UUID REFERENCES agenda (id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     chunk_text TEXT NOT NULL,
-    embedding vector (768),
+    embedding vector (1024),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Pre-indexed agenda entities table
+CREATE TABLE agenda_entities (
+    agenda_id UUID REFERENCES agenda (id) ON DELETE CASCADE,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id UUID,
+    entity_name_bangla VARCHAR(255),
+    entity_name_english VARCHAR(255),
+    PRIMARY KEY (
+        agenda_id,
+        entity_type,
+        entity_id
+    )
 );
 
 -- Search results cache, keyed by a hash of the query + filters. Wiped
@@ -245,7 +268,7 @@ CREATE TABLE templates (
 
 CREATE TABLE invitees (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-    name VARCHAR(255) NOT NULL,
+    name VARCHAR(255),
     email VARCHAR(255),
     designation VARCHAR(255),
     department_id UUID REFERENCES departments (id) ON DELETE SET NULL,
@@ -265,19 +288,7 @@ CREATE TABLE invitees (
     agenda_mail_sent BOOLEAN DEFAULT false
 );
 
--- Presentees Table (Linking table for attendance)
-CREATE TABLE presentees (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-    name VARCHAR(255),
-    designation VARCHAR(255),
-    department_id UUID REFERENCES departments (id) ON DELETE SET NULL,
-    office_id UUID REFERENCES offices (id) ON DELETE SET NULL,
-    meeting_id UUID REFERENCES meetings (id) ON DELETE CASCADE,
-    -- Seniority order captured at the time attendance was finalized (from the
-    -- source invitee/member's serial at that moment). Frozen from then on —
-    -- unlike invitees, presentees are never resynced to later member changes.
-    serial INTEGER
-);
+DROP TABLE IF EXISTS presentees CASCADE;
 
 -- Keeps a pending invitee's serial in lockstep with the seniority-order
 -- serial of the member it was created from, so reordering members (add-time
@@ -315,6 +326,7 @@ CREATE TABLE annexures (
     file_path VARCHAR(255),
     summary TEXT,
     annexure_serial INTEGER DEFAULT 1,
+    is_excluded_in_resolution BOOLEAN DEFAULT FALSE,
     uploaded_by UUID REFERENCES users (id) ON DELETE SET NULL,
     upload_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -339,17 +351,38 @@ CREATE TABLE audit_logs (
 -- None of these foreign-key columns get an automatic index in Postgres, and
 -- all of them are hit by the search/history queries below.
 CREATE INDEX idx_audit_logs_created_at ON audit_logs (created_at DESC);
+
 CREATE INDEX idx_audit_logs_user_id ON audit_logs (user_id);
+
 CREATE INDEX idx_agenda_meeting_id ON agenda (meeting_id);
 -- Hit by sync_invitee_serial() on every member serial change.
 CREATE INDEX idx_invitees_member_id ON invitees (member_id);
+
 CREATE INDEX idx_agenda_tags_tag_id ON agenda_tags (tag_id);
+
 CREATE INDEX idx_agenda_chunks_agenda_id ON agenda_chunks (agenda_id);
+
 CREATE INDEX idx_resolution_chunks_agenda_id ON resolution_chunks (agenda_id);
+
 CREATE INDEX idx_revisions_content_id ON revisions (content_id);
+
+-- Fast HNSW indexes for vector cosine distance matching
+CREATE INDEX idx_agenda_chunks_hnsw ON agenda_chunks USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+CREATE INDEX idx_resolution_chunks_hnsw ON resolution_chunks USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+-- Fast trigram index on pre-extracted entity names
+CREATE INDEX idx_agenda_entities_trgm ON agenda_entities USING GIN (
+    (
+        entity_name_bangla || ' ' || COALESCE(entity_name_english, '')
+    ) gin_trgm_ops
+);
 
 -- Full-text search over agenda/resolution plain-text mirrors.
 CREATE INDEX idx_agenda_content_tsv ON agenda USING GIN (content_tsv);
+
 CREATE INDEX idx_agenda_resolution_tsv ON agenda USING GIN (resolution_tsv);
 
 -- Trigram indexes for fuzzy/substring entity matching (department, office,
@@ -360,14 +393,22 @@ CREATE INDEX idx_departments_trgm ON departments USING GIN (
         name_bangla || ' ' || coalesce(name_english, '') || ' ' || coalesce(alias_bangla, '') || ' ' || coalesce(alias_english, '')
     ) gin_trgm_ops
 );
+
 CREATE INDEX idx_offices_trgm ON offices USING GIN (
-    (name_bangla || ' ' || coalesce(name_english, '')) gin_trgm_ops
+    (
+        name_bangla || ' ' || coalesce(name_english, '')
+    ) gin_trgm_ops
 );
+
 CREATE INDEX idx_members_name_trgm ON members USING GIN (name gin_trgm_ops);
+
 CREATE INDEX idx_faculties_trgm ON faculties USING GIN (
-    (name_bangla || ' ' || coalesce(name_english, '')) gin_trgm_ops
+    (
+        name_bangla || ' ' || coalesce(name_english, '')
+    ) gin_trgm_ops
 );
-CREATE INDEX idx_presentees_name_trgm ON presentees USING GIN (name gin_trgm_ops);
+
+CREATE INDEX idx_invitees_name_trgm ON invitees USING GIN (name gin_trgm_ops);
 
 INSERT INTO
     users (
@@ -760,4 +801,106 @@ VALUES (
         27,
         'উপ-উপাচার্য, বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়',
         'Pro-Vice Chancellor, Bangladesh University of Engineering and Technology'
-    );
+    )
+ON CONFLICT (name_bangla) DO
+UPDATE
+SET
+    serial = EXCLUDED.serial;
+
+-- Explicitly ensure serial numbers 24, 26, and 27 are assigned
+UPDATE offices
+SET
+    serial = 24
+WHERE
+    name_bangla LIKE '%স্নাতকোত্তর স্টাডিজ অনুষদ%'
+    OR name_english LIKE '%Post Graduate Studies%';
+
+UPDATE offices
+SET
+    serial = 26
+WHERE
+    name_bangla LIKE 'উপাচার্য%'
+    OR name_english LIKE 'Vice Chancellor%';
+
+UPDATE offices
+SET
+    serial = 27
+WHERE
+    name_bangla LIKE 'উপ-উপাচার্য%'
+    OR name_english LIKE 'Pro-Vice Chancellor%';
+
+-- Merge references to duplicate English/typo offices into canonical records and delete duplicates
+DO $$
+DECLARE
+    vc_id UUID;
+    pro_vc_id UUID;
+    pg_id UUID;
+BEGIN
+    SELECT id INTO vc_id FROM offices WHERE serial = 26 LIMIT 1;
+    SELECT id INTO pro_vc_id FROM offices WHERE serial = 27 LIMIT 1;
+    SELECT id INTO pg_id FROM offices WHERE serial = 24 LIMIT 1;
+
+    IF vc_id IS NOT NULL THEN
+        UPDATE members SET office_id = vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Vice Chancellor%' OR name_bangla LIKE '%Vice Chancellor%'));
+        UPDATE invitees SET office_id = vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Vice Chancellor%' OR name_bangla LIKE '%Vice Chancellor%'));
+        DELETE FROM offices WHERE serial IS NULL AND (name_english LIKE '%Vice Chancellor%' OR name_bangla LIKE '%Vice Chancellor%');
+    END IF;
+
+    IF pro_vc_id IS NOT NULL THEN
+        UPDATE members SET office_id = pro_vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Pro-Vice Chancellor%' OR name_bangla LIKE '%Pro-Vice Chancellor%'));
+        UPDATE invitees SET office_id = pro_vc_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Pro-Vice Chancellor%' OR name_bangla LIKE '%Pro-Vice Chancellor%'));
+        DELETE FROM offices WHERE serial IS NULL AND (name_english LIKE '%Pro-Vice Chancellor%' OR name_bangla LIKE '%Pro-Vice Chancellor%');
+    END IF;
+
+    IF pg_id IS NOT NULL THEN
+        UPDATE members SET office_id = pg_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Post Graduate%' OR name_bangla LIKE '%Post Graduate%'));
+        UPDATE invitees SET office_id = pg_id WHERE office_id IN (SELECT id FROM offices WHERE serial IS NULL AND (name_english LIKE '%Post Graduate%' OR name_bangla LIKE '%Post Graduate%'));
+        DELETE FROM offices WHERE serial IS NULL AND (name_english LIKE '%Post Graduate%' OR name_bangla LIKE '%Post Graduate%');
+    END IF;
+END $$;
+
+
+-- Migration: Automatic invalidation of search_cache on any meeting or agenda changes
+CREATE OR REPLACE FUNCTION clear_search_cache_trigger_fn()
+RETURNS TRIGGER AS $$
+BEGIN
+    DELETE FROM search_cache;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_meetings ON meetings;
+
+CREATE TRIGGER trg_clear_search_cache_meetings
+AFTER INSERT OR UPDATE OR DELETE ON meetings
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_agenda ON agenda;
+
+CREATE TRIGGER trg_clear_search_cache_agenda
+AFTER INSERT OR UPDATE OR DELETE ON agenda
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_users ON users;
+
+CREATE TRIGGER trg_clear_search_cache_users
+AFTER INSERT OR UPDATE OR DELETE ON users
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_annexures ON annexures;
+
+CREATE TRIGGER trg_clear_search_cache_annexures
+AFTER INSERT OR UPDATE OR DELETE ON annexures
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_invitees ON invitees;
+
+CREATE TRIGGER trg_clear_search_cache_invitees
+AFTER INSERT OR UPDATE OR DELETE ON invitees
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+DROP TRIGGER IF EXISTS trg_clear_search_cache_agenda_tags ON agenda_tags;
+
+CREATE TRIGGER trg_clear_search_cache_agenda_tags
+AFTER INSERT OR UPDATE OR DELETE ON agenda_tags
+FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();

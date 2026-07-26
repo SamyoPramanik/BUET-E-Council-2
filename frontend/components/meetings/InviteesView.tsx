@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
 import { Mail, Plus, CheckCircle, Clock, Trash2, Users, ShieldCheck, Building, Check, X, ChevronDown, LayoutList, Layers, Pencil, Bell } from "lucide-react";
@@ -13,17 +13,16 @@ import SendAgendaModal, { type EmailMode } from "./SendAgendaModal";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
-import { canOperateMeeting, canEditResolution } from "../../lib/meetingAccess";
+import { canEditInvitees, canEditPresentees } from "../../lib/meetingAccess";
 
 export default function InviteesView({ meeting, type, mutate }: { meeting: any, type: string, mutate: any }) {
   const { user } = useAuth();
-  const canEdit = canOperateMeeting(user, meeting);
-  // Simple role check for email sending — only admin/superadmin/moderator
+  const isPast = meeting.status === 'past' || meeting.is_completed === true;
+  const canEditPresenteesAccess = canEditPresentees(user, meeting);
+  const canEditInviteesAccess = canEditInvitees(user, meeting);
+  const canEdit = isPast ? canEditPresenteesAccess : canEditInviteesAccess;
+  const canAttendance = canEditPresenteesAccess;
   const canSendEmail = user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'moderator';
-  // Attendance belongs to the resolution phase (approved + ongoing), which
-  // opens for the initiator/moderator even though agenda editing is locked.
-  const canAttendance = canEditResolution(user, meeting);
-  const isPast = meeting.status === 'past';
   const displayType = isPast ? 'Presentees' : 'Invitees';
   const readOnly = !canEdit;
 
@@ -50,7 +49,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [isSavingPresentees, setIsSavingPresentees] = useState(false);
   const [editingPresentee, setEditingPresentee] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', designation: '', department_id: '', office_id: '' });
+  const [editForm, setEditForm] = useState({ name: '', prefix: '', serial: '', email: '', designation: '', department_id: '', office_id: '' });
   const [isUpdatingPresentee, setIsUpdatingPresentee] = useState(false);
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
   const [customForm, setCustomForm] = useState({ name: '', prefix: '', serial: '', email: '', designation: '', department_id: '', office_id: '' });
@@ -67,11 +66,30 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const [filterDepartment, setFilterDepartment] = useState("");
   const [filterOffice, setFilterOffice] = useState("");
 
-  const uniqueDesignations = Array.from(new Set(allMembers.map((m: any) => m.designation).filter(Boolean)));
-  const uniqueDepartments = Array.from(new Set(allMembers.map((m: any) => m.department_name).filter(Boolean)));
-  const uniqueOffices = Array.from(new Set(allMembers.map((m: any) => m.office_name).filter(Boolean)));
+  // Dynamically fetch invitees or presentees
+  const fetchUrl = isPast ? `/meetings/${meeting.id}/presentees` : `/meetings/${meeting.id}/invitees`;
+  const { data: inviteesRes, mutate: mutateInvitees } = useSWR(fetchUrl, fetcher, { fallbackData: { data: [] } });
+  const invitees = inviteesRes?.data || [];
 
-  const filteredMembers = allMembers.filter((m: any) => {
+  const { data: allInviteesRes } = useSWR(`/meetings/${meeting.id}/invitees`, fetcher);
+  const allMeetingInvitees = allInviteesRes?.data || [];
+
+  const pickerSourceList = isPast
+    ? allMeetingInvitees
+    : (!canEditInviteesAccess ? allMeetingInvitees.filter((m: any) => !m.is_present) : allMembers);
+
+  useEffect(() => {
+    if (isAddPresenteeModalOpen && isPast) {
+      const presentIds = allMeetingInvitees.filter((inv: any) => inv.is_present).map((inv: any) => inv.id);
+      setSelectedMembers(presentIds);
+    }
+  }, [isAddPresenteeModalOpen, isPast, allMeetingInvitees]);
+
+  const uniqueDesignations = Array.from(new Set(pickerSourceList.map((m: any) => m.designation).filter(Boolean)));
+  const uniqueDepartments = Array.from(new Set(pickerSourceList.map((m: any) => m.department_name).filter(Boolean)));
+  const uniqueOffices = Array.from(new Set(pickerSourceList.map((m: any) => m.office_name).filter(Boolean)));
+
+  const filteredMembers = pickerSourceList.filter((m: any) => {
     const matchesSearch = (m.name?.toLowerCase().includes(searchQuery.toLowerCase()) || m.designation?.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesDesignation = filterDesignation ? m.designation === filterDesignation : true;
     const matchesDepartment = filterDepartment ? m.department_name === filterDepartment : true;
@@ -130,11 +148,6 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   });
 
   const sortedMemberDeptGroups = Object.entries(memberDeptGroups).sort(([, a], [, b]) => a.serial - b.serial);
-
-  // Dynamically fetch invitees or presentees
-  const fetchUrl = isPast ? `/meetings/${meeting.id}/presentees` : `/meetings/${meeting.id}/invitees`;
-  const { data: inviteesRes, mutate: mutateInvitees } = useSWR(fetchUrl, fetcher, { fallbackData: { data: [] } });
-  const invitees = inviteesRes?.data || [];
 
   // Search + filters for the main invitees/presentees table (search handled by DataTable)
   const [tableDesignation, setTableDesignation] = useState("all");
@@ -274,7 +287,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                     </div>
                   </div>
                 </div>
-                {!readOnly && !isBulkDeleteMode && (
+                {!readOnly && (!m.is_present || canEditPresenteesAccess) && !isBulkDeleteMode && (
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => { e.stopPropagation(); handleEditClick(m); }}
@@ -436,10 +449,13 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     }
 
     try {
-      await api.put(`/meetings/${meeting.id}/invitees/${movedInvitee.id}/reorder`, { serial: targetSerial });
-      mutateInvitees();
+      const res = await api.put(`/meetings/${meeting.id}/invitees/${movedInvitee.id}/reorder`, { serial: targetSerial });
+      toast.success(res.data?.message || `${isPast ? 'Presentee' : 'Invitee'} reordered successfully`);
+      await mutateInvitees();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to reorder invitee");
+      toast.error(err.response?.data?.message || `Failed to reorder ${isPast ? 'presentee' : 'invitee'}`);
+      await mutateInvitees();
+      throw err;
     }
   };
 
@@ -493,6 +509,23 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const handleAddPresentees = async () => {
     setIsSavingPresentees(true);
     try {
+      if (isPast) {
+        await api.put(`/meetings/${meeting.id}/attendance`, { present_invitee_ids: selectedMembers });
+        toast.success("Presentees updated successfully");
+        setIsAddPresenteeModalOpen(false);
+        mutateInvitees();
+        return;
+      }
+      if (!canEditInviteesAccess) {
+        if (selectedMembers.length > 0) {
+          await api.post(`/meetings/${meeting.id}/presentees`, { invitee_ids: selectedMembers });
+          toast.success("Presentees added successfully");
+        }
+        setIsAddPresenteeModalOpen(false);
+        setSelectedMembers([]);
+        mutateInvitees();
+        return;
+      }
       // Find presentees to remove (they are in invitees but their member.id is NOT in selectedMembers)
       const presenteesToRemove = invitees.filter((p: any) => {
         const matchedMember = allMembers.find((m: any) => p.name === m.name && p.designation === m.designation);
@@ -556,6 +589,10 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
 
   const handleCreateCustomPresentee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditInviteesAccess) {
+      toast.error("Invitees are locked. Custom presentees cannot be added.");
+      return;
+    }
     setIsSavingCustom(true);
     try {
       const nameWithPrefix = customForm.prefix ? `${customForm.prefix} ${customForm.name}` : customForm.name;
@@ -586,20 +623,33 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     }
   };
 
-  const handleUpdatePresentee = async () => {
+  const handleUpdatePresentee = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setIsUpdatingPresentee(true);
     try {
+      const nameWithPrefix = editForm.prefix ? `${editForm.prefix.trim()} ${editForm.name.trim()}` : editForm.name.trim();
+      const payload: any = {
+        name: nameWithPrefix,
+        email: editForm.email || null,
+        designation: editForm.designation || null,
+        department_id: editForm.department_id || null,
+        office_id: editForm.office_id || null
+      };
+      if (editForm.serial !== '' && editForm.serial !== null && editForm.serial !== undefined) {
+        payload.serial = parseInt(editForm.serial, 10);
+      }
+
       if (isPast) {
-        await api.put(`/meetings/${meeting.id}/presentees/${editingPresentee.id}`, editForm);
+        await api.put(`/meetings/${meeting.id}/presentees/${editingPresentee.id}`, payload);
         toast.success("Presentee updated successfully");
       } else {
-        await api.put(`/meetings/${meeting.id}/invitees/${editingPresentee.id}`, editForm);
+        await api.put(`/meetings/${meeting.id}/invitees/${editingPresentee.id}`, payload);
         toast.success("Invitee updated successfully");
       }
       setEditingPresentee(null);
       mutateInvitees();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to update presentee");
+      toast.error(err.response?.data?.message || "Failed to update entry");
     } finally {
       setIsUpdatingPresentee(false);
     }
@@ -609,6 +659,8 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
     setEditingPresentee(row);
     setEditForm({
       name: row.name || '',
+      prefix: '',
+      serial: row.serial !== undefined && row.serial !== null ? String(row.serial) : '',
       email: row.email || '',
       designation: row.designation || '',
       department_id: row.department_id || '',
@@ -626,7 +678,11 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
           <span className="text-xs text-muted-foreground">({members.length})</span>
         </div>
         {members.map((member: any) => {
-          const isAlreadyAdded = invitees.some((p: any) => p.name === member.name && p.designation === member.designation);
+          const isAlreadyAdded = isPast
+            ? member.is_present
+            : (!canEditInviteesAccess
+                ? false
+                : invitees.some((p: any) => p.name === member.name && p.designation === member.designation));
           return (
             <label key={member.id} className={`flex items-center gap-3 p-3 rounded-md border border-border ${isAlreadyAdded ? 'bg-muted/10' : 'hover:bg-muted/30'} cursor-pointer`}>
               <input
@@ -830,7 +886,12 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
           data={displayedInvitees}
           searchable
           searchPlaceholder="Search by name or designation..."
-          onReorderItem={!isPast && !readOnly && noTableFiltersActive ? handleReorderInvitee : undefined}
+          onReorderItem={canEditInviteesAccess && noTableFiltersActive ? handleReorderInvitee : undefined}
+          isRowReorderable={(row: any) => {
+            if (!canEditInviteesAccess) return false;
+            if (!canEditPresenteesAccess && row?.is_present) return false;
+            return true;
+          }}
           selectable={isBulkDeleteMode}
           selectedIds={selectedInviteeIds}
           onToggleSelect={handleToggleSelectInvitee}
@@ -869,8 +930,20 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
               </div>
             </>
           }
-          onEdit={!readOnly ? handleEditClick : undefined}
-          onDelete={!readOnly ? (row) => handleRemove(row.id) : undefined}
+          onEdit={!readOnly ? (row) => {
+            if (row.is_present && !canEditPresenteesAccess) {
+              toast.error("Presentee data is locked for your level.");
+              return;
+            }
+            handleEditClick(row);
+          } : undefined}
+          onDelete={!readOnly ? (row) => {
+            if (row.is_present && !canEditPresenteesAccess) {
+              toast.error("Presentee data is locked for your level.");
+              return;
+            }
+            handleRemove(row.id);
+          } : undefined}
         />
       )}
 
@@ -943,25 +1016,29 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                 {renderMemberGroup('অন্যান্য সদস্য', otherMembers, <Users className="w-4 h-4 text-muted-foreground" />)}
                 {filteredMembers.length === 0 && (
                   <div className="text-center text-sm text-muted-foreground py-8">
-                    <p className="mb-4">No members match the filters.</p>
-                    <button 
-                      onClick={() => setIsCreatingCustom(true)}
-                      className="bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium text-sm hover:opacity-90 transition-opacity flex items-center gap-2 mx-auto"
-                    >
-                      <Plus className="w-4 h-4" /> Create Custom {isPast ? 'Presentee' : 'Invitee'}
-                    </button>
+                    <p className="mb-4">No invited members match the filters.</p>
+                    {canEditInviteesAccess && (
+                      <button 
+                        onClick={() => setIsCreatingCustom(true)}
+                        className="bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium text-sm hover:opacity-90 transition-opacity flex items-center gap-2 mx-auto"
+                      >
+                        <Plus className="w-4 h-4" /> Create Custom {isPast ? 'Presentee' : 'Invitee'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
             </div>
             {filteredMembers.length > 0 && (
               <div className="p-6 border-t border-border shrink-0 flex justify-between items-center gap-3">
-                <button 
-                  onClick={() => setIsCreatingCustom(true)}
-                  className="text-sm font-medium text-primary hover:underline flex items-center gap-1"
-                >
-                  <Plus className="w-4 h-4" /> Create Custom
-                </button>
+                {canEditInviteesAccess ? (
+                  <button 
+                    onClick={() => setIsCreatingCustom(true)}
+                    className="text-sm font-medium text-primary hover:underline flex items-center gap-1"
+                  >
+                    <Plus className="w-4 h-4" /> Create Custom
+                  </button>
+                ) : <div />}
                 <div className="flex gap-3">
                   <button 
                     onClick={() => setIsAddPresenteeModalOpen(false)} 
@@ -987,7 +1064,16 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
       {isCreatingCustom && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6 relative max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Create Custom {isPast ? 'Presentee' : 'Invitee'}</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Create Custom {isPast ? 'Presentee' : 'Invitee'}</h3>
+              <button
+                type="button"
+                onClick={() => setIsCreatingCustom(false)}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-md transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
             <form onSubmit={handleCreateCustomPresentee} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-medium">Name</label>
@@ -1090,34 +1176,66 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
         </div>
       )}
 
-      {/* Edit Presentee Modal */}
+      {/* Edit {isPast ? 'Presentee' : 'Invitee'} Modal */}
       {editingPresentee && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6 relative max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Edit {isPast ? 'Presentee' : 'Invitee'}</h3>
-            <div className="space-y-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Edit {isPast ? 'Presentee' : 'Invitee'}</h3>
+              <button
+                type="button"
+                onClick={() => setEditingPresentee(null)}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-md transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdatePresentee} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Name</label>
+                <input 
+                  required
+                  type="text" 
+                  value={editForm.name}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                />
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium">Name</label>
-                  <input 
-                    required
-                    type="text" 
-                    value={editForm.name}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                  <label className="text-xs font-medium">Prefix</label>
+                  <input
+                    type="text"
+                    value={editForm.prefix}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, prefix: e.target.value }))}
                     className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
                   />
                 </div>
-                {!isPast && (
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium">Email</label>
-                    <input 
-                      type="email" 
-                      value={editForm.email}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
-                      className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
-                    />
-                  </div>
-                )}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Serial No (optional)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editForm.serial}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, serial: e.target.value }))}
+                    placeholder="Leave unchanged"
+                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-2">If serial is changed, other entries from that serial onward shift down by one.</p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Email (for Invitees)</label>
+                  <input 
+                    type="email" 
+                    value={editForm.email}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                  />
+                </div>
                 <div className="space-y-1">
                   <label className="text-xs font-medium">Designation</label>
                   <SearchableSelect 
@@ -1132,6 +1250,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                   />
                 </div>
               </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-medium">Department</label>
                 <SearchableSelect
@@ -1152,22 +1271,24 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                   placeholder="Search Office or add new..."
                 />
               </div>
-            </div>
-            <div className="pt-6 shrink-0 flex justify-end gap-3">
-              <button 
-                onClick={() => setEditingPresentee(null)} 
-                className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleUpdatePresentee}
-                disabled={isUpdatingPresentee || !editForm.name}
-                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
-              >
-                {isUpdatingPresentee ? "Saving..." : "Save Changes"}
-              </button>
-            </div>
+
+              <div className="pt-6 shrink-0 flex justify-end gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setEditingPresentee(null)} 
+                  className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isUpdatingPresentee || !editForm.name}
+                  className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
+                >
+                  {isUpdatingPresentee ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

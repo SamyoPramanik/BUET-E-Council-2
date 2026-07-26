@@ -1,68 +1,39 @@
 const CustomError = require('../errors/CustomError');
 const db = require('../db');
+const bcrypt = require('bcryptjs');
+const axios = require('axios');
 const { generatePdf: generateMeetingPdf, generateAttendanceSheet } = require('../utils/pdfGenerator');
 const storageService = require('../utils/storageService');
+const meetingFileSystem = require('../utils/meetingFileSystem');
 const { sendMail } = require('../utils/mailer');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
 const { extractAgendaPrefix } = require('../utils/agendaSerial');
+const { loadMeeting, calculateMeetingAccess } = require('../middlewares/meetingWorkflowMiddleware');
 
 // A viewer whose account is scoped to a specific member_type (academic/syndicate)
 // only sees meetings of that type; 'none' (and every non-viewer role) sees both.
-const viewerTypeRestriction = (user) =>
-    (user?.role === 'viewer' && ['academic', 'syndicate'].includes(user?.member_type))
-        ? user.member_type
-        : null;
-
-// An initiator hands the file to the moderator and then loses sight of it: they
-// must not be able to watch the moderator/admin review play out. So for them the
-// two in-review stages collapse into a single "forwarded to moderator" label —
-// they can't tell whether it is still with the moderator or has gone up to the
-// admin. The final 'approved' outcome IS shown: they rejoin the file for the
-// resolution/attendance phase and need to know it got there.
-// Display only — `stage` stays accurate so every permission gate still works.
-const displayStageFor = (user, stage) =>
-    user?.role === 'file_initiator' && (stage === 'moderator' || stage === 'admin')
-        ? 'forwarded'
-        : stage;
-
-// Which meeting files a role is allowed to even see in the management list:
-//   admin/superadmin: all
-//   moderator: anything that has reached them or above, plus their own files and
-//              any they handed back down to an initiator
-//   file_initiator: only the files they created
-//   viewer: all (their read-only browsing is narrowed by type instead, below)
-// Returns SQL conditions rather than a full WHERE clause so it can be AND-ed
-// with the viewer type restriction. $-placeholders start at `from`.
-const visibilityConditions = (user, from) => {
-    if (user?.role === 'file_initiator') {
-        return { conditions: [`m.created_by = $${from}`], params: [user.id] };
-    }
-    if (user?.role === 'moderator') {
-        return {
-            conditions: [`(m.stage <> 'initiator' OR m.created_by = $${from} OR m.return_source = 'moderator')`],
-            params: [user.id],
-        };
-    }
-    return { conditions: [], params: [] };
+const viewerTypeRestriction = (user) => {
+    if (user?.role !== 'viewer') return null;
+    if (user?.member_type === 'syndicate' || user?.member_type === 'none' || !user?.member_type) return null;
+    return 'academic';
 };
 
-// Both gates apply at once: the workflow-role visibility above, AND a viewer's
-// member_type restriction. They answer different questions (which files does
-// this role take part in, vs. which meeting types may this viewer read).
+const displayStageFor = (user, stage) => stage;
+
 const meetingListFilter = (user) => {
     const conditions = [];
     const params = [];
+
+    if (user?.role === 'viewer') {
+        conditions.push("m.status != 'draft'");
+    }
 
     const restrictedType = viewerTypeRestriction(user);
     if (restrictedType) {
         params.push(restrictedType);
         conditions.push(`m.type = $${params.length}`);
     }
-
-    const visibility = visibilityConditions(user, params.length + 1);
-    conditions.push(...visibility.conditions);
-    params.push(...visibility.params);
 
     return {
         clause: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '',
@@ -83,10 +54,8 @@ const getMeetings = async (req, res, next) => {
             ORDER BY m.legacy_meeting_no DESC NULLS FIRST
         `, params);
 
-        // Format dates correctly for the frontend
         const data = result.rows.map(meeting => ({
             ...meeting,
-            display_stage: displayStageFor(req.user, meeting.stage),
             date: new Date(meeting.meeting_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
         }));
 
@@ -102,13 +71,11 @@ const getMeetingById = async (req, res, next) => {
         const result = await db.query(`
             SELECT m.*,
             u.username AS creator_username,
-            r.username AS reviewer_username,
             (SELECT COUNT(*) FROM meetings m2
              WHERE m2.legacy_meeting_no IS NOT NULL AND m.legacy_meeting_no IS NOT NULL
                AND m2.legacy_meeting_no <= m.legacy_meeting_no) as serial
             FROM meetings m
             LEFT JOIN users u ON u.id = m.created_by
-            LEFT JOIN users r ON r.id = m.reviewed_by
             WHERE m.id = $1
         `, [id]);
 
@@ -118,13 +85,18 @@ const getMeetingById = async (req, res, next) => {
 
         const meeting = result.rows[0];
 
-        const restrictedType = viewerTypeRestriction(req.user);
-        if (restrictedType && meeting.type !== restrictedType) {
-            return next(new CustomError('You do not have access to this meeting.', 403));
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
         }
 
         meeting.date = new Date(meeting.meeting_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-        meeting.display_stage = displayStageFor(req.user, meeting.stage);
+        meeting.access = calculateMeetingAccess(meeting, req.user);
 
         res.status(200).json({ success: true, data: meeting });
     } catch (error) {
@@ -150,7 +122,11 @@ const getMeetingHistory = async (req, res, next) => {
         const [auditRes, revisionRes, annexRes] = await Promise.all([
             db.query(
                 `SELECT username, action, details, created_at FROM audit_logs
-                 WHERE entity_type = 'meeting' AND entity_id = $1 ORDER BY created_at DESC`,
+                 WHERE (entity_type = 'meeting' AND entity_id = $1::uuid)
+                    OR (entity_type = 'agenda' AND entity_id IN (
+                          SELECT id FROM agenda WHERE meeting_id = $1::uuid
+                    ))
+                 ORDER BY created_at DESC`,
                 [id]
             ),
             db.query(
@@ -176,6 +152,53 @@ const getMeetingHistory = async (req, res, next) => {
         const labelForAudit = (log) => {
             const path = log.details?.path || '';
             const fields = log.details?.fields;
+
+            // Annexure actions
+            if (path.includes('/annexures')) {
+                if (path.includes('mode=resolution')) {
+                    if (path.includes('action=revoke') || path.includes('action=include')) {
+                        return 'Restored annexure in resolution';
+                    }
+                    return 'Excluded annexure from resolution';
+                }
+                if (path.includes('reorder')) return 'Reordered annexures';
+                if (log.action === 'delete') return 'Deleted an annexure';
+                if (log.action === 'create' || log.action === 'upload') return 'Uploaded an annexure';
+            }
+
+            // Handover actions
+            if (path.includes('/handover-agenda')) return 'Handed over Main Agenda to upper levels';
+            if (path.includes('/handover-suppli-agenda')) return 'Handed over Supplementary Agenda to upper levels';
+            if (path.includes('/handover-resolution-status')) return 'Handed over Resolution Status to upper levels';
+            if (path.includes('/handover-resolution')) return 'Handed over Resolution to upper levels';
+
+            // Send back actions
+            if (path.includes('/send-back-agenda')) return 'Sent back Main Agenda to lower level';
+            if (path.includes('/send-back-suppli-agenda')) return 'Sent back Supplementary Agenda to lower level';
+            if (path.includes('/send-back-resolution-status')) return 'Sent back Resolution Status to lower level';
+            if (path.includes('/send-back-resolution')) return 'Sent back Resolution to lower level';
+
+            // Lock actions
+            if (path.includes('/lock-agenda')) return 'Locked Main Agenda';
+            if (path.includes('/lock-suppli-agenda')) return 'Locked Supplementary Agenda';
+            if (path.includes('/lock-resolution-status')) return 'Locked Resolution Status';
+            if (path.includes('/lock-resolution')) return 'Locked Resolution';
+            if (path.includes('/lock-meeting')) return 'Locked Meeting Info';
+            if (path.includes('/lock-invitees')) return 'Locked Invitees';
+            if (path.includes('/lock-presentees')) return 'Locked Presentees';
+            if (path.includes('/lock-conclusion')) return 'Locked Conclusion';
+
+            // Unlock actions
+            if (path.includes('/unlock-agenda')) return 'Unlocked Main Agenda';
+            if (path.includes('/unlock-suppli-agenda')) return 'Unlocked Supplementary Agenda';
+            if (path.includes('/unlock-resolution-status')) return 'Unlocked Resolution Status';
+            if (path.includes('/unlock-resolution')) return 'Unlocked Resolution';
+            if (path.includes('/unlock-meeting')) return 'Unlocked Meeting Info';
+            if (path.includes('/unlock-invitees')) return 'Unlocked Invitees';
+            if (path.includes('/unlock-presentees')) return 'Unlocked Presentees';
+            if (path.includes('/unlock-conclusion')) return 'Unlocked Conclusion';
+
+            // Legacy & workflow actions
             if (path.includes('/submit-resolution')) return 'Submitted the resolution up the chain';
             if (path.includes('/return-resolution')) return 'Sent the resolution back';
             if (path.includes('/approve-resolution')) return 'Approved the resolution';
@@ -232,18 +255,45 @@ const createMeeting = async (req, res, next) => {
              VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
             [title, meeting_title || null, meeting_date, type, status || 'draft', req.user?.id || null]
         );
-        res.status(201).json({ success: true, message: 'Meeting created', data: result.rows[0] });
+
+        const newMeeting = result.rows[0];
+        meetingFileSystem.createMeetingDir(newMeeting);
+
+        res.status(201).json({ success: true, message: 'Meeting created', data: newMeeting });
     } catch (error) {
         next(error);
     }
 };
 
 const updateMeeting = async (req, res, next) => {
+    const client = await db.pool.connect();
     try {
         const { id } = req.params;
         const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix } = req.body;
 
-        const result = await db.query(
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canEditMeeting) {
+            return next(new CustomError('You do not have permission to edit Meeting Info.', 403));
+        }
+
+        await client.query('BEGIN');
+
+        if (status && status === 'past') {
+            await client.query(
+                `UPDATE meetings SET is_completed = TRUE, completed_at = COALESCE(completed_at, NOW()), completed_by = COALESCE(completed_by, $1) WHERE id = $2`,
+                [req.user?.id || null, id]
+            );
+        } else if (status && (status === 'draft' || status === 'ongoing')) {
+            await client.query(
+                `UPDATE meetings SET is_completed = FALSE WHERE id = $1`,
+                [id]
+            );
+        }
+
+        const result = await client.query(
             `UPDATE meetings SET
                 title = COALESCE($1, title),
                 meeting_title = COALESCE($2, meeting_title),
@@ -261,26 +311,38 @@ const updateMeeting = async (req, res, next) => {
             [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, id]
         );
 
-        if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
-        res.status(200).json({ success: true, message: 'Meeting updated', data: result.rows[0] });
+        await client.query('COMMIT');
+
+        // Sync filesystem directory & status PDFs
+        await meetingFileSystem.syncMeetingStatusPdfs(id, { generatePdf: generateMeetingPdf });
+
+        res.status(200).json({ success: true, message: 'Meeting updated successfully', data: result.rows[0] });
     } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
         next(error);
+    } finally {
+        client.release();
     }
 };
 
-// Separate from updateMeeting so any non-viewer role can set/change this any
-// time, regardless of meeting ownership, lock, or approval workflow state.
 const updateOnlineMeetingLink = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { online_meeting_link } = req.body;
+
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canEditMeeting) {
+            return next(new CustomError('Meeting info is locked. Online meeting link cannot be modified.', 403));
+        }
 
         const result = await db.query(
             'UPDATE meetings SET online_meeting_link = $1 WHERE id = $2 RETURNING *',
             [online_meeting_link || null, id]
         );
 
-        if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
         res.status(200).json({ success: true, message: 'Online meeting link updated', data: result.rows[0] });
     } catch (error) {
         next(error);
@@ -290,8 +352,32 @@ const updateOnlineMeetingLink = async (req, res, next) => {
 const deleteMeeting = async (req, res, next) => {
     try {
         const { id } = req.params;
+
+        const annexuresRes = await db.query(
+            `SELECT an.file_path
+             FROM annexures an
+             JOIN agenda a ON a.id = an.content_id
+             WHERE a.meeting_id = $1`,
+            [id]
+        );
+        const filePaths = annexuresRes.rows.map(r => r.file_path).filter(Boolean);
+
         const result = await db.query('DELETE FROM meetings WHERE id = $1 RETURNING *', [id]);
         if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+
+        const deletedMeeting = result.rows[0];
+
+        // Remove meeting folder from filesystem
+        meetingFileSystem.deleteMeetingDir(deletedMeeting);
+
+        for (const filePath of filePaths) {
+            try {
+                await storageService.deleteFile(filePath);
+            } catch (err) {
+                console.error("Failed to delete annexure file from storage on meeting delete:", err);
+            }
+        }
+
         res.status(200).json({ success: true, message: 'Meeting deleted' });
     } catch (error) {
         next(error);
@@ -596,51 +682,7 @@ const reopenResolution = async (req, res, next) => {
     }
 };
 
-// Marking a meeting completed is the final lock — it replaces the old manual
-// "lock meeting" toggle. Afterwards nothing is editable by anyone except a
-// superadmin, who keeps an escape hatch for a mis-click.
-const completeMeeting = async (req, res, next) => {
-    try {
-        const { id } = req.params;
-        const { title } = req.body;
 
-        // Verify meeting
-        const check = await db.query('SELECT title, status FROM meetings WHERE id = $1', [id]);
-        if (check.rows.length === 0) return next(new CustomError('Meeting not found', 404));
-        if (check.rows[0].status === 'past') return next(new CustomError('Meeting is already marked as past', 400));
-        
-        if (check.rows[0].title !== title) {
-            return next(new CustomError('Meeting serial number does not match', 400));
-        }
-
-        await db.query('BEGIN');
-        
-        // Update meeting status
-        await db.query('UPDATE meetings SET status = $1 WHERE id = $2', ['past', id]);
-        
-        // Get present invitees
-        const invitees = await db.query('SELECT name, designation, department_id, office_id, serial FROM invitees WHERE meeting_id = $1 AND is_present = true', [id]);
-
-        // Insert into presentees, freezing each invitee's current serial as the
-        // presentee's permanent seniority order.
-        for (const invitee of invitees.rows) {
-            await db.query(
-                'INSERT INTO presentees (meeting_id, name, designation, department_id, office_id, serial) VALUES ($1, $2, $3, $4, $5, $6)',
-                [id, invitee.name, invitee.designation, invitee.department_id, invitee.office_id, invitee.serial]
-            );
-        }
-        
-        // Delete ALL invitees for this meeting
-        await db.query('DELETE FROM invitees WHERE meeting_id = $1', [id]);
-        
-        await db.query('COMMIT');
-        
-        res.status(200).json({ success: true, message: 'Meeting marked as complete' });
-    } catch (error) {
-        await db.query('ROLLBACK');
-        next(error);
-    }
-};
 
 const addInvitees = async (req, res, next) => {
     try {
@@ -740,6 +782,20 @@ const bulkFetchInvitees = async (req, res, next) => {
 const getInvitees = async (req, res, next) => {
     try {
         const { id } = req.params;
+        const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [id]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingRes.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
+
         const result = await db.query(`
             SELECT i.*, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM invitees i
@@ -758,6 +814,20 @@ const getInvitees = async (req, res, next) => {
 const getInviteesEmails = async (req, res, next) => {
     try {
         const { id } = req.params;
+        const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [id]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingRes.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
+
         const result = await db.query(`
             SELECT i.id, i.name, i.email, i.designation, i.serial, i.notice_mail_sent, i.agenda_mail_sent,
                    d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
@@ -777,6 +847,17 @@ const getInviteesEmails = async (req, res, next) => {
 const removeInvitee = async (req, res, next) => {
     try {
         const { id, inviteeId } = req.params;
+        const meeting = await loadMeeting(req);
+        if (meeting) {
+            const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditPresentees) {
+                const targetRes = await db.query('SELECT is_present FROM invitees WHERE id = $1 AND meeting_id = $2', [inviteeId, id]);
+                if (targetRes.rows[0]?.is_present) {
+                    return next(new CustomError('Access denied. Presentee data is locked for your level.', 403));
+                }
+            }
+        }
+
         const result = await db.query(
             'DELETE FROM invitees WHERE id = $1 AND meeting_id = $2 RETURNING *',
             [inviteeId, id]
@@ -793,21 +874,85 @@ const removeInvitee = async (req, res, next) => {
 };
 
 const updateInvitee = async (req, res, next) => {
+    const client = await db.pool.connect();
     try {
         const { id, inviteeId } = req.params;
-        const { name, email, designation, department_id, office_id } = req.body;
-        const result = await db.query(
-            'UPDATE invitees SET name = $1, email = $2, designation = $3, department_id = $4, office_id = $5 WHERE id = $6 AND meeting_id = $7 RETURNING *',
-            [name, email, designation, department_id || null, office_id || null, inviteeId, id]
-        );
+        const { name, email, designation, department_id, office_id, is_present, serial } = req.body;
 
-        if (result.rows.length === 0) {
+        const meeting = await loadMeeting(req);
+        if (meeting) {
+            const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditInvitees) {
+                return next(new CustomError('Access denied. Invitees are locked for your level.', 403));
+            }
+            if (!access.canEditPresentees) {
+                const targetRes = await db.query('SELECT is_present FROM invitees WHERE id = $1 AND meeting_id = $2', [inviteeId, id]);
+                const isTargetPresent = targetRes.rows[0]?.is_present;
+                if (isTargetPresent || (is_present !== undefined && is_present !== isTargetPresent)) {
+                    return next(new CustomError('Access denied. Presentee data / attendance is locked for your level.', 403));
+                }
+            }
+        }
+
+        await client.query('BEGIN');
+
+        const currentRes = await client.query('SELECT serial, is_present FROM invitees WHERE id = $1 AND meeting_id = $2', [inviteeId, id]);
+        if (currentRes.rows.length === 0) {
+            await client.query('ROLLBACK');
             return next(new CustomError('Invitee not found', 404));
         }
 
+        const currentInvitee = currentRes.rows[0];
+        const oldSerial = currentInvitee.serial;
+        let finalSerial = oldSerial;
+
+        if (serial !== undefined && serial !== null && !Number.isNaN(parseInt(serial, 10))) {
+            const requestedSerial = parseInt(serial, 10);
+            if (requestedSerial !== oldSerial) {
+                if (meeting) {
+                    const access = calculateMeetingAccess(meeting, req.user);
+                    if (!access.canEditInvitees) {
+                        await client.query('ROLLBACK');
+                        return next(new CustomError('Access denied. Invitees are locked for your level.', 403));
+                    }
+                }
+
+                if (requestedSerial > oldSerial) {
+                    await client.query(
+                        'UPDATE invitees SET serial = serial - 1 WHERE meeting_id = $1 AND serial > $2 AND serial <= $3 AND id != $4',
+                        [id, oldSerial, requestedSerial, inviteeId]
+                    );
+                } else if (requestedSerial < oldSerial) {
+                    await client.query(
+                        'UPDATE invitees SET serial = serial + 1 WHERE meeting_id = $1 AND serial >= $2 AND serial < $3 AND id != $4',
+                        [id, requestedSerial, oldSerial, inviteeId]
+                    );
+                }
+                finalSerial = requestedSerial;
+            }
+        }
+
+        const result = await client.query(
+            `UPDATE invitees SET 
+                name = COALESCE($1, name), 
+                email = COALESCE($2, email), 
+                designation = COALESCE($3, designation), 
+                department_id = $4, 
+                office_id = $5,
+                is_present = COALESCE($6, is_present),
+                serial = $7
+            WHERE id = $8 AND meeting_id = $9 RETURNING *`,
+            [name, email, designation, department_id || null, office_id || null, is_present !== undefined ? is_present : null, finalSerial, inviteeId, id]
+        );
+
+        await client.query('COMMIT');
+        await db.query('DELETE FROM search_cache').catch(() => {});
         res.status(200).json({ success: true, message: 'Invitee updated', data: result.rows[0] });
     } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
         next(error);
+    } finally {
+        client.release();
     }
 };
 
@@ -817,12 +962,14 @@ const reorderInvitee = async (req, res, next) => {
         const requestedSerial = parseInt(req.body.serial, 10);
         if (Number.isNaN(requestedSerial)) return next(new CustomError('serial is required', 400));
 
+        const meeting = await loadMeeting(req);
+
         const client = await db.pool.connect();
         try {
             await client.query('BEGIN');
 
             const inviteeRes = await client.query(
-                'SELECT serial FROM invitees WHERE id = $1 AND meeting_id = $2',
+                'SELECT serial, is_present FROM invitees WHERE id = $1 AND meeting_id = $2',
                 [inviteeId, id]
             );
             if (inviteeRes.rows.length === 0) {
@@ -831,7 +978,41 @@ const reorderInvitee = async (req, res, next) => {
                 return next(new CustomError('Invitee not found', 404));
             }
 
-            const oldSerial = inviteeRes.rows[0].serial ?? requestedSerial;
+            const targetInvitee = inviteeRes.rows[0];
+            const oldSerial = targetInvitee.serial ?? requestedSerial;
+
+            if (meeting) {
+                const access = calculateMeetingAccess(meeting, req.user);
+                if (!access.canEditInvitees) {
+                    await client.query('ROLLBACK');
+                    client.release();
+                    return next(new CustomError('Access denied. Invitees are locked for your level.', 403));
+                }
+
+                if (!access.canEditPresentees) {
+                    if (targetInvitee.is_present) {
+                        await client.query('ROLLBACK');
+                        client.release();
+                        return next(new CustomError('Access denied. Presentees are locked and cannot be reordered.', 403));
+                    }
+
+                    const minSerial = Math.min(oldSerial, requestedSerial);
+                    const maxSerial = Math.max(oldSerial, requestedSerial);
+
+                    const presenteeCheck = await client.query(
+                        `SELECT COUNT(*)::int as count
+                         FROM invitees
+                         WHERE meeting_id = $1 AND is_present = true AND serial >= $2 AND serial <= $3 AND id != $4`,
+                        [id, minSerial, maxSerial, inviteeId]
+                    );
+
+                    if (presenteeCheck.rows[0].count > 0) {
+                        await client.query('ROLLBACK');
+                        client.release();
+                        return next(new CustomError('Access denied. Order of presentees is locked.', 403));
+                    }
+                }
+            }
 
             // Meeting-local move only — never touches members.serial, even for
             // member-linked invitees. This is intentionally decoupled from the
@@ -868,13 +1049,27 @@ const reorderInvitee = async (req, res, next) => {
 const getPresentees = async (req, res, next) => {
     try {
         const { id } = req.params;
+        const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [id]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingRes.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
+
         const result = await db.query(`
-            SELECT p.*, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
-            FROM presentees p
-            LEFT JOIN departments d ON p.department_id = d.id
-            LEFT JOIN offices o ON p.office_id = o.id
-            WHERE p.meeting_id = $1
-            ORDER BY p.serial ASC NULLS LAST
+            SELECT i.*, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
+            FROM invitees i
+            LEFT JOIN departments d ON i.department_id = d.id
+            LEFT JOIN offices o ON i.office_id = o.id
+            WHERE i.meeting_id = $1 AND i.is_present = true
+            ORDER BY i.serial ASC NULLS LAST
         `, [id]);
 
         res.status(200).json({ success: true, data: result.rows });
@@ -886,43 +1081,71 @@ const getPresentees = async (req, res, next) => {
 const addPresentees = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { presentees } = req.body; // array of presentee objects
-        if (!presentees || !Array.isArray(presentees)) return next(new CustomError('Presentees array is required', 400));
+        const { invitee_ids, presentees } = req.body;
+
+        const meeting = await loadMeeting(req);
+        if (meeting) {
+            const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditPresentees) {
+                return next(new CustomError('Access denied. Presentee data is locked for your level.', 403));
+            }
+            if (presentees && Array.isArray(presentees) && presentees.length > 0 && !access.canEditInvitees) {
+                return next(new CustomError('Access denied. Invitees are locked for your level. Custom presentees cannot be added.', 403));
+            }
+        }
 
         const client = await db.pool.connect();
         try {
             await client.query('BEGIN');
 
-            // Custom (non-member) presentees are appended after whatever is
-            // already recorded for this meeting.
-            const maxSerialResult = await client.query('SELECT MAX(serial) as max_serial FROM presentees WHERE meeting_id = $1', [id]);
-            let nextSerial = (maxSerialResult.rows[0].max_serial || 0) + 1;
-
-            for (const presentee of presentees) {
-                let serial = null;
-                if (presentee.member_id) {
-                    // Trust the DB, not the client, for the linked member's serial.
-                    const memberRes = await client.query('SELECT serial FROM members WHERE id = $1', [presentee.member_id]);
-                    serial = memberRes.rows[0]?.serial ?? null;
-                } else if (presentee.serial !== undefined && presentee.serial !== null && presentee.serial !== '') {
-                    const requestedSerial = parseInt(presentee.serial, 10);
-                    if (!Number.isNaN(requestedSerial)) {
-                        await client.query(
-                            'UPDATE presentees SET serial = serial + 1 WHERE meeting_id = $1 AND serial >= $2',
-                            [id, requestedSerial]
-                        );
-                        serial = requestedSerial;
-                        nextSerial = Math.max(nextSerial + 1, requestedSerial + 1);
-                    }
-                }
-                if (serial === null) {
-                    serial = nextSerial++;
-                }
-
+            // Option 1: Mark existing invitees of this meeting as present
+            if (invitee_ids && Array.isArray(invitee_ids) && invitee_ids.length > 0) {
                 await client.query(
-                    'INSERT INTO presentees (name, designation, department_id, office_id, meeting_id, serial) VALUES ($1, $2, $3, $4, $5, $6)',
-                    [presentee.name, presentee.designation, presentee.department_id || null, presentee.office_id || null, id, serial]
+                    'UPDATE invitees SET is_present = true WHERE meeting_id = $1 AND id = ANY($2)',
+                    [id, invitee_ids]
                 );
+            }
+
+            // Option 2: Add new custom presentees into invitees table with is_present = true
+            if (presentees && Array.isArray(presentees) && presentees.length > 0) {
+                const maxSerialResult = await client.query('SELECT MAX(serial) as max_serial FROM invitees WHERE meeting_id = $1', [id]);
+                let nextSerial = (maxSerialResult.rows[0].max_serial || 0) + 1;
+
+                for (const presentee of presentees) {
+                    let serial = null;
+                    if (presentee.member_id) {
+                        const memberRes = await client.query('SELECT serial FROM members WHERE id = $1', [presentee.member_id]);
+                        serial = memberRes.rows[0]?.serial ?? null;
+                    } else if (presentee.serial !== undefined && presentee.serial !== null && presentee.serial !== '') {
+                        const requestedSerial = parseInt(presentee.serial, 10);
+                        if (!Number.isNaN(requestedSerial)) {
+                            await client.query(
+                                'UPDATE invitees SET serial = serial + 1 WHERE meeting_id = $1 AND serial >= $2',
+                                [id, requestedSerial]
+                            );
+                            serial = requestedSerial;
+                            nextSerial = Math.max(nextSerial + 1, requestedSerial + 1);
+                        }
+                    }
+                    if (serial === null) {
+                        serial = nextSerial++;
+                    }
+
+                    await client.query(
+                        `INSERT INTO invitees (name, email, designation, department_id, office_id, meeting_id, serial, is_present, member_id)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8)`,
+                        [
+                            presentee.name || null,
+                            presentee.email || null,
+                            presentee.designation || null,
+                            presentee.department_id || null,
+                            presentee.office_id || null,
+                            id,
+                            serial,
+                            presentee.member_id || null
+                        ]
+                    );
+                }
             }
             await client.query('COMMIT');
             res.status(201).json({ success: true, message: 'Presentees added' });
@@ -938,29 +1161,88 @@ const addPresentees = async (req, res, next) => {
 };
 
 const updatePresentee = async (req, res, next) => {
+    const client = await db.pool.connect();
     try {
         const { id, presenteeId } = req.params;
-        const { name, designation, department_id, office_id } = req.body;
-        const result = await db.query(
-            'UPDATE presentees SET name = $1, designation = $2, department_id = $3, office_id = $4 WHERE id = $5 AND meeting_id = $6 RETURNING *',
-            [name, designation, department_id || null, office_id || null, presenteeId, id]
-        );
+        const { name, email, designation, department_id, office_id, is_present, serial } = req.body;
 
-        if (result.rows.length === 0) {
+        const meeting = await loadMeeting(req);
+        if (meeting) {
+            const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditPresentees) {
+                return next(new CustomError('Access denied. Presentee data is locked for your level.', 403));
+            }
+            if (!access.canEditInvitees) {
+                return next(new CustomError('Access denied. Presentees cannot be edited when invitees are locked.', 403));
+            }
+        }
+
+        await client.query('BEGIN');
+
+        const currentRes = await client.query('SELECT serial FROM invitees WHERE id = $1 AND meeting_id = $2', [presenteeId, id]);
+        if (currentRes.rows.length === 0) {
+            await client.query('ROLLBACK');
             return next(new CustomError('Presentee not found', 404));
         }
 
+        const oldSerial = currentRes.rows[0].serial;
+        let finalSerial = oldSerial;
+
+        if (serial !== undefined && serial !== null && !Number.isNaN(parseInt(serial, 10))) {
+            const requestedSerial = parseInt(serial, 10);
+            if (requestedSerial !== oldSerial) {
+                if (requestedSerial > oldSerial) {
+                    await client.query(
+                        'UPDATE invitees SET serial = serial - 1 WHERE meeting_id = $1 AND serial > $2 AND serial <= $3 AND id != $4',
+                        [id, oldSerial, requestedSerial, presenteeId]
+                    );
+                } else if (requestedSerial < oldSerial) {
+                    await client.query(
+                        'UPDATE invitees SET serial = serial + 1 WHERE meeting_id = $1 AND serial >= $2 AND serial < $3 AND id != $4',
+                        [id, requestedSerial, oldSerial, presenteeId]
+                    );
+                }
+                finalSerial = requestedSerial;
+            }
+        }
+
+        const result = await client.query(
+            `UPDATE invitees SET 
+                name = COALESCE($1, name), 
+                email = COALESCE($2, email), 
+                designation = COALESCE($3, designation), 
+                department_id = $4, 
+                office_id = $5,
+                is_present = COALESCE($6, is_present),
+                serial = $7
+            WHERE id = $8 AND meeting_id = $9 RETURNING *`,
+            [name, email, designation, department_id || null, office_id || null, is_present !== undefined ? is_present : null, finalSerial, presenteeId, id]
+        );
+
+        await client.query('COMMIT');
+        await db.query('DELETE FROM search_cache').catch(() => {});
         res.status(200).json({ success: true, message: 'Presentee updated', data: result.rows[0] });
     } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
         next(error);
+    } finally {
+        client.release();
     }
 };
 
 const removePresentee = async (req, res, next) => {
     try {
         const { id, presenteeId } = req.params;
+        const meeting = await loadMeeting(req);
+        if (meeting) {
+            const access = calculateMeetingAccess(meeting, req.user);
+            if (!access.canEditPresentees) {
+                return next(new CustomError('Access denied. Presentee data is locked for your level.', 403));
+            }
+        }
+
         const result = await db.query(
-            'DELETE FROM presentees WHERE id = $1 AND meeting_id = $2 RETURNING *',
+            'UPDATE invitees SET is_present = false WHERE id = $1 AND meeting_id = $2 RETURNING *',
             [presenteeId, id]
         );
 
@@ -1073,9 +1355,19 @@ const generatePdf = async (req, res, next) => {
         const { group } = req.query; // optional group filter for attendance
         let pdfBuffer;
 
-        // Basic check if meeting exists (the generators fetch the full data themselves).
-        const meetingCheck = await db.query('SELECT id FROM meetings WHERE id = $1', [id]);
+        const meetingCheck = await db.query('SELECT id, status, type FROM meetings WHERE id = $1', [id]);
         if (meetingCheck.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingCheck.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
 
         if (type === 'agenda') {
             pdfBuffer = await generateMeetingPdf(id, false);
@@ -1259,21 +1551,24 @@ const bulkImportMeeting = async (req, res, next) => {
 
         const meetingId = meetingResult.rows[0].id;
 
-        // 2. Insert Presentees
+        // 2. Insert Invitees (with is_present = true for imported presentees)
         if (presentees && Array.isArray(presentees)) {
             // Legacy meetings have no serial data of their own — the JSON array's
             // order *is* the seniority order, so index 0 -> serial 1, etc.
             for (const [index, p] of presentees.entries()) {
                 // Combine prefix and name if prefix exists
-                const fullName = p.prefix ? `${p.prefix} ${p.name}` : p.name;
+                const rawName = p.name ? p.name.trim() : null;
+                const rawPrefix = p.prefix ? p.prefix.trim() : null;
+                const fullName = rawPrefix ? (rawName ? `${rawPrefix} ${rawName}` : rawPrefix) : rawName;
 
                 await client.query(
-                    `INSERT INTO presentees
-                    (name, designation, department_id, office_id, meeting_id, serial)
-                    VALUES ($1, $2, $3, $4, $5, $6)`,
+                    `INSERT INTO invitees
+                    (name, email, designation, department_id, office_id, meeting_id, serial, is_present)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)`,
                     [
                         fullName,
-                        p.designation,
+                        p.email || null,
+                        p.designation || null,
                         p.department_id || null,
                         p.office_id || null,
                         meetingId,
@@ -1596,6 +1891,564 @@ const sendAgendaEmailBulk = async (req, res, next) => {
     }
 };
 
+const verifyHandoverPassword = async (req, password) => {
+    if (!password) {
+        throw new CustomError('Password is required to confirm handover.', 400);
+    }
+    const userId = req.user?.id;
+    if (!userId) {
+        throw new CustomError('User authentication required.', 401);
+    }
+
+    try {
+        const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://auth_service:8000';
+        const headers = {};
+        if (req.headers?.cookie) headers.cookie = req.headers.cookie;
+        if (req.headers?.authorization) headers.authorization = req.headers.authorization;
+
+        const authRes = await axios.post(`${authServiceUrl}/verify-password`, { password }, {
+            headers,
+            timeout: 3000
+        });
+        if (authRes.data?.success) return true;
+    } catch (err) {
+        if (err.response?.status === 401) {
+            throw new CustomError('Incorrect password. Handover verification failed.', 401);
+        }
+        const userRes = await db.query('SELECT password FROM users WHERE id = $1', [userId]);
+        if (userRes.rows.length === 0) {
+            throw new CustomError('User account not found.', 404);
+        }
+        const isValid = await bcrypt.compare(password, userRes.rows[0].password);
+        if (!isValid) {
+            throw new CustomError('Incorrect password. Handover verification failed.', 401);
+        }
+    }
+};
+
+const handoverAgenda = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { password } = req.body;
+        await verifyHandoverPassword(req, password);
+
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canHandoverAgenda) {
+            return next(new CustomError('You do not have permission to handover agenda for this meeting.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET agenda_handover_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Agenda handed over to upper levels successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const handoverSuppliAgenda = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { password } = req.body;
+        await verifyHandoverPassword(req, password);
+
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canHandoverSuppliAgenda) {
+            return next(new CustomError('You do not have permission to handover supplementary agenda.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET suppli_agenda_handover_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Supplementary agenda handed over to upper levels.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const lockSuppliAgenda = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockSuppliAgenda) {
+            return next(new CustomError('You do not have permission to lock supplementary agenda.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET suppli_agenda_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Supplementary agenda locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockSuppliAgenda = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockSuppliAgenda) {
+            return next(new CustomError('Lower levels cannot unlock supplementary agenda locked by a higher level.', 403));
+        }
+
+        await db.query('UPDATE meetings SET suppli_agenda_locked_level = NULL, suppli_agenda_handover_level = NULL WHERE id = $1', [id]);
+        res.status(200).json({ success: true, message: 'Supplementary agenda unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const handoverResolution = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { password } = req.body;
+        await verifyHandoverPassword(req, password);
+
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canHandoverResolution) {
+            return next(new CustomError('You do not have permission to handover resolution for this meeting.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET resolution_handover_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Resolution handed over to upper levels successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const lockAgenda = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockAgenda) {
+            return next(new CustomError('You do not have permission to lock agenda.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET agenda_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Agenda locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockAgenda = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockAgenda) {
+            return next(new CustomError('Lower levels cannot unlock an agenda locked by a higher level.', 403));
+        }
+
+        await db.query('UPDATE meetings SET agenda_locked_level = NULL, agenda_handover_level = NULL WHERE id = $1', [id]);
+        res.status(200).json({ success: true, message: 'Agenda unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const lockResolution = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockResolution) {
+            return next(new CustomError('You do not have permission to lock resolution.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET resolution_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Resolution locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockResolution = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockResolution) {
+            return next(new CustomError('Lower levels cannot unlock a resolution locked by a higher level.', 403));
+        }
+
+        await db.query('UPDATE meetings SET resolution_locked_level = NULL, resolution_handover_level = NULL WHERE id = $1', [id]);
+        res.status(200).json({ success: true, message: 'Resolution unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const lockMeeting = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockMeeting) {
+            return next(new CustomError('You do not have permission to lock meeting.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET meeting_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Meeting locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockMeeting = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockMeeting) {
+            return next(new CustomError('Lower levels cannot unlock a meeting info locked by a higher level.', 403));
+        }
+
+        await db.query('UPDATE meetings SET meeting_locked_level = NULL WHERE id = $1', [id]);
+        res.status(200).json({ success: true, message: 'Meeting unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const lockInvitees = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockInvitees) {
+            return next(new CustomError('You do not have permission to lock invitees.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET invitees_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Invitees locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockInvitees = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockInvitees) {
+            return next(new CustomError('Lower levels cannot unlock invitees locked by a higher level.', 403));
+        }
+
+        await db.query('UPDATE meetings SET invitees_locked_level = NULL WHERE id = $1', [id]);
+        res.status(200).json({ success: true, message: 'Invitees unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const lockPresentees = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockPresentees) {
+            return next(new CustomError('You do not have permission to lock presentees.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET presentees_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Presentees locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockPresentees = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockPresentees) {
+            return next(new CustomError('Lower levels cannot unlock presentees locked by a higher level.', 403));
+        }
+
+        await db.query('UPDATE meetings SET presentees_locked_level = NULL WHERE id = $1', [id]);
+        res.status(200).json({ success: true, message: 'Presentees unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const lockConclusion = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockConclusion) {
+            return next(new CustomError('You do not have permission to lock conclusion.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET conclusion_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Conclusion locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockConclusion = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockConclusion) {
+            return next(new CustomError('Lower levels cannot unlock a conclusion locked by a higher level.', 403));
+        }
+
+        await db.query('UPDATE meetings SET conclusion_locked_level = NULL WHERE id = $1', [id]);
+        res.status(200).json({ success: true, message: 'Conclusion unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const completeMeeting = async (req, res, next) => {
+    const client = await db.pool.connect();
+    try {
+        const { id } = req.params;
+        const { title } = req.body;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        if (title && meeting.title !== title) {
+            return next(new CustomError('Meeting serial number does not match confirmation', 400));
+        }
+
+        const isAdmin = req.user.role === 'admin';
+        const settingRes = await client.query("SELECT value FROM system_settings WHERE key = 'min_completed_level'");
+        const minLevel = settingRes.rows.length > 0 ? parseInt(settingRes.rows[0].value, 10) : 1;
+
+        const userLevel = req.user.role_level !== null ? parseInt(req.user.role_level, 10) : 0;
+        if (!isAdmin && userLevel < minLevel) {
+            return next(new CustomError(`Forbidden. Minimum level required to mark meeting completed.`, 403));
+        }
+
+        await client.query('BEGIN');
+
+        // 1. Update meeting status and completion flags
+        await client.query(
+            `UPDATE meetings SET status = 'past', is_completed = TRUE, completed_at = CURRENT_TIMESTAMP, completed_by = $1 WHERE id = $2`,
+            [req.user.id, id]
+        );
+
+        await client.query('COMMIT');
+        res.status(200).json({ success: true, message: 'Meeting marked as completed.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        next(err);
+    } finally {
+        client.release();
+    }
+};
+
+const sendBackAgenda = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { target_level } = req.body;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canSendBackAgenda) {
+            return next(new CustomError('You cannot send back agenda. Only upper levels can send back handed over items.', 403));
+        }
+
+        const targetLevelInt = parseInt(target_level, 10);
+        if (Number.isNaN(targetLevelInt)) {
+            return next(new CustomError('target_level must be a valid integer', 400));
+        }
+
+        const newHandoverLevel = targetLevelInt <= 1 ? null : targetLevelInt - 1;
+        await db.query('UPDATE meetings SET agenda_handover_level = $1 WHERE id = $2', [newHandoverLevel, id]);
+        res.status(200).json({ success: true, message: `Agenda sent back to Level ${targetLevelInt}.` });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const sendBackResolution = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { target_level } = req.body;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canSendBackResolution) {
+            return next(new CustomError('You cannot send back resolution. Only upper levels can send back handed over items.', 403));
+        }
+
+        const targetLevelInt = parseInt(target_level, 10);
+        if (Number.isNaN(targetLevelInt)) {
+            return next(new CustomError('target_level must be a valid integer', 400));
+        }
+
+        const newHandoverLevel = targetLevelInt <= 1 ? null : targetLevelInt - 1;
+        await db.query('UPDATE meetings SET resolution_handover_level = $1 WHERE id = $2', [newHandoverLevel, id]);
+        res.status(200).json({ success: true, message: `Resolution sent back to Level ${targetLevelInt}.` });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const sendBackResolutionStatus = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { target_level } = req.body;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canSendBackResolutionStatus) {
+            return next(new CustomError('You cannot send back resolution status. Only upper levels can send back handed over items.', 403));
+        }
+
+        const targetLevelInt = parseInt(target_level, 10);
+        if (Number.isNaN(targetLevelInt)) {
+            return next(new CustomError('target_level must be a valid integer', 400));
+        }
+
+        const newHandoverLevel = targetLevelInt <= 1 ? null : targetLevelInt - 1;
+        await db.query('UPDATE meetings SET resolution_status_handover_level = $1 WHERE id = $2', [newHandoverLevel, id]);
+        res.status(200).json({ success: true, message: `Resolution Status sent back to Level ${targetLevelInt}.` });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const handoverResolutionStatus = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { password } = req.body;
+        await verifyHandoverPassword(req, password);
+
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canHandoverResolutionStatus) {
+            return next(new CustomError('You do not have permission to handover resolution status.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET resolution_status_handover_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Resolution Status handed over to upper levels.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const lockResolutionStatus = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockResolutionStatus) {
+            return next(new CustomError('You do not have permission to lock resolution status.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        await db.query('UPDATE meetings SET resolution_status_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        res.status(200).json({ success: true, message: 'Resolution Status locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockResolutionStatus = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockResolutionStatus) {
+            return next(new CustomError('Lower levels cannot unlock resolution status locked by a higher level.', 403));
+        }
+
+        await db.query('UPDATE meetings SET resolution_status_locked_level = NULL, resolution_status_handover_level = NULL WHERE id = $1', [id]);
+        res.status(200).json({ success: true, message: 'Resolution Status unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const sendBackSuppliAgenda = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { target_level } = req.body;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canSendBackSuppliAgenda) {
+            return next(new CustomError('You cannot send back supplementary agenda. Only upper levels can send back handed over items.', 403));
+        }
+
+        const targetLevelInt = parseInt(target_level, 10);
+        if (Number.isNaN(targetLevelInt)) {
+            return next(new CustomError('target_level must be a valid integer', 400));
+        }
+
+        const newHandoverLevel = targetLevelInt <= 1 ? null : targetLevelInt - 1;
+        await db.query('UPDATE meetings SET suppli_agenda_handover_level = $1 WHERE id = $2', [newHandoverLevel, id]);
+        res.status(200).json({ success: true, message: `Supplementary agenda sent back to Level ${targetLevelInt}.` });
+    } catch (err) {
+        next(err);
+    }
+};
+
 module.exports = {
     getMeetings,
     getMeetingById,
@@ -1604,13 +2457,31 @@ module.exports = {
     updateMeeting,
     updateOnlineMeetingLink,
     deleteMeeting,
-    submitMeeting,
-    submitResolution,
-    returnResolution,
-    approveMeeting,
-    returnMeeting,
-    approveResolution,
-    reopenResolution,
+    handoverAgenda,
+    handoverSuppliAgenda,
+    handoverResolution,
+    handoverResolutionStatus,
+    lockAgenda,
+    unlockAgenda,
+    lockSuppliAgenda,
+    unlockSuppliAgenda,
+    lockResolution,
+    unlockResolution,
+    lockResolutionStatus,
+    unlockResolutionStatus,
+    lockMeeting,
+    unlockMeeting,
+    lockInvitees,
+    unlockInvitees,
+    lockPresentees,
+    unlockPresentees,
+    lockConclusion,
+    unlockConclusion,
+    sendBackAgenda,
+    sendBackSuppliAgenda,
+    sendBackResolution,
+    sendBackResolutionStatus,
+    completeMeeting,
     addInvitees,
     bulkFetchInvitees,
     getInvitees,

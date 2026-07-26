@@ -1,6 +1,7 @@
 const CustomError = require('../errors/CustomError');
 const db = require('../db');
 const storageService = require('../utils/storageService');
+const meetingFileSystem = require('../utils/meetingFileSystem');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
 
@@ -15,10 +16,32 @@ const setAgendaTags = async (agendaId, tagIds) => {
     }
 };
 
+const viewerTypeRestriction = (user) => {
+    if (user?.role !== 'viewer') return null;
+    if (user?.member_type === 'syndicate' || user?.member_type === 'none' || !user?.member_type) return null;
+    return 'academic';
+};
+
 const getAgendams = async (req, res, next) => {
     try {
         const meeting_id = req.query.meeting_id;
         const is_suppli = req.query.is_suppli;
+
+        if (meeting_id) {
+            const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [meeting_id]);
+            if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+            const meeting = meetingRes.rows[0];
+
+            if (req.user?.role === 'viewer') {
+                if (meeting.status === 'draft') {
+                    return next(new CustomError('Meeting not found', 404));
+                }
+                const restrictedType = viewerTypeRestriction(req.user);
+                if (restrictedType && meeting.type !== restrictedType) {
+                    return next(new CustomError('Meeting not found', 404));
+                }
+            }
+        }
 
         let query = `
             SELECT a.*, COALESCE(
@@ -30,17 +53,25 @@ const getAgendams = async (req, res, next) => {
         let params = [];
 
         if (meeting_id) {
-            query += ' WHERE meeting_id = $1';
+            query += ' WHERE a.meeting_id = $1';
             params.push(meeting_id);
 
             if (is_suppli !== undefined) {
-                query += ' AND is_suppli = $2';
+                query += ' AND a.is_suppli = $2';
                 params.push(is_suppli === 'true');
             }
 
-            query += ' ORDER BY agenda_serial ASC';
+            query += ' ORDER BY a.is_suppli ASC, a.agenda_serial ASC';
+        } else if (req.user?.role === 'viewer') {
+            const restrictedType = viewerTypeRestriction(req.user);
+            query += ' JOIN meetings m ON m.id = a.meeting_id WHERE m.status != \'draft\'';
+            if (restrictedType) {
+                params.push(restrictedType);
+                query += ` AND m.type = $${params.length}`;
+            }
+            query += ' ORDER BY a.created_at DESC';
         } else {
-            query += ' ORDER BY created_at DESC';
+            query += ' ORDER BY a.created_at DESC';
         }
 
         const result = await db.query(query, params);
@@ -72,9 +103,19 @@ const createAgendam = async (req, res, next) => {
             }
         }
 
+        const requestedSerial = parseInt(agenda_serial, 10);
+        const targetSuppli = is_suppli === true || is_suppli === 'true';
+
+        if (!Number.isNaN(requestedSerial)) {
+            await db.query(
+                'UPDATE agenda SET agenda_serial = agenda_serial + 1 WHERE meeting_id = $1 AND is_suppli = $2 AND agenda_serial >= $3',
+                [meeting_id, targetSuppli, requestedSerial]
+            );
+        }
+
         const result = await db.query(
             'INSERT INTO agenda (meeting_id, agenda_serial, content, is_executed, execution_status, is_suppli) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [meeting_id, agenda_serial, content || '', is_executed || 'no', execution_status, is_suppli || false]
+            [meeting_id, requestedSerial || 1, content || '', is_executed || 'no', execution_status, targetSuppli]
         );
         const agendam = result.rows[0];
 
@@ -136,6 +177,24 @@ const getRevisions = async (req, res, next) => {
 
         if (!content_type) {
             return next(new CustomError('content_type is required', 400));
+        }
+
+        const agendaRes = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [id]);
+        if (agendaRes.rows.length === 0) return next(new CustomError('Agenda not found', 404));
+        const meetingId = agendaRes.rows[0].meeting_id;
+
+        const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [meetingId]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingRes.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
         }
 
         const result = await db.query(
@@ -212,6 +271,9 @@ const deleteAgendam = async (req, res, next) => {
         
         const meeting_id = findAgenda.rows[0].meeting_id;
 
+        const annexuresRes = await db.query('SELECT file_path FROM annexures WHERE content_id = $1', [id]);
+        const filePaths = annexuresRes.rows.map(r => r.file_path).filter(Boolean);
+
         await db.query('BEGIN');
         await db.query('DELETE FROM agenda WHERE id = $1', [id]);
 
@@ -228,6 +290,15 @@ const deleteAgendam = async (req, res, next) => {
         }
 
         await db.query('COMMIT');
+
+        for (const filePath of filePaths) {
+            try {
+                await storageService.deleteFile(filePath);
+            } catch (err) {
+                console.error("Failed to delete annexure file from storage on agenda delete:", err);
+            }
+        }
+
         await db.query('DELETE FROM search_cache');
         res.status(200).json({ success: true, message: 'Agendam deleted' });
     } catch (error) {
@@ -238,16 +309,38 @@ const deleteAgendam = async (req, res, next) => {
 
 const getResolutions = async (req, res, next) => {
     try {
-        // According to schema, resolution is just a column in the agenda table.
-        // We fetch agendas that have a resolution.
         const meeting_id = req.query.meeting_id;
         
-        let query = 'SELECT id, meeting_id, agenda_serial, resolution, is_executed, execution_status FROM agenda WHERE resolution IS NOT NULL';
+        if (meeting_id) {
+            const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [meeting_id]);
+            if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+            const meeting = meetingRes.rows[0];
+
+            if (req.user?.role === 'viewer') {
+                if (meeting.status === 'draft') {
+                    return next(new CustomError('Meeting not found', 404));
+                }
+                const restrictedType = viewerTypeRestriction(req.user);
+                if (restrictedType && meeting.type !== restrictedType) {
+                    return next(new CustomError('Meeting not found', 404));
+                }
+            }
+        }
+
+        let query = 'SELECT a.id, a.meeting_id, a.agenda_serial, a.resolution, a.is_executed, a.execution_status FROM agenda a WHERE a.resolution IS NOT NULL';
         let params = [];
         
         if (meeting_id) {
-            query += ' AND meeting_id = $1 ORDER BY agenda_serial ASC';
+            query += ' AND a.meeting_id = $1 ORDER BY a.agenda_serial ASC';
             params.push(meeting_id);
+        } else if (req.user?.role === 'viewer') {
+            const restrictedType = viewerTypeRestriction(req.user);
+            query += ' JOIN meetings m ON m.id = a.meeting_id WHERE m.status != \'draft\'';
+            if (restrictedType) {
+                params.push(restrictedType);
+                query += ` AND m.type = $${params.length}`;
+            }
+            query += ' ORDER BY a.agenda_serial ASC';
         }
 
         const result = await db.query(query, params);
@@ -366,16 +459,47 @@ const getAnnexures = async (req, res, next) => {
     try {
         const { id } = req.params;
         let { type } = req.query; // 'agenda' or 'resolution'
+
+        const agendaRes = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [id]);
+        if (agendaRes.rows.length === 0) return next(new CustomError('Agenda not found', 404));
+        const meetingId = agendaRes.rows[0].meeting_id;
+
+        const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [meetingId]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingRes.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
         
         if (type === 'agenda') type = 'agendaItem';
 
-        let query = `SELECT an.*, u.username AS uploaded_by_username
-                     FROM annexures an
-                     LEFT JOIN users u ON u.id = an.uploaded_by
-                     WHERE an.content_id = $1`;
+        let query = `SELECT an.*, a.is_suppli, u.username AS uploaded_by_username,
+                            (
+                               SELECT COUNT(*)::int
+                               FROM annexures prev_an
+                               JOIN agenda prev_a ON prev_a.id = prev_an.content_id
+                               WHERE prev_a.meeting_id = a.meeting_id
+                                 AND (
+                                   (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
+                                   (a.is_suppli, a.agenda_serial, an.annexure_serial)
+                                 )
+                             ) + 1 AS global_serial
+                      FROM annexures an
+                      JOIN agenda a ON a.id = an.content_id
+                      LEFT JOIN users u ON u.id = an.uploaded_by
+                      WHERE an.content_id = $1`;
         let params = [id];
 
-        if (type) {
+        if (type === 'resolution') {
+            // Return all annexures so resolution view can render excluded ones as blurred with a revoke option
+        } else if (type) {
             query += ' AND an.annexure_type = $2';
             params.push(type);
         }
@@ -388,8 +512,6 @@ const getAnnexures = async (req, res, next) => {
         const annexures = await Promise.all(result.rows.map(async (annexure) => {
             if (annexure.file_path) {
                 try {
-                    // Since MinIO bucket is public and proxied via NGINX, we can directly link it!
-                    // Removing 'annexures/' prefix if file_path includes it since the bucket name is the root
                     annexure.url = `/storage/${annexure.file_path}`;
                 } catch (err) {
                     annexure.url = null;
@@ -411,7 +533,6 @@ const uploadAnnexure = async (req, res, next) => {
         let { annexure_type } = req.body;
         const file = req.file;
 
-        // Map 'agenda' to 'agendaItem' for the Postgres enum
         if (annexure_type === 'agenda') {
             annexure_type = 'agendaItem';
         }
@@ -420,25 +541,27 @@ const uploadAnnexure = async (req, res, next) => {
             return next(new CustomError('content_id, annexure_type, and file are required', 400));
         }
 
-        // Generate a unique file key
         const ext = file.originalname.split('.').pop();
         const fileKey = `annexures/${id}/${crypto.randomBytes(8).toString('hex')}.${ext}`;
 
-        // Upload to S3/MinIO
         await storageService.uploadFile(file.buffer, fileKey, file.mimetype);
 
-        // Get max serial
         const maxSerialResult = await db.query(
             'SELECT COALESCE(MAX(annexure_serial), 0) as max_serial FROM annexures WHERE content_id = $1',
             [id]
         );
         const nextSerial = parseInt(maxSerialResult.rows[0].max_serial, 10) + 1;
 
-        // Save to DB
         const result = await db.query(
             'INSERT INTO annexures (content_id, annexure_type, file_name, file_path, summary, annexure_serial, uploaded_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
             [id, annexure_type, file.originalname, fileKey, summary || '', nextSerial, req.user?.id || null]
         );
+
+        // Sync annexure to filesystem
+        const agendaRes = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [id]);
+        if (agendaRes.rows.length > 0) {
+            await meetingFileSystem.syncMeetingAnnexures(agendaRes.rows[0].meeting_id);
+        }
 
         res.status(201).json({ success: true, message: 'Annexure added successfully', data: result.rows[0] });
     } catch (error) {
@@ -449,18 +572,52 @@ const uploadAnnexure = async (req, res, next) => {
 const deleteAnnexure = async (req, res, next) => {
     try {
         const { annexureId } = req.params;
+        const { mode } = req.query;
+
+        if (mode === 'resolution') {
+            const { action } = req.query;
+            let excludeVal;
+            if (action === 'revoke' || action === 'include') {
+                excludeVal = false;
+            } else if (action === 'exclude') {
+                excludeVal = true;
+            } else {
+                const curr = await db.query('SELECT is_excluded_in_resolution FROM annexures WHERE id = $1', [annexureId]);
+                if (curr.rows.length === 0) return next(new CustomError('Annexure not found', 404));
+                excludeVal = !curr.rows[0].is_excluded_in_resolution;
+            }
+
+            const updateResult = await db.query(
+                'UPDATE annexures SET is_excluded_in_resolution = $1 WHERE id = $2 RETURNING *',
+                [excludeVal, annexureId]
+            );
+            if (updateResult.rows.length === 0) return next(new CustomError('Annexure not found', 404));
+
+            return res.status(200).json({
+                success: true,
+                message: excludeVal ? 'Annexure excluded from resolution' : 'Annexure restored in resolution',
+                data: updateResult.rows[0]
+            });
+        }
 
         const result = await db.query('DELETE FROM annexures WHERE id = $1 RETURNING *', [annexureId]);
         
         if (result.rows.length === 0) return next(new CustomError('Annexure not found', 404));
 
         const deletedAnnexure = result.rows[0];
+
         if (deletedAnnexure.file_path) {
             try {
                 await storageService.deleteFile(deletedAnnexure.file_path);
             } catch (err) {
                 console.error("Failed to delete file from storage:", err);
             }
+        }
+
+        // Sync filesystem meeting directory
+        const agendaRes = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [deletedAnnexure.content_id]);
+        if (agendaRes.rows.length > 0) {
+            await meetingFileSystem.syncMeetingAnnexures(agendaRes.rows[0].meeting_id);
         }
 
         res.status(200).json({ success: true, message: 'Annexure deleted' });
@@ -478,6 +635,7 @@ const reorderAnnexures = async (req, res, next) => {
         }
 
         const client = await db.pool.connect();
+        let meetingIdToSync = null;
         try {
             await client.query('BEGIN');
             for (const item of items) {
@@ -487,13 +645,28 @@ const reorderAnnexures = async (req, res, next) => {
                 );
             }
             await client.query('COMMIT');
-            res.status(200).json({ success: true, message: 'Reordered successfully' });
+
+            if (items.length > 0) {
+                const checkRes = await db.query(
+                    'SELECT a.meeting_id FROM annexures an JOIN agenda a ON a.id = an.content_id WHERE an.id = $1',
+                    [items[0].id]
+                );
+                if (checkRes.rows.length > 0) {
+                    meetingIdToSync = checkRes.rows[0].meeting_id;
+                }
+            }
         } catch (err) {
             await client.query('ROLLBACK');
             throw err;
         } finally {
             client.release();
         }
+
+        if (meetingIdToSync) {
+            await meetingFileSystem.syncMeetingAnnexures(meetingIdToSync);
+        }
+
+        res.status(200).json({ success: true, message: 'Reordered successfully' });
     } catch (error) {
         next(error);
     }

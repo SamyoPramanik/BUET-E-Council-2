@@ -32,9 +32,8 @@ export default function ManageDepartmentsPage() {
 
   const columns = [
     { key: "serial", label: "Serial No" },
-    { key: "name_english", label: "Department Name" },
-    { key: "alias_english", label: "Alias" },
-    { key: "faculty_name", label: "Faculty" },
+    { key: "name_bangla", label: "Department Name (Bangla)" },
+    { key: "faculty_name_bangla", label: "Faculty (Bangla)" },
   ];
 
   const handleReorder = async (newOrder: any[]) => {
@@ -83,12 +82,18 @@ export default function ManageDepartmentsPage() {
   const handleDelete = (department: any) => {
     confirm("Delete Department", "Are you sure you want to delete this department?", async () => {
       try {
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          return { ...current, data: current.data.filter((item: any) => item.id !== department.id) };
+        }, { revalidate: false });
+
         await api.delete(`/departments/${department.id}`);
-        mutate();
         toast.success('Department deleted successfully');
+        await mutate();
       } catch (err) {
         console.error(err);
         toast.error('Failed to delete department');
+        await mutate();
       }
     });
   };
@@ -100,31 +105,61 @@ export default function ManageDepartmentsPage() {
         ...newDepartment,
         serial: newDepartment.serial === "" ? undefined : parseInt(newDepartment.serial, 10)
       };
+
+      let res;
       if (isEditMode && editingId) {
-        await api.put(`/departments/${editingId}`, payload);
+        res = await api.put(`/departments/${editingId}`, payload);
       } else {
-        await api.post('/departments', payload);
+        res = await api.post('/departments', payload);
       }
+
+      const savedItem = res.data?.data;
+      if (savedItem) {
+        const selectedFaculty = (facultyRes?.data || []).find((f: any) => f.id === payload.faculty_id);
+        const formattedSaved = {
+          ...savedItem,
+          faculty_name_bangla: selectedFaculty ? selectedFaculty.name_bangla : ""
+        };
+
+        await mutate((current: any) => {
+          if (!current || !current.data) return current;
+          const list = current.data;
+          return {
+            ...current,
+            data: isEditMode
+              ? list.map((item: any) => item.id === editingId ? { ...item, ...formattedSaved } : item)
+              : [formattedSaved, ...list]
+          };
+        }, { revalidate: false });
+      }
+
       setIsModalOpen(false);
       setIsEditMode(false);
       setEditingId(null);
       setNewDepartment({ name_bangla: "", name_english: "", alias_bangla: "", alias_english: "", faculty_id: "", serial: "" });
-      mutate();
       toast.success(isEditMode ? 'Department updated successfully' : 'Department created successfully');
+      await mutate();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save department');
+      await mutate();
     }
   };
 
   if (error) return <div className="p-8">Failed to load departments</div>;
   if (!response) return <div className="p-8">Loading...</div>;
 
+  const departmentsData = (response?.data || []).map((d: any, idx: number) => ({
+    ...d,
+    serial: d.serial ?? idx + 1,
+    faculty_name_bangla: d.faculty_name_bangla || d.faculty_name || ""
+  }));
+
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="space-y-6">
       <ConfirmModal />
       <DataTable
         columns={columns}
-        data={response.data || []}
+        data={departmentsData}
         title="Manage Departments"
         searchable
         searchPlaceholder="Search departments..."

@@ -537,8 +537,12 @@ export const DEPARTMENT_MERGE_RULES = [
 | `POST` | `/api/meetings/:id/complete` | Finalize and complete meeting |
 | `GET` | `/api/meetings/:id/pdf/:type` | Download rendered PDF (`agenda`, `resolution`, or `resolution-status`) |
 | `POST` | `/api/meetings/:id/send-email` | Send agenda booklet via email |
+| `POST` | `/api/meetings/:id/send-notice` | Send meeting notice email to selected invitees (draft/ongoing only) |
+| `POST` | `/api/meetings/:id/send-agenda-email` | Send agenda email with PDF attached to selected invitees (ongoing only) |
+| `POST` | `/api/meetings/:id/send-resolution-email` | Send resolution email with PDF attached to selected invitees (completed only) |
 | `POST` | `/api/meetings/:id/materials/upload` | Upload signed meeting materials attachment |
-| `GET` | `/api/meetings/:id/invitees` | List meeting invitees |
+| `GET` | `/api/meetings/:id/invitees` | List meeting invitees (includes `notice_mail_sent`, `agenda_mail_sent`, `resolution_mail_sent` flags) |
+| `GET` | `/api/meetings/:id/invitees/emails` | List invitees with email addresses for email sending modal (lightweight projection) |
 | `POST` | `/api/meetings/:id/invitees` | Add invitees/members to meeting |
 | `PUT` | `/api/meetings/:id/invitees/:inviteeId` | Update invitee details |
 | `DELETE` | `/api/meetings/:id/invitees/:inviteeId` | Remove invitee from meeting |
@@ -628,7 +632,159 @@ frontend/app/
   - `lib/meetingAccess.ts`: Mirror calculation helper providing boolean flags (`canEditAgenda`, `canSendBackAgenda`, `canLockAgenda`, etc.) consumed by UI components.
   - `components/meetings/MeetingWorkflowBar.tsx`: Dynamic action toolbar rendering Handover, Send-Back, Lock, and Unlock buttons based on permissions.
 
+### 5.1 Email Tab — Meeting Notification System
+
+Implementation: [`frontend/components/meetings/EmailTabView.tsx`](frontend/components/meetings/EmailTabView.tsx), [`frontend/components/meetings/SendAgendaModal.tsx`](frontend/components/meetings/SendAgendaModal.tsx), [`meeting_service/controllers/meetingController.js`](meeting_service/controllers/meetingController.js)
+
+The Email tab provides a centralized interface for sending meeting-related emails (notice, agenda, resolution) to invitees with email addresses. It enforces role-based access and meeting-status-driven enable/disable rules.
+
+#### Roles & Permissions
+
+| Role | Can Send Emails |
+|---|---|
+| `admin` | Yes |
+| `superadmin` | Yes |
+| `moderator` | Yes |
+| `editor` / `viewer` / `file_initiator` | No |
+
+The backend enforces this via `requireEmailSender` (for notice/agenda) and `requireCompletedMeetingEmailSender` (for resolution) middlewares in [`meetingWorkflowMiddleware.js`](meeting_service/middlewares/meetingWorkflowMiddleware.js).
+
+#### Status-Based Enable/Disable Rules
+
+Each email type is only available at a specific meeting lifecycle stage:
+
+| Email Type | Enabled When | Backend Guard | Button State |
+|---|---|---|---|
+| **Send Notice** | `status === 'draft'` only | `requireEmailSender` (blocks `is_completed`) | Enabled: draft. Disabled: ongoing, past/completed. |
+| **Send Agenda** | `status === 'ongoing'` only | `requireEmailSender` + controller checks `status !== 'ongoing'` | Enabled: ongoing. Disabled: draft, past/completed. |
+| **Send Resolution** | `is_completed === true` or `status === 'past'` | `requireCompletedMeetingEmailSender` (requires `is_completed`) | Enabled: completed/past. Disabled: draft, ongoing. |
+
+#### Thumb-Up Rule (All-Sent Disable)
+
+A button is also disabled when **all** invitees with email addresses have already received that email type. The UI shows an "All notified" / "All sent" badge and greys out the button:
+
+- **Notice**: disabled when `inviteesWithEmail.every(i => i.notice_mail_sent)`
+- **Agenda**: disabled when `inviteesWithEmail.every(i => i.agenda_mail_sent)`
+- **Resolution**: disabled when `inviteesWithEmail.every(i => i.resolution_mail_sent)`
+
+#### Email Modal (SendAgendaModal)
+
+The modal operates in four modes (`EmailMode`): `"notice"`, `"agenda"`, `"resolution"`, `"custom"`.
+
+| Mode | Subject Template | Body Template | PDF Attachment | Endpoint |
+|---|---|---|---|---|
+| `notice` | `সভার সংবাদনা (...)` | Bangla notice body | None | `POST /:id/send-notice` |
+| `agenda` | `সভার এজেন্ডা (...)` | Bangla agenda body | `generateMeetingPdf(id, false)` | `POST /:id/send-agenda-email` |
+| `resolution` | `সভার সিদ্ধান্ত (...)` | Bangla resolution body | `generateMeetingPdf(id, true)` | `POST /:id/send-resolution-email` |
+| `custom` | User-editable | Rich text editor (user-composed) | Optional | `POST /:id/send-email` |
+
+All email modes embed a **dynamic meeting link** (`${window.location.origin}/meetings/${meeting.id}`) in the HTML body. In development this resolves to `http://localhost:9001/meetings/...`; in production it resolves to the deployed domain.
+
+#### Database Tracking
+
+Each invitee row tracks email receipt via boolean flags in the `invitees` table:
+
+```sql
+notice_mail_sent    BOOLEAN DEFAULT false
+agenda_mail_sent    BOOLEAN DEFAULT false
+resolution_mail_sent BOOLEAN DEFAULT false
+```
+
+The backend sets the corresponding flag to `true` after all recipients in a batch have been processed, ensuring idempotent re-sends are safe (already-sent invitees are filtered out on subsequent calls).
+
 ---
+
+### 5.2 Attendance Sheet — Section-Separated PDF Generation
+
+Implementation: [`meeting_service/utils/pdfGenerator.js`](meeting_service/utils/pdfGenerator.js)
+
+The attendance PDF generator produces two variants via the `generateMeetingPdf(id, isResolution, sectionFilter)` function:
+
+1. **Full Attendance Sheet** (no `sectionFilter`): Includes all invitees grouped by their original seniority order — VC & Pro-VC, Deans, Department Heads, Department groups, and Others.
+
+2. **Section-Filtered Attendance Sheet** (with `sectionFilter`): Generates a PDF containing only invitees belonging to a specific section/category. This is useful when different departments or groups need their own attendance copy.
+
+#### Grouping Categories
+
+Invitees are categorized using the same logic as the frontend `TakeAttendanceView`:
+
+| Group | Detection Logic | Example |
+|---|---|---|
+| **VC & Pro-VC** (`প্রশাসন`) | Designation contains `উপাচার্য` (excl. `উপ-উপাচার্য`) or `উপ-উপাচার্য` | Vice Chancellor, Pro-Vice Chancellor |
+| **Deans** (`সকল ডিন`) | Office name contains `ডিন` or `dean` | ডিন, ফ্যাকাল্টি অব ইঞ্জিনিয়ারিং অ্যান্ড টেকনোলজি |
+| **Department Heads** (`সকল বিভাগীয় প্রধান`) | Office name contains `বিভাগীয় প্রধান` | বিভাগীয় প্রধান, CSE |
+| **Department Groups** | Linked via `department_id` → `departments.name_bangla` | কম্পিউটার সায়েন্স অ্যান্ড ইঞ্জিনিয়ারিং, তড়িৎ ও ইলেকট্রনিক ইঞ্জিনিয়ারিং |
+| **Others** (`অন্যান্য সদস্য`) | No department, no special designation | External invitees, non-member officials |
+
+#### Section Filter Examples
+
+When `sectionFilter` is provided (e.g., `"কম্পিউটার সায়েন্স অ্যান্ড ইঞ্জিনিয়ারিং"`), the PDF renders only:
+
+```
+┌──────────────────────────────────────────────┐
+│  বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয় (বুয়েট)     │
+│  সিন্ডিকেট কাউন্সিলের সভা নং ১২              │
+│  উপস্থিতি তালিকা                              │
+│──────────────────────────────────────────────│
+│  কম্পিউটার সায়েন্স অ্যান্ড ইঞ্জিনিয়ারিং       │
+│──────────────────────────────────────────────│
+│  ক্রমিক │ নাম              │ পদবী           │
+│─────────┼──────────────────┼─────────────────│
+│  ১      │ Prof. Ahmed      │ বিভাগীয় প্রধান  │
+│  ২      │ Dr. Rahman       │ সহকারী অধ্যাপক  │
+│  ৩      │ Ms. Fatima       │ লেকচারার        │
+└──────────────────────────────────────────────┘
+```
+
+For the full attendance sheet, all groups appear sequentially:
+
+```
+┌──────────────────────────────────────────────┐
+│  ... (university header) ...                 │
+│  উপস্থিতি তালিকা                              │
+│──────────────────────────────────────────────│
+│  প্রশাসন                                      │
+│  (VC, Pro-VC listed)                         │
+│──────────────────────────────────────────────│
+│  সকল ডিন                                     │
+│  (All deans listed)                          │
+│──────────────────────────────────────────────│
+│  সকল বিভাগীয় প্রধান                           │
+│  (All dept heads listed)                     │
+│──────────────────────────────────────────────│
+│  কম্পিউটার সায়েন্স অ্যান্ড ইঞ্জিনিয়ারিং       │
+│  (CSE members listed)                        │
+│──────────────────────────────────────────────│
+│  তড়িৎ ও ইলেকট্রনিক ইঞ্জিনিয়ারিং               │
+│  (EEE members listed)                        │
+│──────────────────────────────────────────────│
+│  ... (other departments) ...                 │
+│──────────────────────────────────────────────│
+│  অন্যান্য সদস্য                                │
+│  (Others listed)                             │
+└──────────────────────────────────────────────┘
+```
+
+The section filter is applied at the data level before rendering — `buildSingleGroupSections()` produces a single group array, while `buildAllSections()` produces the full categorized list.
+
+---
+
+### 5.3 Take Attendance — Search & Filter
+
+Implementation: [`frontend/components/meetings/TakeAttendanceView.tsx`](frontend/components/meetings/TakeAttendanceView.tsx)
+
+The Take Attendance page includes a search bar for filtering invitees by multiple fields:
+
+- **Searchable fields**: `name`, `designation`, `department_name`, `office_name`
+- **Case-insensitive**: All comparisons use `.toLowerCase()`
+- **Real-time filtering**: Results update on every keystroke via `useMemo`
+- **Placeholder**: `"Search by name, designation, department, or office..."`
+
+The search bar is embedded inline within the attendance summary bar (alongside the present/total count) for a compact layout. A clear button (`X`) appears when the search query is non-empty.
+
+---
+
+
 
 ## 6. Development, Maintenance & Troubleshooting
 

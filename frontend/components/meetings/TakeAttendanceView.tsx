@@ -26,16 +26,17 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
   const [presentIds, setPresentIds] = useState<Set<string>>(() => {
     return new Set(invitees.filter(i => i.is_present).map(i => i.id));
   });
-
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Search filtering
+  // Filter invitees by search query
   const filteredInvitees = useMemo(() => {
     if (!searchQuery.trim()) return invitees;
     const q = searchQuery.toLowerCase();
-    return invitees.filter(i => 
-      (i.name && i.name.toLowerCase().includes(q)) ||
-      (i.designation && i.designation.toLowerCase().includes(q))
+    return invitees.filter(m =>
+      m.name?.toLowerCase().includes(q) ||
+      m.designation?.toLowerCase().includes(q) ||
+      m.office_name?.toLowerCase().includes(q) ||
+      m.department_name?.toLowerCase().includes(q)
     );
   }, [invitees, searchQuery]);
 
@@ -212,7 +213,7 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name or designation..."
+            placeholder="Search by name, designation, department, or office..."
             className="w-full pl-9 pr-8 py-1.5 bg-background border border-input rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary"
           />
           {searchQuery && (
@@ -244,6 +245,14 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
             <p className="text-muted-foreground mt-1">
               {searchQuery ? "No members match your search criteria." : "Please add invitees to the meeting first."}
             </p>
+          </div>
+        )}
+
+        {invitees.length > 0 && filteredInvitees.length === 0 && searchQuery && (
+          <div className="text-center py-16 bg-card border border-border rounded-lg shadow-sm">
+            <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+            <h3 className="text-lg font-medium text-foreground">No results found</h3>
+            <p className="text-muted-foreground mt-1">No invitees match &ldquo;{searchQuery}&rdquo;</p>
           </div>
         )}
       </div>

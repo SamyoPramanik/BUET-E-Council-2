@@ -1,8 +1,7 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const { requireRole, requireNonViewer } = require('../middlewares/roleMiddleware');
-const { requireMeetingAuthor, requireResolutionEditor, requirePresenteesEditor, requireInviteesEditor } = require('../middlewares/meetingWorkflowMiddleware');
-
+const { requireMeetingAuthor, requireMeetingOperator, requireResolutionEditor, requirePresenteesEditor, requireInviteesEditor, requireEmailSender, requireCompletedMeetingEmailSender } = require('../middlewares/meetingWorkflowMiddleware');
 const meetingController = require('../controllers/meetingController');
 const { auditLog } = require('../middlewares/auditMiddleware');
 const multer = require('multer');
@@ -66,7 +65,20 @@ router.delete('/:id/presentees/:presenteeId', requirePresenteesEditor, meetingCo
 router.put('/:id/attendance', requirePresenteesEditor, meetingController.saveAttendance);
 
 router.get('/:id/pdf/:type', meetingController.generatePdf);
-router.post('/:id/send-email', requireMeetingAuthor, meetingController.sendAgendaEmail);
-router.post('/:id/materials/upload', requireMeetingAuthor, upload.single('file'), meetingController.uploadMaterial);
+
+// Send agenda (or any ad-hoc message) via email to selected invitees
+router.post('/:id/send-email', requireEmailSender, meetingController.sendAgendaEmail);
+
+// Send meeting notice email to selected invitees (draft/ongoing meetings only)
+router.post('/:id/send-notice', requireEmailSender, meetingController.sendNoticeEmail);
+
+// Send agenda email with PDF attached to selected invitees (ongoing meetings only)
+router.post('/:id/send-agenda-email', requireEmailSender, meetingController.sendAgendaEmailBulk);
+
+// Send resolution email with PDF attached to selected invitees (completed meetings only)
+router.post('/:id/send-resolution-email', requireCompletedMeetingEmailSender, meetingController.sendResolutionEmail);
+
+// Endpoint for uploading material PDFs
+router.post('/:id/materials/upload', requireMeetingOperator, upload.single('file'), meetingController.uploadMaterial);
 
 module.exports = router;

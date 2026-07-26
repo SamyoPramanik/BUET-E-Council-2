@@ -70,4 +70,5 @@ Thumbs.db
 app/static/pdfs/*
 !app/static/pdfs/.gitkeep
 .env
-.claude
+.claudemeetings/
+/meetings/

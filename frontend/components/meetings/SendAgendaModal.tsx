@@ -3,15 +3,19 @@
 import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
-import { X, Mail, Send, Search, CheckCircle2, Paperclip, FileText, Building, ShieldCheck, Users } from "lucide-react";
+import { X, Mail, Send, Search, CheckCircle2, Paperclip, FileText, Building, ShieldCheck, Users, Bell } from "lucide-react";
 import { toast } from "sonner";
 import RichTextEditor from "../RichTextEditor";
+
+export type EmailMode = "notice" | "agenda" | "resolution" | "custom";
 
 interface SendAgendaModalProps {
   isOpen: boolean;
   onClose: () => void;
   meeting: any;
-  currentUserEmail?: string; // TODO: wire this to your real auth/user context (see InviteesView.tsx)
+  currentUserEmail?: string;
+  mode?: EmailMode;
+  onSent?: () => void;
 }
 
 type Tab = "invitees" | "email";
@@ -30,7 +34,90 @@ const fileToBase64 = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
-export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserEmail }: SendAgendaModalProps) {
+// Generate notice email content
+const getNoticeContent = (meeting: any) => {
+  const meetingDate = new Date(meeting.meeting_date).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const meetingType = meeting.type === "academic" ? "Academic" : "Syndicate";
+  const meetingNo = meeting.title || "N/A";
+
+  return {
+    subject: `Notice for ${meetingType} Council's Meeting No. ${meetingNo}`,
+    body: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <p>Dear Participant of <strong>${meetingType} Council's Meeting No. ${meetingNo}</strong>,</p>
+    
+    <p style="margin-top: 15px;">This is to inform you that a meeting has been scheduled on <strong>${meetingDate}</strong>.</p>
+    
+    <p style="margin-top: 15px;">Your presence at the meeting is cordially requested.</p>
+    
+    <p style="margin-top: 25px;">Sincerely,<br/>
+    Register Office,<br/>
+    Bangladesh University of Engineering and Technology (BUET)</p>
+</div>`,
+  };
+};
+
+// Generate agenda email content
+const getAgendaContent = (meeting: any) => {
+  const meetingDate = new Date(meeting.meeting_date).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const meetingType = meeting.type === "academic" ? "Academic" : "Syndicate";
+  const meetingNo = meeting.title || "N/A";
+
+  return {
+    subject: `Meeting Agenda for ${meetingType} Council's Meeting No. ${meetingNo}`,
+    body: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <p>Dear Participant of <strong>${meetingType} Council's Meeting No. ${meetingNo}</strong>,</p>
+    
+    <p style="margin-top: 15px;">This is to inform you that a meeting has been scheduled on <strong>${meetingDate}</strong>.</p>
+    
+    <p style="margin-top: 15px;">The meeting agenda is attached herewith. Please review the agendas before the meeting.</p>
+    
+    <p style="margin-top: 15px;">Your presence at the meeting is cordially requested.</p>
+    
+    <p style="margin-top: 25px;">Sincerely,<br/>
+    Register Office,<br/>
+    Bangladesh University of Engineering and Technology (BUET)</p>
+</div>`,
+  };
+};
+
+// Generate resolution email content
+const getResolutionContent = (meeting: any) => {
+  const meetingDate = new Date(meeting.meeting_date).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const meetingType = meeting.type === "academic" ? "Academic" : "Syndicate";
+  const meetingNo = meeting.title || "N/A";
+
+  return {
+    subject: `Meeting Resolution for ${meetingType} Council's Meeting No. ${meetingNo}`,
+    body: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <p>Dear Participant of <strong>${meetingType} Council's Meeting No. ${meetingNo}</strong>,</p>
+    
+    <p style="margin-top: 15px;">This is to inform you that the resolution of the meeting held on <strong>${meetingDate}</strong> is attached herewith.</p>
+    
+    <p style="margin-top: 15px;">Please review the resolution carefully.</p>
+    
+    <p style="margin-top: 25px;">Sincerely,<br/>
+    Register Office,<br/>
+    Bangladesh University of Engineering and Technology (BUET)</p>
+</div>`,
+  };
+};
+
+export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserEmail, mode = "custom", onSent }: SendAgendaModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("invitees");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -41,8 +128,13 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
   const [attachAgendaPdf, setAttachAgendaPdf] = useState(true);
   const [extraAttachments, setExtraAttachments] = useState<File[]>([]);
 
+  // Determine if we're in notice, agenda, resolution, or custom mode
+  const isNoticeMode = mode === "notice";
+  const isAgendaMode = mode === "agenda";
+  const isResolutionMode = mode === "resolution";
+  const isCustomMode = mode === "custom";
+
   // Lightweight "invitees with email" fetch — only while the modal is open.
-  // Backed by GET /meetings/:id/invitees/emails (see meetingController.getInviteesEmails)
   const { data: emailInviteesRes, isLoading } = useSWR(
     isOpen && meeting?.id ? `/meetings/${meeting.id}/invitees/emails` : null,
     fetcher
@@ -58,9 +150,7 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
   const selectedInvitees = invitesWithEmail.filter((i: any) => selectedIds.includes(i.id));
   const toEmails = selectedInvitees.map((i: any) => i.email).join(", ");
 
-  // Group the (search-filtered) invitees the same way TakeAttendanceView does —
-  // VC & Pro-VC, then departments sorted by department_serial, then Others —
-  // so recipients can be picked a whole department at a time.
+  // Group the (search-filtered) invitees
   const { vcGroup, deptGroups, othersGroup } = useMemo(() => {
     const vc: any[] = [];
     const depts: Record<string, { serial: number; members: any[] }> = {};
@@ -97,11 +187,32 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
     return { vcGroup: vc, deptGroups: sortedDepts, othersGroup: others };
   }, [filtered]);
 
-  // Reset local state whenever the modal opens/closes, and seed a default subject
+  // Reset local state whenever the modal opens/closes, and seed defaults based on mode
   useEffect(() => {
     if (isOpen) {
-      setSubject(`Meeting Agenda: ${meeting?.title || meeting?.name || "Untitled Meeting"}`);
       setFromEmail(currentUserEmail || "admin@buet.ac.bd");
+
+      if (isNoticeMode) {
+        const content = getNoticeContent(meeting);
+        setSubject(content.subject);
+        setBody(content.body);
+        setAttachAgendaPdf(false);
+      } else if (isAgendaMode) {
+        const content = getAgendaContent(meeting);
+        setSubject(content.subject);
+        setBody(content.body);
+        setAttachAgendaPdf(true);
+      } else if (isResolutionMode) {
+        const content = getResolutionContent(meeting);
+        setSubject(content.subject);
+        setBody(content.body);
+        setAttachAgendaPdf(true);
+      } else {
+        // Custom mode - keep existing behavior
+        setSubject(`Meeting Agenda: ${meeting?.title || meeting?.name || "Untitled Meeting"}`);
+        setBody("");
+        setAttachAgendaPdf(true);
+      }
     } else {
       setActiveTab("invitees");
       setSelectedIds([]);
@@ -110,7 +221,7 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
       setAttachAgendaPdf(true);
       setExtraAttachments([]);
     }
-  }, [isOpen, meeting]);
+  }, [isOpen, meeting, isNoticeMode, isAgendaMode, isResolutionMode, currentUserEmail]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -211,32 +322,70 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
         }))
       );
 
-      const res = await api.post(`/meetings/${meeting.id}/send-email`, {
-        invitee_ids: selectedIds,
-        from: fromEmail,
-        subject,
-        content: body,
-        attach_agenda: attachAgendaPdf,
-        attachments,
-      });
+      // Compute meeting link dynamically: use current origin (localhost in dev, deployed domain in prod)
+      const meetingLink = `${window.location.origin}/meetings/${meeting.id}`;
+
+      let res;
+      let endpoint;
+
+      if (isNoticeMode) {
+        endpoint = `/meetings/${meeting.id}/send-notice`;
+        res = await api.post(endpoint, {
+          invitee_ids: selectedIds,
+          from: fromEmail,
+          meeting_link: meetingLink,
+        });
+      } else if (isAgendaMode) {
+        endpoint = `/meetings/${meeting.id}/send-agenda-email`;
+        res = await api.post(endpoint, {
+          invitee_ids: selectedIds,
+          from: fromEmail,
+          meeting_link: meetingLink,
+        });
+      } else if (isResolutionMode) {
+        endpoint = `/meetings/${meeting.id}/send-resolution-email`;
+        res = await api.post(endpoint, {
+          invitee_ids: selectedIds,
+          from: fromEmail,
+          meeting_link: meetingLink,
+        });
+      } else {
+        // Custom mode - use existing endpoint
+        endpoint = `/meetings/${meeting.id}/send-email`;
+        res = await api.post(endpoint, {
+          invitee_ids: selectedIds,
+          from: fromEmail,
+          subject,
+          content: body,
+          attach_agenda: attachAgendaPdf,
+          attachments,
+        });
+      }
 
       const sent = res.data?.data?.sent || [];
       const failed = res.data?.data?.failed || [];
 
       if (sent.length > 0 && failed.length > 0) {
-        toast.warning(res.data?.message || `Sent to ${sent.length} recipient(s), ${failed.length} failed`);
+        toast.warning(res.data?.message || `Sent to ${sent.length} recipient(s), ${failed.length} failed/skipped`);
       } else if (sent.length > 0) {
-        toast.success(res.data?.message || `Agenda emailed to ${sent.length} recipient(s)`);
+        toast.success(res.data?.message || `Email sent to ${sent.length} recipient(s)`);
       } else {
-        toast.error(res.data?.message || "Failed to send agenda");
+        toast.error(res.data?.message || "Failed to send email");
       }
+
+      onSent?.();
       onClose();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to send agenda");
+      toast.error(err.response?.data?.message || "Failed to send email");
     } finally {
       setIsSending(false);
     }
   };
+
+  // Determine modal title based on mode
+  const modalTitle = isNoticeMode ? "Send Meeting Notice" : isAgendaMode ? "Send Meeting Agenda" : isResolutionMode ? "Send Meeting Resolution" : "Send Email";
+  const modalIcon = isNoticeMode ? <Bell className="w-5 h-5 text-primary" /> : <Mail className="w-5 h-5 text-primary" />;
+  const sendButtonText = isSending ? "Sending..." : isNoticeMode ? "Send Notice" : isAgendaMode ? "Send Agenda" : isResolutionMode ? "Send Resolution" : "Send Email";
 
   if (!isOpen) return null;
 
@@ -247,7 +396,7 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
         <div className="p-6 border-b border-border flex justify-between items-center shrink-0">
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2">
-              <Mail className="w-5 h-5 text-primary" /> Send Agenda
+              {modalIcon} {modalTitle}
             </h2>
             <p className="text-sm text-muted-foreground mt-0.5">{meeting?.title || meeting?.name}</p>
           </div>
@@ -356,40 +505,50 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
                   type="text"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm focus:ring-1 focus:ring-ring"
+                  readOnly={!isCustomMode}
+                  className={`w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm focus:ring-1 focus:ring-ring ${!isCustomMode ? 'cursor-not-allowed' : ''}`}
                 />
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-medium text-muted-foreground">Attachments</label>
-                  <label className="text-sm font-medium text-primary hover:underline cursor-pointer flex items-center gap-1">
-                    <Paperclip className="w-4 h-4" /> Add files
-                    <input
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => {
-                        addFiles(e.target.files);
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
+                  {isCustomMode && (
+                    <label className="text-sm font-medium text-primary hover:underline cursor-pointer flex items-center gap-1">
+                      <Paperclip className="w-4 h-4" /> Add files
+                      <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          addFiles(e.target.files);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <label className="flex items-center gap-3 p-2.5 rounded-md border border-border bg-muted/20">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 rounded border-input"
-                      checked={attachAgendaPdf}
-                      onChange={(e) => setAttachAgendaPdf(e.target.checked)}
-                    />
-                    <FileText className="w-4 h-4 text-primary shrink-0" />
-                    <span className="flex-1 text-sm">Meeting Agenda.pdf</span>
-                    <span className="text-xs text-muted-foreground">Generated automatically</span>
-                  </label>
+                  {/* Agenda PDF attachment - show in agenda, resolution, and custom modes */}
+                  {(isAgendaMode || isResolutionMode || isCustomMode) && (
+                    <label className="flex items-center gap-3 p-2.5 rounded-md border border-border bg-muted/20">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-input"
+                        checked={attachAgendaPdf}
+                        onChange={(e) => setAttachAgendaPdf(e.target.checked)}
+                        disabled={isAgendaMode || isResolutionMode}
+                      />
+                      <FileText className="w-4 h-4 text-primary shrink-0" />
+                      <span className="flex-1 text-sm">{isResolutionMode ? "Meeting Resolution.pdf" : "Meeting Agenda.pdf"}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {(isAgendaMode || isResolutionMode) ? "Attached automatically" : "Generated automatically"}
+                      </span>
+                    </label>
+                  )}
 
+                  {/* Extra attachments - show in all modes */}
                   {extraAttachments.map((file, idx) => (
                     <div
                       key={`${file.name}-${idx}`}
@@ -407,6 +566,22 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
                       </button>
                     </div>
                   ))}
+
+                  {/* Add attachment button - show in all modes */}
+                  <label className="flex items-center gap-2 p-2 rounded-md border border-dashed border-border hover:bg-muted/30 cursor-pointer transition-colors">
+                    <Paperclip className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Add attachment</span>
+                    <input
+                      type="file"
+                      className="sr-only"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        setExtraAttachments((prev) => [...prev, ...files]);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
                 </div>
               </div>
 
@@ -444,7 +619,7 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
               className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md flex items-center gap-2 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send className="w-4 h-4" />
-              {isSending ? "Sending..." : "Send Email"}
+              {sendButtonText}
             </button>
           </div>
         </div>

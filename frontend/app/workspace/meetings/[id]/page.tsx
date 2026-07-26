@@ -12,6 +12,7 @@ import ResolutionView from "../../../../components/meetings/ResolutionView";
 import DescriptionView from "../../../../components/meetings/DescriptionView";
 import MaterialsView from "../../../../components/meetings/MaterialsView";
 import HistoryView from "../../../../components/meetings/HistoryView";
+import EmailTabView from "../../../../components/meetings/EmailTabView";
 
 export default function MeetingWorkspace() {
   const params = useParams();
@@ -42,6 +43,8 @@ export default function MeetingWorkspace() {
       return <ResolutionView meeting={meeting} />;
     case 'materials':
       return <MaterialsView meeting={meeting} />;
+    case 'email':
+      return <EmailTabView meeting={meeting} mutate={mutate} />;
     case 'history':
       return <HistoryView meeting={meeting} />;
     default:

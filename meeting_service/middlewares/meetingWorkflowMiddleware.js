@@ -358,6 +358,31 @@ const requireEmailSender = async (req, res, next) => {
     }
 };
 
+// Middleware for resolution email sending — only completed meetings
+const requireCompletedMeetingEmailSender = async (req, res, next) => {
+    try {
+        if (!req.user) return next(new CustomError('You are not logged in.', 401));
+
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found.', 404));
+
+        // Only admin/superadmin/moderator can send emails
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+        if (!isAdmin && req.user.role !== 'moderator') {
+            return next(new CustomError('Only admin, superadmin, or moderator can send emails.', 403));
+        }
+
+        // Resolution emails can only be sent for completed meetings
+        if (meeting.is_completed !== true) {
+            return next(new CustomError('Resolution can only be sent for completed meetings.', 400));
+        }
+
+        return next();
+    } catch (err) {
+        next(err);
+    }
+};
+
 const requireResolutionEditor = async (req, res, next) => {
     try {
         if (!req.user) return next(new CustomError('You are not logged in.', 401));
@@ -414,6 +439,7 @@ module.exports = {
     requireMeetingOperator,
     requireResolutionEditor,
     requireEmailSender,
+    requireCompletedMeetingEmailSender,
     requirePresenteesEditor,
     requireInviteesEditor
 };

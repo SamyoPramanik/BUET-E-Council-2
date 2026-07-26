@@ -283,9 +283,10 @@ CREATE TABLE invitees (
     -- The member this invitee was created from, if any. NULL for custom
     -- (non-member) invitees, which never get their serial auto-synced.
     member_id UUID REFERENCES members (id) ON DELETE SET NULL,
-    -- Email tracking: whether the invitee has received the meeting notice and agenda emails.
+    -- Email tracking: whether the invitee has received the meeting notice, agenda, and resolution emails.
     notice_mail_sent BOOLEAN DEFAULT false,
-    agenda_mail_sent BOOLEAN DEFAULT false
+    agenda_mail_sent BOOLEAN DEFAULT false,
+    resolution_mail_sent BOOLEAN DEFAULT false
 );
 
 DROP TABLE IF EXISTS presentees CASCADE;

@@ -829,7 +829,7 @@ const getInviteesEmails = async (req, res, next) => {
         }
 
         const result = await db.query(`
-            SELECT i.id, i.name, i.email, i.designation, i.serial, i.notice_mail_sent, i.agenda_mail_sent,
+            SELECT i.id, i.name, i.email, i.designation, i.serial, i.notice_mail_sent, i.agenda_mail_sent, i.resolution_mail_sent,
                    d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM invitees i
             LEFT JOIN departments d ON i.department_id = d.id
@@ -1620,7 +1620,7 @@ const bulkImportMeeting = async (req, res, next) => {
 const sendNoticeEmail = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { invitee_ids, from } = req.body;
+        const { invitee_ids, from, meeting_link } = req.body;
 
         if (!Array.isArray(invitee_ids) || invitee_ids.length === 0) {
             return next(new CustomError('invitee_ids must be a non-empty array', 400));
@@ -1687,12 +1687,15 @@ const sendNoticeEmail = async (req, res, next) => {
         const subject = `সভার সংবাদনা (${meetingTypeBangla} কাউন্সিলের সভা নং ${meetingNo})`;
 
         // Build HTML body
+        const meetingLinkHtml = meeting_link
+            ? `\n    <p style="margin-top: 15px;">সভার লিঙ্ক: <a href="${meeting_link}" style="color: #2563eb;">${meeting_link}</a></p>`
+            : '';
         const html = `
 <div style="font-family: 'Kalpurush', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
     <p>মোঃ <strong>${meetingTypeBangla} কাউন্সিলের সভা নং ${meetingNo}</strong>-এর অংশগ্রহণকারী,</p>
     
     <p style="margin-top: 15px;">আপনাকে জানানো হচ্ছে যে, <strong>${meetingDate}</strong> তারিখে একটি সভা অনুষ্ঠিত হবে।</p>
-    
+    ${meetingLinkHtml}
     <p style="margin-top: 15px;">আপনাকে ঐ সভায় উপস্থিত থাকার জন্য আন্তরিকভাবে অনুরোধ করা হচ্ছে।</p>
     
     <p style="margin-top: 25px;">বিনীত,<br/>
@@ -1753,7 +1756,7 @@ const sendNoticeEmail = async (req, res, next) => {
 const sendAgendaEmailBulk = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { invitee_ids, from } = req.body;
+        const { invitee_ids, from, meeting_link } = req.body;
 
         if (!Array.isArray(invitee_ids) || invitee_ids.length === 0) {
             return next(new CustomError('invitee_ids must be a non-empty array', 400));
@@ -1820,12 +1823,15 @@ const sendAgendaEmailBulk = async (req, res, next) => {
         const subject = `সভার এজেন্ডা (${meetingTypeBangla} কাউন্সিলের সভা নং ${meetingNo})`;
 
         // Build HTML body
+        const meetingLinkHtml = meeting_link
+            ? `\n    <p style="margin-top: 15px;">সভার লিঙ্ক: <a href="${meeting_link}" style="color: #2563eb;">${meeting_link}</a></p>`
+            : '';
         const html = `
 <div style="font-family: 'Kalpurush', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
     <p>মোঃ <strong>${meetingTypeBangla} কাউন্সিলের সভা নং ${meetingNo}</strong>-এর অংশগ্রহণকারী,</p>
     
     <p style="margin-top: 15px;">আপনাকে জানানো হচ্ছে যে, <strong>${meetingDate}</strong> তারিখে একটি সভা অনুষ্ঠিত হবে।</p>
-    
+    ${meetingLinkHtml}
     <p style="margin-top: 15px;">সভার এজেন্ডা নিচে সংযুক্ত করা হলো। অনুগ্রহ করে এজেন্ডাগুলো পর্যালোচনা করুন।</p>
     
     <p style="margin-top: 15px;">আপনাকে ঐ সভায় উপস্থিত থাকার জন্য আন্তরিকভাবে অনুরোধ করা হচ্ছে।</p>
@@ -1884,6 +1890,150 @@ const sendAgendaEmailBulk = async (req, res, next) => {
                 : failed.length > 0
                     ? `Agenda sent to ${sent.length} recipient(s), ${failed.length} skipped (already sent or no email)`
                     : `Agenda sent successfully to ${sent.length} recipient(s)`,
+            data: { sent, failed }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Send resolution email with PDF attached to selected invitees
+// Resolution can only be sent when meeting is completed
+const sendResolutionEmail = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { invitee_ids, from, meeting_link } = req.body;
+
+        if (!Array.isArray(invitee_ids) || invitee_ids.length === 0) {
+            return next(new CustomError('invitee_ids must be a non-empty array', 400));
+        }
+        if (!from) {
+            return next(new CustomError('from is required', 400));
+        }
+
+        const meetingCheck = await db.query('SELECT * FROM meetings WHERE id = $1', [id]);
+        if (meetingCheck.rows.length === 0) {
+            return next(new CustomError('Meeting not found', 404));
+        }
+
+        const meeting = meetingCheck.rows[0];
+
+        // Resolution can only be sent for completed meetings
+        if (meeting.is_completed !== true) {
+            return next(new CustomError('Resolution can only be sent when meeting is completed.', 400));
+        }
+
+        // Filter out invitees who have already received the resolution
+        const inviteesResult = await db.query(
+            `SELECT id, name, email, designation, resolution_mail_sent FROM invitees WHERE meeting_id = $1 AND id = ANY($2::uuid[])`,
+            [id, invitee_ids]
+        );
+        const foundInvitees = inviteesResult.rows;
+
+        // Filter out those who already received the resolution
+        const eligibleInvitees = foundInvitees.filter(i => !i.resolution_mail_sent);
+        const alreadySent = foundInvitees.filter(i => i.resolution_mail_sent).map(i => ({
+            invitee_id: i.id, name: i.name, reason: 'Resolution already sent'
+        }));
+
+        const recipients = eligibleInvitees.filter(i => !!i.email);
+        const failed = eligibleInvitees
+            .filter(i => !i.email)
+            .map(i => ({ invitee_id: i.id, name: i.name, reason: 'No email address on file' }));
+
+        // Add already sent to failed list
+        failed.push(...alreadySent);
+
+        const foundIds = new Set(foundInvitees.map(i => i.id));
+        invitee_ids
+            .filter(iid => !foundIds.has(iid))
+            .forEach(iid => failed.push({ invitee_id: iid, reason: 'Invitee not found for this meeting' }));
+
+        if (recipients.length === 0) {
+            return next(new CustomError('None of the selected invitees are eligible for resolution (already sent or no email)', 400));
+        }
+
+        // Format meeting date
+        const meetingDate = new Date(meeting.meeting_date).toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        // Meeting type in Bangla
+        const meetingTypeBangla = meeting.type === 'academic' ? 'একাডেমিক' : 'সিন্ডিকেট';
+        const meetingNo = meeting.title || 'N/A';
+
+        // Build subject
+        const subject = `সভার সিদ্ধান্ত (${meetingTypeBangla} কাউন্সিলের সভা নং ${meetingNo})`;
+
+        // Build HTML body
+        const meetingLinkHtml = meeting_link
+            ? `\n    <p style="margin-top: 15px;">সভার লিঙ্ক: <a href="${meeting_link}" style="color: #2563eb;">${meeting_link}</a></p>`
+            : '';
+        const html = `
+<div style="font-family: 'Kalpurush', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <p>মোঃ <strong>${meetingTypeBangla} কাউন্সিলের সভা নং ${meetingNo}</strong>-এর অংশগ্রহণকারী,</p>
+    
+    <p style="margin-top: 15px;">আপনাকে জানানো হচ্ছে যে, <strong>${meetingDate}</strong> তারিখে অনুষ্ঠিত সভার সিদ্ধান্ত সংযুক্ত করা হলো।</p>
+    ${meetingLinkHtml}
+    <p style="margin-top: 15px;">অনুগ্রহ করে সিদ্ধান্তগুলো পর্যালোচনা করুন।</p>
+    
+    <p style="margin-top: 25px;">বিনীত,<br/>
+    রেজিস্ট্রার অফিস,<br/>
+    বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয় (বুয়েট)</p>
+</div>`;
+
+        // Generate resolution PDF
+        const pdfBuffer = await generateMeetingPdf(id, true);
+        const mailAttachments = [{
+            filename: `resolution-${meetingNo}.pdf`,
+            content: pdfBuffer.toString('base64'),
+            contentType: 'application/pdf'
+        }];
+
+        const results = await Promise.allSettled(
+            recipients.map(r => sendMail({
+                from,
+                to: r.email,
+                subject,
+                html,
+                attachments: mailAttachments
+            }))
+        );
+
+        const sent = [];
+        const eligibleIds = [];
+        const sendFailed = [];
+        results.forEach((r, idx) => {
+            const recipient = recipients[idx];
+            if (r.status === 'fulfilled') {
+                sent.push({ invitee_id: recipient.id, email: recipient.email });
+                eligibleIds.push(recipient.id);
+            } else {
+                const reason = r.reason?.message || 'Failed to send';
+                sendFailed.push({ invitee_id: recipient.id, email: recipient.email, reason });
+                failed.push({ invitee_id: recipient.id, email: recipient.email, reason });
+            }
+        });
+
+        // Update resolution_mail_sent flag for successfully sent emails
+        if (eligibleIds.length > 0) {
+            await db.query(
+                `UPDATE invitees SET resolution_mail_sent = true WHERE id = ANY($1::uuid[])`,
+                [eligibleIds]
+            );
+        }
+
+        const statusCode = sent.length === 0 ? 502 : (failed.length > 0 ? 207 : 200);
+        res.status(statusCode).json({
+            success: sent.length > 0,
+            message: sent.length === 0
+                ? 'Failed to send resolution email'
+                : failed.length > 0
+                    ? `Resolution sent to ${sent.length} recipient(s), ${failed.length} skipped (already sent or no email)`
+                    : `Resolution sent successfully to ${sent.length} recipient(s)`,
             data: { sent, failed }
         });
     } catch (error) {
@@ -2501,5 +2651,6 @@ module.exports = {
     getInviteesEmails,
     sendAgendaEmail,
     sendNoticeEmail,
-    sendAgendaEmailBulk
+    sendAgendaEmailBulk,
+    sendResolutionEmail
 };

@@ -7,7 +7,7 @@ import { X, Mail, Send, Search, CheckCircle2, Paperclip, FileText, Building, Shi
 import { toast } from "sonner";
 import RichTextEditor from "../RichTextEditor";
 
-export type EmailMode = "notice" | "agenda" | "custom";
+export type EmailMode = "notice" | "agenda" | "resolution" | "custom";
 
 interface SendAgendaModalProps {
   isOpen: boolean;
@@ -90,6 +90,33 @@ const getAgendaContent = (meeting: any) => {
   };
 };
 
+// Generate resolution email content
+const getResolutionContent = (meeting: any) => {
+  const meetingDate = new Date(meeting.meeting_date).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const meetingType = meeting.type === "academic" ? "Academic" : "Syndicate";
+  const meetingNo = meeting.title || "N/A";
+
+  return {
+    subject: `Meeting Resolution for ${meetingType} Council's Meeting No. ${meetingNo}`,
+    body: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <p>Dear Participant of <strong>${meetingType} Council's Meeting No. ${meetingNo}</strong>,</p>
+    
+    <p style="margin-top: 15px;">This is to inform you that the resolution of the meeting held on <strong>${meetingDate}</strong> is attached herewith.</p>
+    
+    <p style="margin-top: 15px;">Please review the resolution carefully.</p>
+    
+    <p style="margin-top: 25px;">Sincerely,<br/>
+    Register Office,<br/>
+    Bangladesh University of Engineering and Technology (BUET)</p>
+</div>`,
+  };
+};
+
 export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserEmail, mode = "custom", onSent }: SendAgendaModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("invitees");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -101,9 +128,10 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
   const [attachAgendaPdf, setAttachAgendaPdf] = useState(true);
   const [extraAttachments, setExtraAttachments] = useState<File[]>([]);
 
-  // Determine if we're in notice or agenda mode
+  // Determine if we're in notice, agenda, resolution, or custom mode
   const isNoticeMode = mode === "notice";
   const isAgendaMode = mode === "agenda";
+  const isResolutionMode = mode === "resolution";
   const isCustomMode = mode === "custom";
 
   // Lightweight "invitees with email" fetch — only while the modal is open.
@@ -174,6 +202,11 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
         setSubject(content.subject);
         setBody(content.body);
         setAttachAgendaPdf(true);
+      } else if (isResolutionMode) {
+        const content = getResolutionContent(meeting);
+        setSubject(content.subject);
+        setBody(content.body);
+        setAttachAgendaPdf(true);
       } else {
         // Custom mode - keep existing behavior
         setSubject(`Meeting Agenda: ${meeting?.title || meeting?.name || "Untitled Meeting"}`);
@@ -188,7 +221,7 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
       setAttachAgendaPdf(true);
       setExtraAttachments([]);
     }
-  }, [isOpen, meeting, isNoticeMode, isAgendaMode, currentUserEmail]);
+  }, [isOpen, meeting, isNoticeMode, isAgendaMode, isResolutionMode, currentUserEmail]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -289,6 +322,9 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
         }))
       );
 
+      // Compute meeting link dynamically: use current origin (localhost in dev, deployed domain in prod)
+      const meetingLink = `${window.location.origin}/meetings/${meeting.id}`;
+
       let res;
       let endpoint;
 
@@ -297,12 +333,21 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
         res = await api.post(endpoint, {
           invitee_ids: selectedIds,
           from: fromEmail,
+          meeting_link: meetingLink,
         });
       } else if (isAgendaMode) {
         endpoint = `/meetings/${meeting.id}/send-agenda-email`;
         res = await api.post(endpoint, {
           invitee_ids: selectedIds,
           from: fromEmail,
+          meeting_link: meetingLink,
+        });
+      } else if (isResolutionMode) {
+        endpoint = `/meetings/${meeting.id}/send-resolution-email`;
+        res = await api.post(endpoint, {
+          invitee_ids: selectedIds,
+          from: fromEmail,
+          meeting_link: meetingLink,
         });
       } else {
         // Custom mode - use existing endpoint
@@ -338,9 +383,9 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
   };
 
   // Determine modal title based on mode
-  const modalTitle = isNoticeMode ? "Send Meeting Notice" : isAgendaMode ? "Send Meeting Agenda" : "Send Email";
+  const modalTitle = isNoticeMode ? "Send Meeting Notice" : isAgendaMode ? "Send Meeting Agenda" : isResolutionMode ? "Send Meeting Resolution" : "Send Email";
   const modalIcon = isNoticeMode ? <Bell className="w-5 h-5 text-primary" /> : <Mail className="w-5 h-5 text-primary" />;
-  const sendButtonText = isSending ? "Sending..." : isNoticeMode ? "Send Notice" : isAgendaMode ? "Send Agenda" : "Send Email";
+  const sendButtonText = isSending ? "Sending..." : isNoticeMode ? "Send Notice" : isAgendaMode ? "Send Agenda" : isResolutionMode ? "Send Resolution" : "Send Email";
 
   if (!isOpen) return null;
 
@@ -485,20 +530,20 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
                 </div>
 
                 <div className="space-y-2">
-                  {/* Agenda PDF attachment - show in agenda and custom modes */}
-                  {(isAgendaMode || isCustomMode) && (
+                  {/* Agenda PDF attachment - show in agenda, resolution, and custom modes */}
+                  {(isAgendaMode || isResolutionMode || isCustomMode) && (
                     <label className="flex items-center gap-3 p-2.5 rounded-md border border-border bg-muted/20">
                       <input
                         type="checkbox"
                         className="w-4 h-4 rounded border-input"
                         checked={attachAgendaPdf}
                         onChange={(e) => setAttachAgendaPdf(e.target.checked)}
-                        disabled={isAgendaMode}
+                        disabled={isAgendaMode || isResolutionMode}
                       />
                       <FileText className="w-4 h-4 text-primary shrink-0" />
-                      <span className="flex-1 text-sm">Meeting Agenda.pdf</span>
+                      <span className="flex-1 text-sm">{isResolutionMode ? "Meeting Resolution.pdf" : "Meeting Agenda.pdf"}</span>
                       <span className="text-xs text-muted-foreground">
-                        {isAgendaMode ? "Attached automatically" : "Generated automatically"}
+                        {(isAgendaMode || isResolutionMode) ? "Attached automatically" : "Generated automatically"}
                       </span>
                     </label>
                   )}

@@ -1,7 +1,7 @@
 import useSWR from 'swr';
 import { fetcher } from '../lib/api';
 
-export type Role = 'admin' | 'superadmin' | 'editor' | 'viewer';
+export type Role = 'admin' | 'superadmin' | 'moderator' | 'editor' | 'viewer';
 
 export interface User {
   id: string;

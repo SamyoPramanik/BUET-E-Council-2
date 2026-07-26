@@ -635,8 +635,6 @@ const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
             if (!items || items.length === 0) return '';
             let html = `
                 <div class="attendance-page">
-                    <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-                    <div class="text-center sub-title">${attendanceSubTitle}</div>
                     <div class="section-title">${title}</div>
                     <table>
                         <thead>
@@ -733,8 +731,7 @@ const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
         </head>
         <body>
             <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title">${serialNo}</div>
-            
+            <div class="text-center sub-title">${attendanceSubTitle}</div>
             ${sections}
         </body>
         </html>

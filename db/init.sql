@@ -137,6 +137,7 @@ CREATE TABLE meetings (
     online_meeting_link VARCHAR(255),
     agenda_prefix VARCHAR(10),
     agenda_pdf_link VARCHAR(255),
+    suppli_agenda_pdf_link VARCHAR(255),
     transcript VARCHAR(255),
     resolution_pdf_link VARCHAR(255),
     resolution_status_pdf_link VARCHAR(255),

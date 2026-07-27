@@ -190,7 +190,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
 
       <div className="mb-10">
         <h3 className="text-lg font-semibold mb-4 border-b border-border pb-2">Upload & View Signed PDFs</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           
           {/* Upload Agenda PDF */}
           <div className="bg-card border border-border p-6 rounded-xl shadow-sm flex flex-col gap-4">
@@ -215,6 +215,33 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
               >
                 {uploading === 'agenda' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                 {meeting.agenda_pdf_link ? "Replace PDF" : "Upload PDF"}
+              </button>
+            )}
+          </div>
+
+          {/* Upload Supplementary Agenda PDF */}
+          <div className="bg-card border border-border p-6 rounded-xl shadow-sm flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-amber-500/10 p-3 rounded-lg">
+                <FileText className="w-6 h-6 text-amber-500" />
+              </div>
+              <h3 className="font-semibold">Signed Supplementary Agenda</h3>
+            </div>
+            {meeting.suppli_agenda_pdf_link ? (
+              <a href={`/storage/${meeting.suppli_agenda_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
+                <Eye className="w-4 h-4" /> View Current PDF
+              </a>
+            ) : (
+              <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
+            )}
+            {!readOnly && (
+              <button 
+                onClick={() => triggerUpload('suppli-agenda')}
+                disabled={uploading === 'suppli-agenda'}
+                className="mt-auto flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 py-2 px-4 rounded-md font-medium text-sm transition-colors"
+              >
+                {uploading === 'suppli-agenda' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {meeting.suppli_agenda_pdf_link ? "Replace PDF" : "Upload PDF"}
               </button>
             )}
           </div>

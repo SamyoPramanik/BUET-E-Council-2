@@ -1439,7 +1439,7 @@ const uploadMaterial = async (req, res, next) => {
             return next(new CustomError('id, type, and file are required', 400));
         }
 
-        const validTypes = ['agenda', 'resolution', 'resolution-status'];
+        const validTypes = ['agenda', 'suppli-agenda', 'resolution', 'resolution-status'];
         if (!validTypes.includes(type)) {
             return next(new CustomError('Invalid material type', 400));
         }
@@ -1448,6 +1448,8 @@ const uploadMaterial = async (req, res, next) => {
         const meetingCheck = await db.query('SELECT * FROM meetings WHERE id = $1', [id]);
         if (meetingCheck.rows.length === 0) return next(new CustomError('Meeting not found', 404));
 
+        await db.query('ALTER TABLE meetings ADD COLUMN IF NOT EXISTS suppli_agenda_pdf_link VARCHAR(255)');
+
         const ext = file.originalname.split('.').pop() || 'pdf';
         const fileKey = `materials/${id}/${type}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
 
@@ -1455,6 +1457,7 @@ const uploadMaterial = async (req, res, next) => {
 
         let column = '';
         if (type === 'agenda') column = 'agenda_pdf_link';
+        else if (type === 'suppli-agenda') column = 'suppli_agenda_pdf_link';
         else if (type === 'resolution') column = 'resolution_pdf_link';
         else if (type === 'resolution-status') column = 'resolution_status_pdf_link';
 

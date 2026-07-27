@@ -710,6 +710,43 @@ const deleteAnnexure = async (req, res, next) => {
     }
 };
 
+const toggleAnnexureExclusion = async (req, res, next) => {
+    try {
+        const { annexureId } = req.params;
+        const { action } = req.body || {};
+
+        const curr = await db.query('SELECT is_excluded_in_resolution, content_id FROM annexures WHERE id = $1', [annexureId]);
+        if (curr.rows.length === 0) return next(new CustomError('Annexure not found', 404));
+
+        let excludeVal;
+        if (action === 'revoke' || action === 'include') {
+            excludeVal = false;
+        } else if (action === 'exclude') {
+            excludeVal = true;
+        } else {
+            excludeVal = !curr.rows[0].is_excluded_in_resolution;
+        }
+
+        const updateResult = await db.query(
+            'UPDATE annexures SET is_excluded_in_resolution = $1 WHERE id = $2 RETURNING *',
+            [excludeVal, annexureId]
+        );
+
+        const agendaRes = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [curr.rows[0].content_id]);
+        if (agendaRes.rows.length > 0) {
+            await meetingFileSystem.syncMeetingAnnexures(agendaRes.rows[0].meeting_id);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: excludeVal ? 'Annexure excluded from resolution' : 'Annexure restored in resolution',
+            data: updateResult.rows[0]
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 const reorderAnnexures = async (req, res, next) => {
     try {
         const { items } = req.body; // array of { id, annexure_serial }
@@ -769,6 +806,7 @@ module.exports = {
     getAnnexures,
     uploadAnnexure,
     deleteAnnexure,
+    toggleAnnexureExclusion,
     reorderAnnexures,
     getRevisions,
     restoreRevision

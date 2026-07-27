@@ -40,6 +40,7 @@ router.delete('/resolutions/:resId', requireResolutionEditor, agendaController.d
 router.get('/:id/annexures', agendaController.getAnnexures);
 router.post('/:id/annexures', requireMeetingOperator, upload.single('file'), agendaController.uploadAnnexure);
 router.put('/annexures/reorder', requireMeetingOperator, agendaController.reorderAnnexures);
+router.put('/annexures/:annexureId/toggle-exclude', requireMeetingOperator, agendaController.toggleAnnexureExclusion);
 router.delete('/annexures/:annexureId', requireMeetingOperator, agendaController.deleteAnnexure);
 
 // Revision history (agenda content and resolution text)

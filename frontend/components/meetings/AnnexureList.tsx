@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import JSZip from "jszip";
 import api, { fetcher } from "../../lib/api";
 import { Paperclip, Trash2, GripVertical, Plus, File, FilePlus, ExternalLink, Loader2, MinusCircle, RotateCcw, Folder, FolderPlus } from "lucide-react";
@@ -31,8 +31,14 @@ interface AnnexureListProps {
 }
 
 export default function AnnexureList({ contentId, type, readOnly = false }: AnnexureListProps) {
+  const { mutate: globalMutate } = useSWRConfig();
   const { data: response, mutate } = useSWR(`/agendas/${contentId}/annexures?type=${type}`, fetcher, { fallbackData: { data: [] } });
   const annexures: Annexure[] = response?.data || [];
+  const { confirm, ConfirmModal } = useConfirm();
+
+  const refreshAllAnnexures = () => {
+    globalMutate((key) => typeof key === 'string' && key.includes('/annexures'));
+  };
 
   const visibleAnnexures = type === 'agenda'
     ? annexures.filter(an => an.annexure_type !== 'resolution')
@@ -101,7 +107,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
       // Do NOT set Content-Type manually — axios must auto-set it with the multipart boundary.
       await api.post(`/agendas/${contentId}/annexures`, formData);
       toast.success("Annexure uploaded successfully");
-      mutate();
+      refreshAllAnnexures();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to upload annexure");
     } finally {
@@ -151,7 +157,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
       // Do NOT set Content-Type manually — axios must auto-set it with the multipart boundary.
       await api.post(`/agendas/${contentId}/annexures`, formData);
       toast.success(`Folder '${rootFolderName}' uploaded successfully`);
-      mutate();
+      refreshAllAnnexures();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to upload folder annexure");
     } finally {
@@ -165,7 +171,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
       try {
         await api.delete(`/agendas/annexures/${id}`);
         toast.success("Annexure deleted successfully");
-        mutate();
+        refreshAllAnnexures();
       } catch (err) {
         toast.error("Failed to delete annexure");
       }
@@ -176,7 +182,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
     try {
       await api.put(`/agendas/annexures/${annexure.id}/toggle-exclude`);
       toast.success(annexure.is_excluded_in_resolution ? "Annexure restored for resolution" : "Annexure excluded from resolution");
-      mutate();
+      refreshAllAnnexures();
     } catch (err) {
       toast.error("Failed to update resolution exclusion");
     }
@@ -226,10 +232,10 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
         }))
       });
       toast.success("Annexures reordered");
-      mutate();
+      refreshAllAnnexures();
     } catch (err) {
       toast.error("Failed to reorder annexures");
-      mutate();
+      refreshAllAnnexures();
     }
   };
 

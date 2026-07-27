@@ -698,6 +698,19 @@ const deleteAnnexure = async (req, res, next) => {
             }
         }
 
+        // Re-sequence remaining annexures for the content_id to close serial gaps
+        await db.query(`
+            WITH ranked AS (
+                SELECT id, ROW_NUMBER() OVER (ORDER BY annexure_serial ASC) as new_serial
+                FROM annexures
+                WHERE content_id = $1
+            )
+            UPDATE annexures
+            SET annexure_serial = ranked.new_serial
+            FROM ranked
+            WHERE annexures.id = ranked.id
+        `, [deletedAnnexure.content_id]);
+
         // Sync filesystem meeting directory
         const agendaRes = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [deletedAnnexure.content_id]);
         if (agendaRes.rows.length > 0) {

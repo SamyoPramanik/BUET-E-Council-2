@@ -12,6 +12,26 @@ const pool = new Pool(process.env.DATABASE_URL ? {
 
 pool.query('ALTER TABLE invitees ALTER COLUMN name DROP NOT NULL; DROP TABLE IF EXISTS presentees CASCADE;').catch(() => {});
 
+const ensureLockingColumns = `
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS agenda_locked_by_username VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS agenda_locked_by_role VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS suppli_agenda_locked_by_username VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS suppli_agenda_locked_by_role VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS resolution_locked_by_username VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS resolution_locked_by_role VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS resolution_status_locked_by_username VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS resolution_status_locked_by_role VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS meeting_locked_by_username VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS meeting_locked_by_role VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS invitees_locked_by_username VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS invitees_locked_by_role VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS presentees_locked_by_username VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS presentees_locked_by_role VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS conclusion_locked_by_username VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS conclusion_locked_by_role VARCHAR(255);
+`;
+pool.query(ensureLockingColumns).catch(() => {});
+
 module.exports = {
     query: (text, params) => pool.query(text, params),
     pool

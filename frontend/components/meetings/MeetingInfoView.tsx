@@ -125,11 +125,19 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
     }
   };
 
-  // Helper function to resolve level integer to level_title
-  const getLevelTitle = (lvl: number | null | undefined) => {
+  // Helper function to resolve level integer to level_title and user details
+  const getLevelTitle = (lvl: number | null | undefined, username?: string | null, roleTitle?: string | null) => {
     if (lvl === null || lvl === undefined) return null;
-    const r = allRoles.find((role: any) => Number(role.level) === Number(lvl));
-    return r ? r.level_title : `Level ${lvl}`;
+    let role = roleTitle;
+    if (!role) {
+      if (lvl >= 999999) {
+        role = 'Admin';
+      } else {
+        const r = allRoles.find((roleItem: any) => Number(roleItem.level) === Number(lvl));
+        role = r ? r.level_title : `Level ${lvl}`;
+      }
+    }
+    return username ? `${role} (${username})` : role;
   };
 
   // Handover Trigger with Password Confirmation Modal
@@ -583,7 +591,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                         className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
                       >
                         <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Meeting Info</span>
-                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.meeting_locked_level)}</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.meeting_locked_level, meeting.meeting_locked_by_username, meeting.meeting_locked_by_role)}</span>
                       </button>
                     ) : (
                       <button
@@ -603,7 +611,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                         className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
                       >
                         <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Main Agenda</span>
-                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.agenda_locked_level)}</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.agenda_locked_level, meeting.agenda_locked_by_username, meeting.agenda_locked_by_role)}</span>
                       </button>
                     ) : (
                       <button
@@ -624,7 +632,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                         className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
                       >
                         <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Suppli Agenda</span>
-                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.suppli_agenda_locked_level)}</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.suppli_agenda_locked_level, meeting.suppli_agenda_locked_by_username, meeting.suppli_agenda_locked_by_role)}</span>
                       </button>
                     ) : (
                       <button
@@ -645,7 +653,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                         className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
                       >
                         <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Resolution</span>
-                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.resolution_locked_level)}</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.resolution_locked_level, meeting.resolution_locked_by_username, meeting.resolution_locked_by_role)}</span>
                       </button>
                     ) : (
                       <button
@@ -666,7 +674,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                         className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
                       >
                         <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Resolution Status</span>
-                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.resolution_status_locked_level)}</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.resolution_status_locked_level, meeting.resolution_status_locked_by_username, meeting.resolution_status_locked_by_role)}</span>
                       </button>
                     ) : (
                       <button
@@ -687,7 +695,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                         className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
                       >
                         <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Invitees</span>
-                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.invitees_locked_level)}</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.invitees_locked_level, meeting.invitees_locked_by_username, meeting.invitees_locked_by_role)}</span>
                       </button>
                     ) : (
                       <button
@@ -707,7 +715,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                         className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
                       >
                         <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Presentees</span>
-                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.presentees_locked_level)}</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.presentees_locked_level, meeting.presentees_locked_by_username, meeting.presentees_locked_by_role)}</span>
                       </button>
                     ) : (
                       <button
@@ -727,7 +735,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                         className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
                       >
                         <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Conclusion</span>
-                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.conclusion_locked_level)}</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.conclusion_locked_level, meeting.conclusion_locked_by_username, meeting.conclusion_locked_by_role)}</span>
                       </button>
                     ) : (
                       <button

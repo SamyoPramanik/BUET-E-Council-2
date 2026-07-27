@@ -2130,6 +2130,14 @@ const handoverSuppliAgenda = async (req, res, next) => {
     }
 };
 
+const getUserLockInfo = (user) => {
+    const roleTitle = (user?.role === 'admin' || user?.role === 'superadmin')
+        ? 'Admin'
+        : (user?.level_title || user?.role || 'Editor');
+    const username = user?.username || user?.name || 'User';
+    return { roleTitle, username };
+};
+
 const lockSuppliAgenda = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -2142,7 +2150,11 @@ const lockSuppliAgenda = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET suppli_agenda_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET suppli_agenda_locked_level = $1, suppli_agenda_locked_by_username = $2, suppli_agenda_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Supplementary agenda locked successfully.' });
     } catch (err) {
         next(err);
@@ -2160,7 +2172,10 @@ const unlockSuppliAgenda = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock supplementary agenda locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET suppli_agenda_locked_level = NULL, suppli_agenda_handover_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET suppli_agenda_locked_level = NULL, suppli_agenda_handover_level = NULL, suppli_agenda_locked_by_username = NULL, suppli_agenda_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Supplementary agenda unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2201,7 +2216,11 @@ const lockAgenda = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET agenda_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET agenda_locked_level = $1, agenda_locked_by_username = $2, agenda_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Agenda locked successfully.' });
     } catch (err) {
         next(err);
@@ -2219,7 +2238,10 @@ const unlockAgenda = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock an agenda locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET agenda_locked_level = NULL, agenda_handover_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET agenda_locked_level = NULL, agenda_handover_level = NULL, agenda_locked_by_username = NULL, agenda_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Agenda unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2238,7 +2260,11 @@ const lockResolution = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET resolution_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET resolution_locked_level = $1, resolution_locked_by_username = $2, resolution_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Resolution locked successfully.' });
     } catch (err) {
         next(err);
@@ -2256,7 +2282,10 @@ const unlockResolution = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock a resolution locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET resolution_locked_level = NULL, resolution_handover_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET resolution_locked_level = NULL, resolution_handover_level = NULL, resolution_locked_by_username = NULL, resolution_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Resolution unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2275,7 +2304,11 @@ const lockMeeting = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET meeting_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET meeting_locked_level = $1, meeting_locked_by_username = $2, meeting_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Meeting locked successfully.' });
     } catch (err) {
         next(err);
@@ -2293,7 +2326,10 @@ const unlockMeeting = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock a meeting info locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET meeting_locked_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET meeting_locked_level = NULL, meeting_locked_by_username = NULL, meeting_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Meeting unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2312,7 +2348,11 @@ const lockInvitees = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET invitees_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET invitees_locked_level = $1, invitees_locked_by_username = $2, invitees_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Invitees locked successfully.' });
     } catch (err) {
         next(err);
@@ -2330,7 +2370,10 @@ const unlockInvitees = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock invitees locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET invitees_locked_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET invitees_locked_level = NULL, invitees_locked_by_username = NULL, invitees_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Invitees unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2349,7 +2392,11 @@ const lockPresentees = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET presentees_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET presentees_locked_level = $1, presentees_locked_by_username = $2, presentees_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Presentees locked successfully.' });
     } catch (err) {
         next(err);
@@ -2367,7 +2414,10 @@ const unlockPresentees = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock presentees locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET presentees_locked_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET presentees_locked_level = NULL, presentees_locked_by_username = NULL, presentees_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Presentees unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2386,7 +2436,11 @@ const lockConclusion = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET conclusion_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET conclusion_locked_level = $1, conclusion_locked_by_username = $2, conclusion_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Conclusion locked successfully.' });
     } catch (err) {
         next(err);
@@ -2404,7 +2458,10 @@ const unlockConclusion = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock a conclusion locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET conclusion_locked_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET conclusion_locked_level = NULL, conclusion_locked_by_username = NULL, conclusion_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Conclusion unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2559,7 +2616,11 @@ const lockResolutionStatus = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET resolution_status_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET resolution_status_locked_level = $1, resolution_status_locked_by_username = $2, resolution_status_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Resolution Status locked successfully.' });
     } catch (err) {
         next(err);
@@ -2577,7 +2638,10 @@ const unlockResolutionStatus = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock resolution status locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET resolution_status_locked_level = NULL, resolution_status_handover_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET resolution_status_locked_level = NULL, resolution_status_handover_level = NULL, resolution_status_locked_by_username = NULL, resolution_status_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Resolution Status unlocked successfully.' });
     } catch (err) {
         next(err);

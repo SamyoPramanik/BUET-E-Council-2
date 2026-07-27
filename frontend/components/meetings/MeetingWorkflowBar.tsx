@@ -10,8 +10,23 @@ export default function MeetingWorkflowBar({ meeting, onChanged }: { meeting: an
 
   if (!meeting) return null;
 
+  const getLockTitle = (lvl: number | null | undefined, username?: string | null, roleTitle?: string | null) => {
+    if (lvl === null || lvl === undefined) return null;
+    let role = roleTitle;
+    if (!role) {
+      if (lvl >= 999999) {
+        role = 'Admin';
+      } else {
+        const r = allRoles.find((roleItem: any) => Number(roleItem.level) === Number(lvl));
+        role = r ? r.level_title : `Level ${lvl}`;
+      }
+    }
+    return username ? `${role} (${username})` : role;
+  };
+
   const getTitle = (lvl: number | null | undefined) => {
     if (lvl === null || lvl === undefined) return null;
+    if (lvl >= 999999) return 'Admin';
     const r = allRoles.find((role: any) => Number(role.level) === Number(lvl));
     return r ? r.level_title : `Level ${lvl}`;
   };
@@ -73,25 +88,25 @@ export default function MeetingWorkflowBar({ meeting, onChanged }: { meeting: an
 
           {meeting.agenda_locked_level !== null && meeting.agenda_locked_level !== undefined && (
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
-              <Lock className="w-3 h-3" /> Agenda Locked ({getTitle(meeting.agenda_locked_level)})
+              <Lock className="w-3 h-3" /> Agenda Locked ({getLockTitle(meeting.agenda_locked_level, meeting.agenda_locked_by_username, meeting.agenda_locked_by_role)})
             </span>
           )}
 
           {meeting.suppli_agenda_locked_level !== null && meeting.suppli_agenda_locked_level !== undefined && (
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
-              <Lock className="w-3 h-3" /> Suppli Agenda Locked ({getTitle(meeting.suppli_agenda_locked_level)})
+              <Lock className="w-3 h-3" /> Suppli Agenda Locked ({getLockTitle(meeting.suppli_agenda_locked_level, meeting.suppli_agenda_locked_by_username, meeting.suppli_agenda_locked_by_role)})
             </span>
           )}
 
           {meeting.resolution_locked_level !== null && meeting.resolution_locked_level !== undefined && (
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
-              <Lock className="w-3 h-3" /> Resolution Locked ({getTitle(meeting.resolution_locked_level)})
+              <Lock className="w-3 h-3" /> Resolution Locked ({getLockTitle(meeting.resolution_locked_level, meeting.resolution_locked_by_username, meeting.resolution_locked_by_role)})
             </span>
           )}
 
           {meeting.resolution_status_locked_level !== null && meeting.resolution_status_locked_level !== undefined && (
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
-              <Lock className="w-3 h-3" /> Resolution Status Locked ({getTitle(meeting.resolution_status_locked_level)})
+              <Lock className="w-3 h-3" /> Resolution Status Locked ({getLockTitle(meeting.resolution_status_locked_level, meeting.resolution_status_locked_by_username, meeting.resolution_status_locked_by_role)})
             </span>
           )}
         </div>

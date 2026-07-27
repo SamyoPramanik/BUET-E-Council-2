@@ -16,6 +16,7 @@ interface Annexure {
   file_name: string;
   url: string | null;
   annexure_serial: number;
+  annexure_type?: string;
   global_serial?: number | null;
   is_suppli?: boolean | null;
   is_excluded_in_resolution?: boolean;
@@ -404,24 +405,35 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
 
                   {!readOnly && (
                     isResolutionView ? (
-                      isExcluded ? (
-                        <button
-                          onClick={() => handleToggleExclude(annexure)}
-                          className="p-1.5 text-xs text-emerald-600 hover:text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-md transition-colors flex items-center gap-1 font-medium"
-                          title="Revoke Exclusion (Restore in Resolution)"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Revoke</span>
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleToggleExclude(annexure)}
-                          className="p-1.5 text-muted-foreground hover:text-red-500 bg-muted rounded-md transition-colors"
-                          title="Exclude from Resolution"
-                        >
-                          <MinusCircle className="w-3.5 h-3.5 text-red-500" />
-                        </button>
-                      )
+                      <div className="flex items-center gap-1">
+                        {annexure.annexure_type === 'resolution' && (
+                          <button
+                            onClick={() => handleDelete(annexure.id)}
+                            className="p-1.5 text-muted-foreground hover:text-destructive bg-muted rounded-md transition-colors"
+                            title="Delete Resolution Annexure"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {isExcluded ? (
+                          <button
+                            onClick={() => handleToggleExclude(annexure)}
+                            className="p-1.5 text-xs text-emerald-600 hover:text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-md transition-colors flex items-center gap-1 font-medium"
+                            title="Revoke Exclusion (Restore in Resolution)"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Revoke</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleExclude(annexure)}
+                            className="p-1.5 text-muted-foreground hover:text-red-500 bg-muted rounded-md transition-colors"
+                            title="Exclude from Resolution"
+                          >
+                            <MinusCircle className="w-3.5 h-3.5 text-red-500" />
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <button
                         onClick={() => handleDelete(annexure.id)}

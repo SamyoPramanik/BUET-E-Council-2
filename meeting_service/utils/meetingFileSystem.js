@@ -189,11 +189,17 @@ const syncMeetingAnnexures = async (meetingId) => {
         const storageService = require('./storageService');
         const AdmZip = require('adm-zip');
 
-        // Delete existing annexure-* and suppli-annexure-* files & directories in meeting folder to purge stale numbers
+        // Delete existing annexure, supple_annexture, and resolution_annexture files & directories to purge stale serials
         if (fs.existsSync(dirPath)) {
             const files = fs.readdirSync(dirPath);
             for (const f of files) {
-                if (f.startsWith('annexure-') || f.startsWith('suppli-annexure-')) {
+                if (
+                    f.startsWith('annexure-') ||
+                    f.startsWith('suppli-annexure-') ||
+                    f.startsWith('supple_annexture-') ||
+                    f.startsWith('resolution_annexture-') ||
+                    f.startsWith('resolution-annexure-')
+                ) {
                     try {
                         const fullPath = path.join(dirPath, f);
                         if (fs.statSync(fullPath).isDirectory()) {
@@ -210,7 +216,14 @@ const syncMeetingAnnexures = async (meetingId) => {
         for (const an of annexRes.rows) {
             const serial = an.global_serial || an.annexure_serial || 1;
             const isSuppli = !!an.is_suppli;
-            const prefix = isSuppli ? 'suppli-annexure' : 'annexure';
+            const isResolutionAnnexure = an.annexure_type === 'resolution';
+
+            let prefix = 'annexure';
+            if (isResolutionAnnexure) {
+                prefix = 'resolution_annexture';
+            } else if (isSuppli) {
+                prefix = 'supple_annexture';
+            }
             const ext = path.extname(an.file_name || '') || '.pdf';
             let cleanBaseName = path.basename(an.file_name || '', ext).replace(/[\/\\?%*:|"<>]/g, '_').trim();
             if (cleanBaseName.toLowerCase().endsWith('.zip')) {

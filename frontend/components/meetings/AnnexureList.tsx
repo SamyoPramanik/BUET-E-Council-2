@@ -255,7 +255,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
             </span>
           )}
 
-          {!readOnly && type === 'agenda' && (
+          {!readOnly && (
             <div className="flex items-center gap-1.5">
               <button 
                 onClick={() => fileInputRef.current?.click()}

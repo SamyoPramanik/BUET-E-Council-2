@@ -11,7 +11,7 @@ import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
 import { canAuthorMeeting, canUnlockItem, canSendBack } from "../../lib/meetingAccess";
 import MeetingWorkflowBar from "./MeetingWorkflowBar";
-import { Trash2, Video, Lock, Unlock, ArrowRightLeft, CheckCircle2, ShieldAlert, CornerDownLeft, Clock, Users, UserCheck, FileText, Layers, KeyRound } from "lucide-react";
+import { Trash2, Video, Lock, Unlock, ArrowRightLeft, CheckCircle2, ShieldAlert, CornerDownLeft, Clock, Users, UserCheck, FileText, Layers, KeyRound, ShieldCheck } from "lucide-react";
 
 const typeOptions = [
   { value: "syndicate", label: "Syndicate" },
@@ -71,6 +71,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
   const [onlineMeetingLink, setOnlineMeetingLink] = useState(meeting.online_meeting_link || "");
 
   const [saving, setSaving] = useState(false);
+  const [savingPermissions, setSavingPermissions] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -124,6 +125,22 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
       toast.error(err.response?.data?.message || 'Failed to update meeting info');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSavePermissions = async () => {
+    setSavingPermissions(true);
+    try {
+      await api.put(`/meetings/${meeting.id}`, {
+        max_annexure_size_mb: formData.max_annexure_size_mb,
+        is_suppli_visible_to_viewers: formData.is_suppli_visible_to_viewers
+      });
+      await mutate();
+      toast.success("Meeting permissions updated successfully.");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to update meeting permissions');
+    } finally {
+      setSavingPermissions(false);
     }
   };
 
@@ -372,12 +389,37 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
               )}
             </div>
 
-            {/* ANNEXURE SIZE LIMIT (Restricted to Deputy Registrar & Above) */}
-            {canManageAnnexureSize && (
-              <div className="space-y-1 pt-2 border-t border-border">
+            {!readOnly && (
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="bg-primary text-primary-foreground py-2 px-6 rounded-md font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
+                >
+                  {saving ? "Saving..." : "Save Info Changes"}
+                </button>
+              </div>
+            )}
+          </form>
+        </div>
+
+        {/* MEETING PERMISSIONS CARD (SEPARATE BOX UNDER MEETING INFO) */}
+        {canManageAnnexureSize && (
+          <div className="bg-card border border-border shadow-sm rounded-lg p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-primary" /> Meeting Permissions & Limits
+              </h3>
+              <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full font-medium">
+                Deputy Registrar & Above
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              {/* ANNEXURE SIZE LIMIT */}
+              <div className="space-y-1">
                 <label className="text-sm font-medium flex items-center gap-2">
                   <FileText className="w-4 h-4 text-primary" /> Annexure Max Size Limit
-                  <span className="text-[11px] font-normal text-muted-foreground">(Deputy Registrar & Above)</span>
                 </label>
                 {readOnly ? (
                   <div className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm opacity-50 cursor-not-allowed">
@@ -394,15 +436,12 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                   Sets the maximum allowed file size for annexures uploaded to this meeting (from 2 MB up to 10 GB).
                 </p>
               </div>
-            )}
 
-            {/* SUPPLEMENTARY AGENDA VIEWER VISIBILITY (Restricted to Deputy Registrar & Above) */}
-            {canManageAnnexureSize && (
+              {/* SUPPLEMENTARY AGENDA VIEWER VISIBILITY */}
               <div className="space-y-2 pt-3 border-t border-border">
                 <label className="text-sm font-medium flex items-center justify-between gap-2 cursor-pointer">
                   <span className="flex items-center gap-2">
                     <Layers className="w-4 h-4 text-amber-500" /> Allow Viewers to View Supplementary Agenda
-                    <span className="text-[11px] font-normal text-muted-foreground">(Deputy Registrar & Above)</span>
                   </span>
                   <input
                     type="checkbox"
@@ -416,21 +455,23 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                   When enabled, users with the viewer role can select and view supplementary agenda items for this ongoing meeting.
                 </p>
               </div>
-            )}
 
-            {!readOnly && (
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="bg-primary text-primary-foreground py-2 px-6 rounded-md font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
-                >
-                  {saving ? "Saving..." : "Save Info Changes"}
-                </button>
-              </div>
-            )}
-          </form>
-        </div>
+              {!readOnly && (
+                <div className="flex justify-end pt-3 border-t border-border">
+                  <button
+                    type="button"
+                    disabled={savingPermissions}
+                    onClick={handleSavePermissions}
+                    className="bg-primary text-primary-foreground py-2 px-6 rounded-md font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 text-sm flex items-center gap-2"
+                  >
+                    {savingPermissions ? "Saving..." : "Confirm Permissions"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
         {/* RIGHT COLUMN: MEETING CONTROLS & SEND BACK SECTION (RIGHT OF MEETING INFO) */}
         <div className="lg:col-span-1 space-y-6">

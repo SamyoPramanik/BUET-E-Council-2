@@ -91,7 +91,7 @@ export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermi
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-12">
-      <MeetingWorkflowBar meeting={meeting} />
+      <MeetingWorkflowBar meeting={meeting} onChanged={() => mutate()} />
 
       <div className="bg-card border border-border shadow-sm rounded-lg p-6 space-y-6">
         <div className="flex items-center justify-between border-b border-border pb-4">

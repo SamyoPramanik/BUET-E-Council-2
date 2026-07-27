@@ -242,8 +242,8 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 <FileText className="w-8 h-8 text-muted-foreground" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-primary">No Agendas Found</h3>
-                <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are currently no agendas for this meeting. Create a new agenda to get started.</p>
+                <h3 className="text-lg font-semibold text-primary">No Agendum Found</h3>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are currently no agendum items for this meeting. Create a new agendum to get started.</p>
               </div>
               {!readOnly && (
                 <div className="flex flex-wrap gap-3 mt-4 justify-center">

@@ -156,7 +156,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
           ) : (
             <FileText className="w-10 h-10 text-foreground group-hover:text-amber-500 transition-colors" />
           )}
-          <h3 className="text-foreground font-semibold text-center text-sm">Generate Suppli Agenda PDF</h3>
+          <h3 className="text-foreground font-semibold text-center text-sm">Generate Supplementary Agenda PDF</h3>
         </div>
 
         {/* Generate Resolution PDF */}

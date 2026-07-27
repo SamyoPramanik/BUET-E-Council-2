@@ -139,8 +139,8 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
             <FileText className="w-8 h-8 text-muted-foreground" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-primary">No Agendas Found</h3>
-            <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are no agendas to add resolutions for. Please create an agenda first.</p>
+            <h3 className="text-lg font-semibold text-primary">No Agendum Found</h3>
+            <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are no agendum items to add resolutions for. Please create an agendum first.</p>
           </div>
         </div>
       ) : (

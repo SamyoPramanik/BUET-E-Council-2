@@ -34,9 +34,13 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   const { data: response, mutate } = useSWR(`/agendas/${contentId}/annexures?type=${type}`, fetcher, { fallbackData: { data: [] } });
   const annexures: Annexure[] = response?.data || [];
 
+  const visibleAnnexures = type === 'agenda'
+    ? annexures.filter(an => an.annexure_type !== 'resolution')
+    : annexures;
+
   const validAnnexures = (type === 'resolution'
-    ? annexures.filter(an => !an.is_excluded_in_resolution)
-    : annexures
+    ? visibleAnnexures.filter(an => !an.is_excluded_in_resolution)
+    : visibleAnnexures
   ).sort((a, b) => (a.annexure_serial || 0) - (b.annexure_serial || 0));
 
   const banglaAnnexureTags = validAnnexures.length > 0
@@ -58,19 +62,20 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
     if (isZip && name.toLowerCase().endsWith('.zip')) {
       name = name.slice(0, -4);
     }
+    const addedTag = annexure.annexure_type === 'resolution' ? ' (Added in meeting)' : '';
     if (type === 'resolution') {
       if (annexure.is_excluded_in_resolution) {
-        return name;
+        return `${name}${addedTag}`;
       }
       const sameTypeValid = validAnnexures.filter(an => !!an.is_suppli === !!annexure.is_suppli);
       const activeIdx = sameTypeValid.findIndex(an => an.id === annexure.id);
       const num = activeIdx >= 0 ? (activeIdx + 1) : (annexure.global_serial || annexure.annexure_serial);
       const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;
-      return `${prefix}. ${name}${isZip ? ' (Folder)' : ''}`;
+      return `${prefix}. ${name}${isZip ? ' (Folder)' : ''}${addedTag}`;
     }
     const num = annexure.global_serial || annexure.annexure_serial;
     const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;
-    return `${prefix}. ${name}${isZip ? ' (Folder)' : ''}`;
+    return `${prefix}. ${name}${isZip ? ' (Folder)' : ''}${addedTag}`;
   };
 
   const [isUploading, setIsUploading] = useState(false);
@@ -265,9 +270,9 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
         <div className="flex items-center gap-2">
           <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
           <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            Annexures {annexures.length > 0 && (
-              type === 'resolution' && validAnnexures.length !== annexures.length
-                ? `(${validAnnexures.length}/${annexures.length})`
+            Annexures {visibleAnnexures.length > 0 && (
+              type === 'resolution' && validAnnexures.length !== visibleAnnexures.length
+                ? `(${validAnnexures.length}/${visibleAnnexures.length})`
                 : `(${validAnnexures.length})`
             )}
           </h4>
@@ -307,12 +312,12 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
       </div>
 
       <div className="space-y-1">
-        {annexures.length === 0 ? (
+        {visibleAnnexures.length === 0 ? (
           <div className="text-center py-3 bg-muted/20 border border-dashed border-border/40 rounded">
             <p className="text-[11px] text-muted-foreground/70">No annexures attached yet.</p>
           </div>
         ) : (
-          annexures.map((annexure) => {
+          visibleAnnexures.map((annexure) => {
             const isResolutionView = type === 'resolution';
             const isExcluded = isResolutionView && !!annexure.is_excluded_in_resolution;
             const ext = getFileExtension(annexure.file_name);
@@ -327,8 +332,8 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                 onDragOver={(!readOnly && !isResolutionView) ? handleDragOver : undefined}
                 onDrop={(e) => !readOnly && !isResolutionView && handleDrop(e, annexure.id)}
                 className={`relative flex items-center gap-2 p-1.5 px-2.5 rounded group transition-all overflow-hidden ${isExcluded
-                    ? 'bg-red-500/10 border border-red-500/30 backdrop-blur-[1px] opacity-60 hover:opacity-85'
-                    : 'bg-card/40 border border-border/40 hover:border-primary/30'
+                  ? 'bg-red-500/10 border border-red-500/30 backdrop-blur-[1px] opacity-60 hover:opacity-85'
+                  : 'bg-card/40 border border-border/40 hover:border-primary/30'
                   } ${(!readOnly && !isResolutionView) ? 'cursor-grab active:cursor-grabbing' : ''}`}
               >
                 {!readOnly && !isResolutionView && (

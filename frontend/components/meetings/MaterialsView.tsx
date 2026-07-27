@@ -131,45 +131,58 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
 
       <div className="mb-10">
         <h3 className="text-lg font-semibold mb-4 border-b border-border pb-2">Generate System PDFs</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
         
         {/* Generate Agenda PDF */}
         <div 
           onClick={() => !generating && handleGenerate('agenda', 'Agenda')}
-          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-8 rounded-xl flex flex-col items-center justify-center gap-4 transition-all hover:shadow-md ${generating === 'agenda' ? 'opacity-70 pointer-events-none' : ''}`}
+          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating === 'agenda' ? 'opacity-70 pointer-events-none' : ''}`}
         >
           {generating === 'agenda' ? (
-            <Loader2 className="w-12 h-12 text-primary animate-spin" />
+            <Loader2 className="w-10 h-10 text-primary animate-spin" />
           ) : (
-            <FileText className="w-12 h-12 text-foreground group-hover:text-primary transition-colors" />
+            <FileText className="w-10 h-10 text-foreground group-hover:text-primary transition-colors" />
           )}
-          <h3 className="text-foreground font-semibold text-center">Generate Agenda PDF</h3>
+          <h3 className="text-foreground font-semibold text-center text-sm">Generate Agenda PDF</h3>
+        </div>
+
+        {/* Generate Supplementary Agenda PDF */}
+        <div 
+          onClick={() => !generating && handleGenerate('suppli-agenda', 'Supplementary_Agenda')}
+          className={`bg-card border-2 border-border hover:border-amber-500 cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating === 'suppli-agenda' ? 'opacity-70 pointer-events-none' : ''}`}
+        >
+          {generating === 'suppli-agenda' ? (
+            <Loader2 className="w-10 h-10 text-amber-500 animate-spin" />
+          ) : (
+            <FileText className="w-10 h-10 text-foreground group-hover:text-amber-500 transition-colors" />
+          )}
+          <h3 className="text-foreground font-semibold text-center text-sm">Generate Suppli Agenda PDF</h3>
         </div>
 
         {/* Generate Resolution PDF */}
         <div 
           onClick={() => !generating && handleGenerate('resolution', 'Resolution')}
-          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-8 rounded-xl flex flex-col items-center justify-center gap-4 transition-all hover:shadow-md ${generating === 'resolution' ? 'opacity-70 pointer-events-none' : ''}`}
+          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating === 'resolution' ? 'opacity-70 pointer-events-none' : ''}`}
         >
           {generating === 'resolution' ? (
-            <Loader2 className="w-12 h-12 text-primary animate-spin" />
+            <Loader2 className="w-10 h-10 text-primary animate-spin" />
           ) : (
-            <FileCheck className="w-12 h-12 text-foreground group-hover:text-primary transition-colors" />
+            <FileCheck className="w-10 h-10 text-foreground group-hover:text-primary transition-colors" />
           )}
-          <h3 className="text-foreground font-semibold text-center">Generate Resolution PDF</h3>
+          <h3 className="text-foreground font-semibold text-center text-sm">Generate Resolution PDF</h3>
         </div>
 
         {/* Generate Attendance Sheet */}
         <div 
           onClick={() => !generating && setIsAttendanceModalOpen(true)}
-          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-8 rounded-xl flex flex-col items-center justify-center gap-4 transition-all hover:shadow-md ${generating?.startsWith('attendance') ? 'opacity-70 pointer-events-none' : ''}`}
+          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating?.startsWith('attendance') ? 'opacity-70 pointer-events-none' : ''}`}
         >
           {generating?.startsWith('attendance') ? (
-            <Loader2 className="w-12 h-12 text-primary animate-spin" />
+            <Loader2 className="w-10 h-10 text-primary animate-spin" />
           ) : (
-            <Users className="w-12 h-12 text-foreground group-hover:text-primary transition-colors" />
+            <Users className="w-10 h-10 text-foreground group-hover:text-primary transition-colors" />
           )}
-          <h3 className="text-foreground font-semibold text-center">Generate Attendance Sheet</h3>
+          <h3 className="text-foreground font-semibold text-center text-sm">Generate Attendance Sheet</h3>
         </div>
 
         {/* Generate Resolution Status PDF */}

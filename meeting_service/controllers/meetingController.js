@@ -1381,6 +1381,8 @@ const generatePdf = async (req, res, next) => {
 
         if (type === 'agenda') {
             pdfBuffer = await generateMeetingPdf(id, false);
+        } else if (type === 'suppli-agenda' || type === 'suppli_agenda') {
+            pdfBuffer = await generateMeetingPdf(id, false, 'suppli-agenda');
         } else if (type === 'resolution') {
             pdfBuffer = await generateMeetingPdf(id, true);
         } else if (type === 'attendance') {

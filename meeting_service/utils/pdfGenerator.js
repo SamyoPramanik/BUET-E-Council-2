@@ -376,7 +376,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         // Agenda (pre-meeting notice) and resolution (post-meeting minutes) are
         // different documents, not the same content with an extra line: they
         // carry different titles and tense ("to be held" vs "held").
-        const docLabel = isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচি';
+        const docLabel = cacheVariant === 'suppli-agenda' ? 'সম্পূরক আলোচ্যসূচি' : (isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচি');
         const dateVerb = isResolution ? 'অনুষ্ঠিত' : 'অনুষ্ঠিতব্য';
 
         // Supplementary agenda items (is_suppli) are printed after the main
@@ -471,7 +471,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 </div>
             ` : ''}
 
-            ${agendas.map(ag => {
+            ${(cacheVariant === 'suppli-agenda' ? agendas.filter(ag => ag.is_suppli) : agendas).map(ag => {
                 const mainAgendaCount = agendas.filter(a => !a.is_suppli).length;
                 const agSerialStr = ag.is_suppli
                     ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(ag.agenda_serial, 1)}`

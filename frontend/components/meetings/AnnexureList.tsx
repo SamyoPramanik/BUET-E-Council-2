@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import useSWR from "swr";
 import JSZip from "jszip";
 import api, { fetcher } from "../../lib/api";
-import { Paperclip, Trash2, GripVertical, Plus, File, ExternalLink, Loader2, MinusCircle, RotateCcw, Folder, FolderPlus } from "lucide-react";
+import { Paperclip, Trash2, GripVertical, Plus, File, FilePlus, ExternalLink, Loader2, MinusCircle, RotateCcw, Folder, FolderPlus } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { toBanglaDigits } from "../../lib/banglaNumerals";
@@ -268,10 +268,10 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
-                className="text-[11px] font-medium bg-secondary/80 text-secondary-foreground hover:bg-secondary px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
+                className="text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
                 title="Upload Single File (PDF, DOCX, TXT, XLSX, Images, ZIP)"
               >
-                {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FilePlus className="w-3 h-3" />}
                 Upload File
               </button>
 

@@ -122,7 +122,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v20';
+const PDF_TEMPLATE_VERSION = 'v21';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -161,7 +161,7 @@ const storeCachedPdf = async (cacheKey, pdfBuffer, fingerprint) => {
 
 const generatePdf = async (meetingId, isResolution, cacheVariant) => {
     try {
-        const meetingQuery = `SELECT title, meeting_date, description, agenda_prefix FROM meetings WHERE id = $1`;
+        const meetingQuery = `SELECT title, meeting_date, description, agenda_prefix, type FROM meetings WHERE id = $1`;
         const presenteesQuery = `
             SELECT p.id, p.name, p.designation, p.serial, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM invitees p
@@ -381,6 +381,11 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const docLabel = cacheVariant === 'suppli-agenda' ? 'সম্পূরক আলোচ্যসূচি' : (isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচি');
         const dateVerb = isResolution ? 'অনুষ্ঠিত' : 'অনুষ্ঠিতব্য';
 
+        // Build council label based on meeting type
+        const typeStr = (meeting.type || '').toLowerCase();
+        const isSyndicate = typeStr === 'syndicate' || typeStr.includes('syndicate');
+        const councilLabel = isSyndicate ? 'সিন্ডিকেটের' : 'একাডেমিক কাউন্সিলের';
+
         // Supplementary agenda items (is_suppli) are printed after the main
         // agenda/resolution items under their own heading, never interleaved.
         const mainAgendas = agendas.filter(ag => !ag.is_suppli);
@@ -455,8 +460,12 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             </style>
         </head>
         <body>
+            ${cacheVariant === 'suppli-agenda' ? `
+            <div class="text-center sub-title">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
+            ` : `
             <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
             <div class="text-center sub-title">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
+            `}
 
             ${isResolution ? `
                 ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}

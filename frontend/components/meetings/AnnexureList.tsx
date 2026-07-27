@@ -223,13 +223,12 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
     mutate({ ...response, data: updatedAnnexures }, false);
 
     try {
-      await Promise.all(
-        updatedAnnexures.map(an =>
-          api.put(`/agendas/annexures/${an.id}/reorder`, {
-            annexure_serial: an.annexure_serial
-          })
-        )
-      );
+      await api.put(`/agendas/annexures/reorder`, {
+        items: updatedAnnexures.map(an => ({
+          id: an.id,
+          annexure_serial: an.annexure_serial
+        }))
+      });
       toast.success("Annexures reordered");
     } catch (err) {
       toast.error("Failed to reorder annexures");

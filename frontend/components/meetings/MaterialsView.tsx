@@ -162,9 +162,9 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
         {/* Generate Attendance Sheet */}
         <div 
           onClick={() => !generating && setIsAttendanceModalOpen(true)}
-          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-8 rounded-xl flex flex-col items-center justify-center gap-4 transition-all hover:shadow-md ${generating ? 'opacity-70 pointer-events-none' : ''}`}
+          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-8 rounded-xl flex flex-col items-center justify-center gap-4 transition-all hover:shadow-md ${generating?.startsWith('attendance') ? 'opacity-70 pointer-events-none' : ''}`}
         >
-          {generating ? (
+          {generating?.startsWith('attendance') ? (
             <Loader2 className="w-12 h-12 text-primary animate-spin" />
           ) : (
             <Users className="w-12 h-12 text-foreground group-hover:text-primary transition-colors" />

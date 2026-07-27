@@ -45,13 +45,8 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
 
   const banglaAnnexureTags = validAnnexures.length > 0
     ? validAnnexures.map((an) => {
-      if (type === 'resolution') {
-        const sameTypeValid = validAnnexures.filter(x => !!x.is_suppli === !!an.is_suppli);
-        const activeIdx = sameTypeValid.findIndex(x => x.id === an.id);
-        const num = activeIdx >= 0 ? (activeIdx + 1) : (an.global_serial || an.annexure_serial);
-        return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(num)}`;
-      }
-      return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(an.global_serial || an.annexure_serial)}`;
+      const num = an.global_serial || an.annexure_serial;
+      return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(num)}`;
     }).join(', ')
     : null;
 
@@ -63,15 +58,8 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
       name = name.slice(0, -4);
     }
     const addedTag = annexure.annexure_type === 'resolution' ? ' (Added in meeting)' : '';
-    if (type === 'resolution') {
-      if (annexure.is_excluded_in_resolution) {
-        return `${name}${addedTag}`;
-      }
-      const sameTypeValid = validAnnexures.filter(an => !!an.is_suppli === !!annexure.is_suppli);
-      const activeIdx = sameTypeValid.findIndex(an => an.id === annexure.id);
-      const num = activeIdx >= 0 ? (activeIdx + 1) : (annexure.global_serial || annexure.annexure_serial);
-      const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;
-      return `${prefix}. ${name}${isZip ? ' (Folder)' : ''}${addedTag}`;
+    if (type === 'resolution' && annexure.is_excluded_in_resolution) {
+      return `${name}${addedTag}`;
     }
     const num = annexure.global_serial || annexure.annexure_serial;
     const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;

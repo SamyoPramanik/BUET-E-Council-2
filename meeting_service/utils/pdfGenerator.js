@@ -122,7 +122,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v21';
+const PDF_TEMPLATE_VERSION = 'v22';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -516,13 +516,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     .sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
                 const annexureTags = validAnnexures.length > 0
                     ? validAnnexures.map((an) => {
-                        if (isResolution) {
-                            const sameTypeValid = validAnnexures.filter(x => !!x.is_suppli === !!an.is_suppli);
-                            const activeIdx = sameTypeValid.findIndex(x => x.id === an.id);
-                            const num = activeIdx >= 0 ? (activeIdx + 1) : (an.global_serial || an.annexure_serial);
-                            return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(num)}`;
-                        }
-                        return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(an.global_serial || an.annexure_serial)}`;
+                        const num = an.global_serial || an.annexure_serial;
+                        return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(num)}`;
                       }).join(', ')
                     : null;
 

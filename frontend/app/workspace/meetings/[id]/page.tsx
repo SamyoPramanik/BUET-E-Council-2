@@ -6,6 +6,7 @@ import { fetcher } from "../../../../lib/api";
 
 // View Components (to be created)
 import MeetingInfoView from "../../../../components/meetings/MeetingInfoView";
+import MeetingPermissionsView from "../../../../components/meetings/MeetingPermissionsView";
 import InviteesView from "../../../../components/meetings/InviteesView";
 import AgendaView from "../../../../components/meetings/AgendaView";
 import ResolutionView from "../../../../components/meetings/ResolutionView";
@@ -47,6 +48,8 @@ export default function MeetingWorkspace() {
   switch (view) {
     case 'info':
       return <MeetingInfoView meeting={meeting} mutate={mutate} />;
+    case 'permissions':
+      return <MeetingPermissionsView meeting={meeting} mutate={mutate} />;
     case 'description':
     case 'conclusion':
       return <DescriptionView meeting={meeting} type={view} mutate={mutate} />;

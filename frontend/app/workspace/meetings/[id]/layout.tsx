@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useParams } from "next/navigation";
-import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers, History, Mail } from "lucide-react";
+import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers, History, Mail, ShieldCheck } from "lucide-react";
 import useSWR from "swr";
 import { fetcher } from "../../../../lib/api";
 import SidebarToggleButton from "../../../../components/SidebarToggleButton";
@@ -12,6 +12,7 @@ import { useAuth } from "../../../../hooks/useAuth";
 
 const navigation = [
   { name: 'Meeting Info', view: 'info', icon: Info },
+  { name: 'Meeting Permissions', view: 'permissions', icon: ShieldCheck },
   { name: 'Description', view: 'description', icon: FileText },
   { name: 'Invitees', view: 'invitees', icon: Users },
   { name: 'Agenda', view: 'agenda', icon: LayoutList },
@@ -33,13 +34,31 @@ export default function MeetingWorkspaceLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const { data: response, mutate } = useSWR(`/meetings/${params.id}`, fetcher);
+  const { data: rolesRes } = useSWR('/roles', fetcher);
+  const allRoles = rolesRes?.data || [];
   const meeting = response?.data;
 
   const { isAdmin, user } = useAuth();
   const isViewer = user?.role === 'viewer';
   const isPast = meeting?.status === 'past' || meeting?.is_completed === true;
 
+  const isDeputyOrAbove = (() => {
+    if (isAdmin) return true;
+    if (!user || user.role === 'viewer') return false;
+    if (user.role_level === null || user.role_level === undefined) return false;
+    const userLvl = Number(user.role_level);
+    const deputyRole = allRoles.find((r: any) => r.level_title && r.level_title.toLowerCase().includes("deputy registrar"));
+    if (deputyRole && deputyRole.level !== undefined && deputyRole.level !== null) {
+      return userLvl >= Number(deputyRole.level);
+    }
+    return userLvl >= 2;
+  })();
+
   let navItems = navigation;
+  if (!isDeputyOrAbove) {
+    navItems = navigation.filter(item => item.view !== 'permissions');
+  }
+
   if (isViewer) {
     if (isPast) {
       navItems = [{ name: 'Resolution', view: 'resolution', icon: FileCheck }];
@@ -50,7 +69,7 @@ export default function MeetingWorkspaceLayout({
       }
     }
   } else if (isAdmin) {
-    navItems = [...navigation, { name: 'History', view: 'history', icon: History }];
+    navItems = [...navItems, { name: 'History', view: 'history', icon: History }];
   }
 
   return (

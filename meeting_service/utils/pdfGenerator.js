@@ -532,7 +532,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         // Cache for future requests (best-effort; keyed by the content fingerprint).
         await storeCachedPdf(cacheKey, pdfBuffer, fingerprint);
         try {
-            await meetingFileSystem.saveMeetingPdf(meetingId, type, pdfBuffer);
+            const pdfType = cacheVariant || (isResolution ? 'resolution' : 'agenda');
+            await meetingFileSystem.saveMeetingPdf(meetingId, pdfType, pdfBuffer);
         } catch (e) {
             console.error('Error saving meeting PDF to filesystem:', e);
         }

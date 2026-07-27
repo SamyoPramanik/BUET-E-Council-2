@@ -31,9 +31,19 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   );
   const mainAgendaCount = isSuppliView ? (mainAgendasRes?.data || []).length : 0;
 
+  const regularAgendas = isSuppliView
+    ? agendas
+    : agendas.filter((a: any) => {
+        const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+        return !clean.startsWith('বিবিধ');
+      });
+
+  const bibidhaSerialNum = regularAgendas.length + 1;
+  const bibidhaSerial = (meeting.agenda_prefix || '') + toBanglaDigits(bibidhaSerialNum, 1);
+
   const isEmergencyMeeting = typeof window !== 'undefined'
     && window.localStorage.getItem(`meeting_criteria_${meeting.id}`) === 'emergency';
-  const emergencyLimitReached = !isSuppliView && isEmergencyMeeting && agendas.length >= 1;
+  const emergencyLimitReached = !isSuppliView && isEmergencyMeeting && regularAgendas.length >= 1;
 
   const { data: tagsResponse, mutate: mutateTags } = useSWR('/tags', fetcher, { fallbackData: { data: [] } });
   const allTags = tagsResponse?.data || [];
@@ -88,12 +98,12 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     const sourceId = e.dataTransfer.getData("text/plain");
     if (sourceId === targetId) return;
 
-    const sourceIndex = agendas.findIndex((a: any) => a.id === sourceId);
-    const targetIndex = agendas.findIndex((a: any) => a.id === targetId);
+    const sourceIndex = regularAgendas.findIndex((a: any) => a.id === sourceId);
+    const targetIndex = regularAgendas.findIndex((a: any) => a.id === targetId);
 
     if (sourceIndex < 0 || targetIndex < 0) return;
 
-    const newAgendas = [...agendas];
+    const newAgendas = [...regularAgendas];
     const [moved] = newAgendas.splice(sourceIndex, 1);
     newAgendas.splice(targetIndex, 0, moved);
 
@@ -218,32 +228,42 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
           <h2 className="text-2xl font-bold">{title}</h2>
         </div>
 
-        {agendas.length === 0 && createAtIndex === null ? (
-          <div className="bg-card border border-border border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center space-y-4 shadow-sm h-64">
-            <div className="bg-muted p-4 rounded-full">
-              <FileText className="w-8 h-8 text-muted-foreground" />
+        {regularAgendas.length === 0 && createAtIndex === null ? (
+          <div className="space-y-6">
+            <div className="bg-card border border-border border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center space-y-4 shadow-sm h-64">
+              <div className="bg-muted p-4 rounded-full">
+                <FileText className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-primary">No Agendas Found</h3>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are currently no agendas for this meeting. Create a new agenda to get started.</p>
+              </div>
+              {!readOnly && (
+                <div className="flex flex-wrap gap-3 mt-4 justify-center">
+                  <button
+                    onClick={() => handleStartCreate(0)}
+                    className="bg-primary text-primary-foreground py-2 px-5 rounded-md font-medium shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-2 text-sm"
+                  >
+                    <Plus className="w-4 h-4" /> Create New Agendum
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleStartCreate(0);
+                      setIsDrawerOpen(true);
+                    }}
+                    className="bg-accent text-accent-foreground border border-border py-2 px-5 rounded-md font-medium shadow-sm hover:bg-accent/80 transition-colors flex items-center gap-2 text-sm"
+                  >
+                    <FileText className="w-4 h-4" /> Create from Template
+                  </button>
+                </div>
+              )}
             </div>
-            <div>
-              <h3 className="text-lg font-semibold text-primary">No Agendas Found</h3>
-              <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are currently no agendas for this meeting. Create a new agenda to get started.</p>
-            </div>
-            {!readOnly && (
-              <div className="flex flex-wrap gap-3 mt-4 justify-center">
-                <button
-                  onClick={() => handleStartCreate(0)}
-                  className="bg-primary text-primary-foreground py-2 px-5 rounded-md font-medium shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-2 text-sm"
-                >
-                  <Plus className="w-4 h-4" /> Create New Agendum
-                </button>
-                <button
-                  onClick={() => {
-                    handleStartCreate(0);
-                    setIsDrawerOpen(true);
-                  }}
-                  className="bg-accent text-accent-foreground border border-border py-2 px-5 rounded-md font-medium shadow-sm hover:bg-accent/80 transition-colors flex items-center gap-2 text-sm"
-                >
-                  <FileText className="w-4 h-4" /> Create from Template
-                </button>
+
+            {!isSuppliView && (
+              <div className="bg-muted/40 border border-border/80 p-6 rounded-lg shadow-sm opacity-80 select-none">
+                <h3 className="font-semibold text-lg text-muted-foreground">
+                  বিবিধ : {bibidhaSerial}
+                </h3>
               </div>
             )}
           </div>
@@ -252,7 +272,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             {/* If creating at index 0 (top of empty or top of list) */}
             {createAtIndex === 0 && renderCreateForm()}
 
-            {agendas.map((agenda: any, index: number) => {
+            {regularAgendas.map((agenda: any, index: number) => {
               const cleanText = agenda.content ? agenda.content.replace(/<[^>]*>/g, '').trim() : '';
               const isBibidha = !isSuppliView && cleanText.startsWith('বিবিধ');
               const bibidhaSerial = (meeting.agenda_prefix || '') + toBanglaDigits(agenda.agenda_serial || index + 1, 1);
@@ -385,6 +405,13 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               </div>
             );
           })}
+            {!isSuppliView && (
+              <div className="bg-muted/40 border border-border/80 p-6 rounded-lg shadow-sm opacity-80 select-none">
+                <h3 className="font-semibold text-lg text-muted-foreground">
+                  বিবিধ : {bibidhaSerial}
+                </h3>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -394,7 +421,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground mb-4">Reorder Sequence</h3>
 
             <div className="space-y-2">
-              {agendas.map((agenda: any, index: number) => (
+              {regularAgendas.map((agenda: any, index: number) => (
                 <div
                   key={agenda.id}
                   draggable={!readOnly}

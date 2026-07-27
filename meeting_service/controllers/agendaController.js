@@ -19,6 +19,9 @@ const setAgendaTags = async (agendaId, tagIds) => {
 
 const ensureBibidhaAgenda = async (meetingId) => {
     if (!meetingId) return;
+    const meetingRes = await db.query('SELECT agenda_prefix FROM meetings WHERE id = $1', [meetingId]);
+    const prefix = meetingRes.rows[0]?.agenda_prefix || '';
+
     const res = await db.query(
         'SELECT id, agenda_serial, content FROM agenda WHERE meeting_id = $1 AND is_suppli = false ORDER BY agenda_serial ASC',
         [meetingId]
@@ -26,10 +29,14 @@ const ensureBibidhaAgenda = async (meetingId) => {
     const mainAgendas = res.rows;
     let bibidhaIndex = mainAgendas.findIndex(a => a.content && a.content.trim().startsWith('বিবিধ'));
 
+    const getBibidhaText = (serial) => {
+        const numStr = prefix ? `${prefix}${toBanglaDigits(serial, 1)}` : toBanglaDigits(serial, 1);
+        return `বিবিধ : ${numStr}`;
+    };
+
     if (bibidhaIndex === -1) {
         const nextSerial = mainAgendas.length + 1;
-        const banglaNum = toBanglaDigits(nextSerial, 1);
-        const bibidhaContent = `বিবিধ : ${banglaNum}`;
+        const bibidhaContent = getBibidhaText(nextSerial);
         await db.query(
             'INSERT INTO agenda (meeting_id, agenda_serial, content, is_suppli) VALUES ($1, $2, $3, false)',
             [meetingId, nextSerial, bibidhaContent]
@@ -37,8 +44,7 @@ const ensureBibidhaAgenda = async (meetingId) => {
     } else {
         const bibidha = mainAgendas[bibidhaIndex];
         const lastSerial = mainAgendas.length;
-        const banglaNum = toBanglaDigits(lastSerial, 1);
-        const expectedContent = `বিবিধ : ${banglaNum}`;
+        const expectedContent = getBibidhaText(lastSerial);
 
         if (bibidha.agenda_serial !== lastSerial || (bibidha.content && bibidha.content.trim() !== expectedContent)) {
             mainAgendas.splice(bibidhaIndex, 1);
@@ -46,7 +52,7 @@ const ensureBibidhaAgenda = async (meetingId) => {
             for (let i = 0; i < mainAgendas.length; i++) {
                 const isLast = i === mainAgendas.length - 1;
                 const serial = i + 1;
-                const content = isLast ? `বিবিধ : ${toBanglaDigits(serial, 1)}` : mainAgendas[i].content;
+                const content = isLast ? getBibidhaText(serial) : mainAgendas[i].content;
                 await db.query(
                     'UPDATE agenda SET agenda_serial = $1, content = $2 WHERE id = $3',
                     [serial, content, mainAgendas[i].id]

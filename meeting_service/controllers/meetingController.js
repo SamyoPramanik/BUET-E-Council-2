@@ -274,27 +274,29 @@ const updateMeeting = async (req, res, next) => {
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
 
+        const isUserAdmin = isAdminRole(req.user);
+        let isUserDeputyOrAbove = isUserAdmin;
+        if (!isUserDeputyOrAbove && req.user?.role_level !== null && req.user?.role_level !== undefined) {
+            const depRoleRes = await client.query("SELECT level FROM roles WHERE LOWER(level_title) LIKE '%deputy registrar%' LIMIT 1");
+            const minLevel = depRoleRes.rows.length > 0 ? depRoleRes.rows[0].level : 2;
+            if (Number(req.user.role_level) >= minLevel) {
+                isUserDeputyOrAbove = true;
+            }
+        }
+
         const access = calculateMeetingAccess(meeting, req.user);
-        if (!access.canEditMeeting) {
+        const isUpdatingDeputySettingsOnly = (is_suppli_visible_to_viewers !== undefined || max_annexure_size_mb !== undefined)
+            && !title && !meeting_title && !description && !conclusion && !meeting_date && !type && !status && !meeting_link && !agenda_pdf_link && !resolution_pdf_link && !transcript && !agenda_prefix;
+
+        if (!access.canEditMeeting && !(isUpdatingDeputySettingsOnly && isUserDeputyOrAbove)) {
             return next(new CustomError('You do not have permission to edit Meeting Info.', 403));
         }
 
         await client.query('BEGIN');
 
-        if (is_suppli_visible_to_viewers !== undefined && is_suppli_visible_to_viewers !== null) {
-            const isUserAdmin = isAdminRole(req.user);
-            let canToggleSuppliVisibility = isUserAdmin;
-            if (!canToggleSuppliVisibility && req.user?.role_level !== null && req.user?.role_level !== undefined) {
-                const depRoleRes = await client.query("SELECT level FROM roles WHERE LOWER(level_title) LIKE '%deputy registrar%' LIMIT 1");
-                const minLevel = depRoleRes.rows.length > 0 ? depRoleRes.rows[0].level : 2;
-                if (Number(req.user.role_level) >= minLevel) {
-                    canToggleSuppliVisibility = true;
-                }
-            }
-            if (!canToggleSuppliVisibility) {
-                await client.query('ROLLBACK');
-                return next(new CustomError('Only Deputy Registrar & Above can change supplementary agenda viewer visibility.', 403));
-            }
+        if (is_suppli_visible_to_viewers !== undefined && is_suppli_visible_to_viewers !== null && !isUserDeputyOrAbove) {
+            await client.query('ROLLBACK');
+            return next(new CustomError('Only Deputy Registrar & Above can change supplementary agenda viewer visibility.', 403));
         }
 
         if (status && status === 'past') {

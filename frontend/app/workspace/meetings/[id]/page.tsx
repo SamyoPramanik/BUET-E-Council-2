@@ -57,7 +57,7 @@ export default function MeetingWorkspace() {
       return <InviteesView meeting={meeting} type={view} mutate={mutate} />;
     case 'agenda':
     case 'suppli-agenda':
-      return <AgendaView meeting={meeting} type={view} />;
+      return <AgendaView key={view} meeting={meeting} type={view} />;
     case 'resolution':
       return <ResolutionView meeting={meeting} />;
     case 'materials':

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Edit3, Plus, FileText, GripVertical, Trash2, FilePlus } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import AnnexureList from "./AnnexureList";
@@ -66,6 +66,14 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   const [newContent, setNewContent] = useState(isSuppliView ? "<p>.</p>" : "");
   const [newTagIds, setNewTagIds] = useState<string[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    setCreateAtIndex(null);
+    setEditingId(null);
+    setCreateIsSuppli(isSuppliView);
+    setNewContent(isSuppliView ? "<p>.</p>" : "");
+    setNewTagIds([]);
+  }, [type, isSuppliView]);
 
   const handleAddNewTag = async (name: string, target: "new" | "edit") => {
     try {

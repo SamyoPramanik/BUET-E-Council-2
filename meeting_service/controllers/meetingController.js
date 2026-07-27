@@ -269,7 +269,7 @@ const updateMeeting = async (req, res, next) => {
     const client = await db.pool.connect();
     try {
         const { id } = req.params;
-        const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix } = req.body;
+        const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, max_annexure_size_mb } = req.body;
 
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
@@ -293,6 +293,15 @@ const updateMeeting = async (req, res, next) => {
             );
         }
 
+        // Validate max_annexure_size_mb if provided (range 2 MB to 10240 MB)
+        let validMaxAnnexureSize = null;
+        if (max_annexure_size_mb !== undefined && max_annexure_size_mb !== null) {
+            const parsedMb = parseInt(max_annexure_size_mb, 10);
+            if (!isNaN(parsedMb) && parsedMb >= 2 && parsedMb <= 10240) {
+                validMaxAnnexureSize = parsedMb;
+            }
+        }
+
         const result = await client.query(
             `UPDATE meetings SET
                 title = COALESCE($1, title),
@@ -306,9 +315,10 @@ const updateMeeting = async (req, res, next) => {
                 agenda_pdf_link = COALESCE($9, agenda_pdf_link),
                 resolution_pdf_link = COALESCE($10, resolution_pdf_link),
                 transcript = COALESCE($11, transcript),
-                agenda_prefix = COALESCE($12, agenda_prefix)
-             WHERE id = $13 RETURNING *`,
-            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, id]
+                agenda_prefix = COALESCE($12, agenda_prefix),
+                max_annexure_size_mb = COALESCE($13, max_annexure_size_mb)
+             WHERE id = $14 RETURNING *`,
+            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, validMaxAnnexureSize, id]
         );
 
         await client.query('COMMIT');

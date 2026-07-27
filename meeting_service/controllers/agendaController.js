@@ -541,6 +541,23 @@ const uploadAnnexure = async (req, res, next) => {
             return next(new CustomError('content_id, annexure_type, and file are required', 400));
         }
 
+        // Fetch meeting's configured max annexure size limit
+        const meetingRes = await db.query(
+            'SELECT m.max_annexure_size_mb FROM agenda a JOIN meetings m ON a.meeting_id = m.id WHERE a.id = $1',
+            [id]
+        );
+        const limitMb = (meetingRes.rows.length > 0 && meetingRes.rows[0].max_annexure_size_mb)
+            ? parseInt(meetingRes.rows[0].max_annexure_size_mb, 10)
+            : 50;
+
+        const maxSizeBytes = limitMb * 1024 * 1024;
+        if (file.size > maxSizeBytes) {
+            const formattedLimit = limitMb >= 1024
+                ? (limitMb / 1024).toFixed(limitMb % 1024 === 0 ? 0 : 1) + ' GB'
+                : `${limitMb} MB`;
+            return next(new CustomError(`Failed: Annexure size limit (${formattedLimit}) exceeded`, 400));
+        }
+
         const ext = file.originalname.split('.').pop();
         const fileKey = `annexures/${id}/${crypto.randomBytes(8).toString('hex')}.${ext}`;
 

@@ -158,6 +158,7 @@ CREATE TABLE meetings (
     is_completed BOOLEAN DEFAULT FALSE,
     completed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     completed_by UUID REFERENCES users (id) ON DELETE SET NULL,
+    max_annexure_size_mb INTEGER DEFAULT 50,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

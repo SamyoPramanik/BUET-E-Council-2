@@ -50,7 +50,8 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
     meeting_date: meeting.meeting_date ? new Date(meeting.meeting_date).toISOString().split('T')[0] : "",
     type: meeting.type || "syndicate",
     status: meeting.status || "draft",
-    agenda_prefix: meeting.agenda_prefix || ""
+    agenda_prefix: meeting.agenda_prefix || "",
+    max_annexure_size_mb: String(meeting.max_annexure_size_mb || 50)
   });
 
   useEffect(() => {
@@ -60,7 +61,8 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
       meeting_date: meeting.meeting_date ? new Date(meeting.meeting_date).toISOString().split('T')[0] : "",
       type: meeting.type || "syndicate",
       status: meeting.status || "draft",
-      agenda_prefix: meeting.agenda_prefix || ""
+      agenda_prefix: meeting.agenda_prefix || "",
+      max_annexure_size_mb: String(meeting.max_annexure_size_mb || 50)
     });
   }, [meeting]);
 
@@ -196,6 +198,31 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
 
   const currentTargetRoleObj = allRoles.find((r: any) => String(r.level) === selectedTargetLevel);
   const currentTargetTitle = currentTargetRoleObj ? currentTargetRoleObj.level_title : "Lower Level";
+
+  const canManageAnnexureSize = (() => {
+    if (isAdmin) return true;
+    if (!user || user.role === 'viewer') return false;
+    if (user.role_level === null || user.role_level === undefined) return false;
+
+    const userLvl = Number(user.role_level);
+    const deputyRole = allRoles.find((r: any) => r.level_title && r.level_title.toLowerCase().includes("deputy registrar"));
+    if (deputyRole && deputyRole.level !== undefined && deputyRole.level !== null) {
+      return userLvl >= Number(deputyRole.level);
+    }
+    return userLvl >= 2;
+  })();
+
+  const annexureSizeOptions = [
+    { value: "2", label: "2 MB" },
+    { value: "10", label: "10 MB" },
+    { value: "50", label: "50 MB (Default)" },
+    { value: "100", label: "100 MB" },
+    { value: "500", label: "500 MB" },
+    { value: "1024", label: "1 GB" },
+    { value: "2048", label: "2 GB" },
+    { value: "5120", label: "5 GB" },
+    { value: "10240", label: "10 GB" }
+  ];
 
   return (
     <div className="max-w-6xl animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
@@ -334,6 +361,30 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                 <p className="text-sm text-muted-foreground italic px-3 py-2">No online meeting link set.</p>
               )}
             </div>
+
+            {/* ANNEXURE SIZE LIMIT (Restricted to Deputy Registrar & Above) */}
+            {canManageAnnexureSize && (
+              <div className="space-y-1 pt-2 border-t border-border">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-primary" /> Annexure Max Size Limit
+                  <span className="text-[11px] font-normal text-muted-foreground">(Deputy Registrar & Above)</span>
+                </label>
+                {readOnly ? (
+                  <div className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm opacity-50 cursor-not-allowed">
+                    {annexureSizeOptions.find(o => o.value === String(formData.max_annexure_size_mb))?.label || `${formData.max_annexure_size_mb} MB`}
+                  </div>
+                ) : (
+                  <CustomSelect
+                    options={annexureSizeOptions}
+                    value={String(formData.max_annexure_size_mb)}
+                    onChange={(val) => setFormData({...formData, max_annexure_size_mb: val})}
+                  />
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Sets the maximum allowed file size for annexures uploaded to this meeting (from 2 MB up to 10 GB).
+                </p>
+              </div>
+            )}
 
             {!readOnly && (
               <div className="flex justify-end pt-2">

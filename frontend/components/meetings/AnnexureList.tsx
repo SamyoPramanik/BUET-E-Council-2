@@ -2,11 +2,14 @@
 
 import { useState, useRef } from "react";
 import useSWR from "swr";
+import JSZip from "jszip";
 import api, { fetcher } from "../../lib/api";
-import { Paperclip, Trash2, GripVertical, Plus, File, ExternalLink, Loader2, MinusCircle, RotateCcw } from "lucide-react";
+import { Paperclip, Trash2, GripVertical, Plus, File, ExternalLink, Loader2, MinusCircle, RotateCcw, Folder, FolderPlus } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { toBanglaDigits } from "../../lib/banglaNumerals";
+import { isExecutableFile, validateFilesList, getFileExtension } from "../../lib/annexureSecurity";
+import FolderViewerModal from "./FolderViewerModal";
 
 interface Annexure {
   id: string;
@@ -47,17 +50,25 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   
   const [isUploading, setIsUploading] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [activeFolderModal, setActiveFolderModal] = useState<{ zipUrl: string; name: string } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const { confirm, ConfirmModal } = useConfirm();
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (isExecutableFile(file.name)) {
+      toast.error(`Harmful file type uploaded in annexure ('${file.name}'). Executable files and scripts are strictly prohibited.`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     setIsUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-    // Postgres enum requires 'agendaItem' for agendas
     formData.append('annexure_type', type === 'agenda' ? 'agendaItem' : type);
 
     try {
@@ -71,6 +82,50 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleFolderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const validation = validateFilesList(files);
+    if (!validation.valid && validation.offendingFile) {
+      toast.error(`Harmful file type uploaded in annexure ('${validation.offendingFile}'). Executable files and scripts are strictly prohibited.`);
+      if (folderInputRef.current) folderInputRef.current.value = "";
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const zip = new JSZip();
+      let rootFolderName = "AnnexureFolder";
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const relativePath = (file as any).webkitRelativePath || file.name;
+        if (i === 0 && relativePath.includes('/')) {
+          rootFolderName = relativePath.split('/')[0];
+        }
+        zip.file(relativePath, file);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+      const formData = new FormData();
+      formData.append('file', zipBlob, `${rootFolderName}.zip`);
+      formData.append('annexure_type', type === 'agenda' ? 'agendaItem' : type);
+
+      await api.post(`/agendas/${contentId}/annexures`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success("Folder uploaded successfully as ZIP annexure");
+      mutate();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to upload folder annexure");
+    } finally {
+      setIsUploading(false);
+      if (folderInputRef.current) folderInputRef.current.value = "";
     }
   };
 
@@ -159,12 +214,32 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   return (
     <div className="mt-3 pt-3 border-t border-border/40">
       <ConfirmModal />
+      <FolderViewerModal
+        isOpen={!!activeFolderModal}
+        onClose={() => setActiveFolderModal(null)}
+        zipUrl={activeFolderModal?.zipUrl || ''}
+        annexureName={activeFolderModal?.name || ''}
+      />
+
       <input
         type="file"
         ref={fileInputRef}
         onChange={handleFileUpload}
+        accept=".pdf,.docx,.doc,.txt,.rtf,.odt,.xlsx,.xls,.csv,.ods,.pptx,.ppt,.odp,.png,.jpg,.jpeg,.gif,.webp,.svg,.zip,.rar,.7z"
         className="hidden"
       />
+
+      <input
+        type="file"
+        ref={folderInputRef}
+        onChange={handleFolderUpload}
+        // @ts-ignore - webkitdirectory is supported in modern browsers
+        webkitdirectory="true"
+        directory="true"
+        multiple
+        className="hidden"
+      />
+
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
           <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
@@ -181,14 +256,27 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
           )}
 
           {!readOnly && type === 'agenda' && (
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="text-[11px] font-medium bg-secondary/80 text-secondary-foreground hover:bg-secondary px-2.5 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
-            >
-              {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-              Add Annexure
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="text-[11px] font-medium bg-secondary/80 text-secondary-foreground hover:bg-secondary px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
+                title="Upload Single File (PDF, DOCX, TXT, XLSX, Images, ZIP)"
+              >
+                {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                Add File
+              </button>
+
+              <button 
+                onClick={() => folderInputRef.current?.click()}
+                disabled={isUploading}
+                className="text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
+                title="Upload Entire Folder with subfolders"
+              >
+                {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FolderPlus className="w-3 h-3" />}
+                Upload Folder
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -202,6 +290,8 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
           annexures.map((annexure) => {
             const isResolutionView = type === 'resolution';
             const isExcluded = isResolutionView && !!annexure.is_excluded_in_resolution;
+            const ext = getFileExtension(annexure.file_name);
+            const isZip = ['zip', 'rar', '7z'].includes(ext);
 
             return (
               <div 
@@ -223,8 +313,8 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                   </div>
                 )}
                 
-                <div className={`relative p-1 rounded ${isExcluded ? 'bg-red-500/20 text-red-500' : 'bg-muted text-muted-foreground'}`}>
-                  <File className="w-3.5 h-3.5" />
+                <div className={`relative p-1 rounded ${isExcluded ? 'bg-red-500/20 text-red-500' : isZip ? 'bg-amber-500/10 text-amber-500' : 'bg-muted text-muted-foreground'}`}>
+                  {isZip ? <Folder className="w-3.5 h-3.5" /> : <File className="w-3.5 h-3.5" />}
                 </div>
 
                 <div className="flex-1 min-w-0 relative py-0.5">
@@ -256,13 +346,24 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                 </div>
 
                 <div className="flex items-center gap-2 relative z-20 transition-opacity">
+                  {isZip && annexure.url && (
+                    <button
+                      onClick={() => setActiveFolderModal({ zipUrl: annexure.url!, name: annexure.file_name })}
+                      className="p-1.5 text-xs text-amber-600 hover:text-amber-700 bg-amber-500/10 hover:bg-amber-500/20 rounded-md transition-colors flex items-center gap-1 font-medium"
+                      title="Preview Folder Contents Online"
+                    >
+                      <Folder className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Preview Folder</span>
+                    </button>
+                  )}
+
                   {annexure.url && (
                     <a 
                       href={annexure.url} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="p-1.5 text-muted-foreground hover:text-primary bg-muted rounded-md transition-colors"
-                      title="View File"
+                      title={isZip ? "Download Folder ZIP" : "View File"}
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>

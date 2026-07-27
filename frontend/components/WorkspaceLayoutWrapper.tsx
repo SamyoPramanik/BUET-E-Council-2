@@ -14,14 +14,14 @@ export default function WorkspaceLayoutWrapper({ children }: { children: React.R
   const { role, error, isLoading } = useAuth();
 
   useEffect(() => {
-    if (error) {
+    if (!isLoading && error && !role) {
       router.push('/login');
-    } else if (role === 'viewer') {
+    } else if (!isLoading && role === 'viewer') {
       // Viewers get a read-only equivalent under /viewer instead of the
       // admin management UI.
       router.push('/viewer/meetings');
     }
-  }, [error, role, router]);
+  }, [error, role, isLoading, router]);
 
   if (isLoading || !role || role === 'viewer') {
     return <div className="flex flex-1 items-center justify-center min-h-screen">Loading...</div>;

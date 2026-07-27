@@ -3,12 +3,11 @@
 import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
-import { Mail, Plus, CheckCircle, Clock, Trash2, Users, ShieldCheck, Building, Check, X, ChevronDown, LayoutList, Layers, Pencil, Bell } from "lucide-react";
+import { Mail, Plus, CheckCircle, Clock, Trash2, Users, ShieldCheck, Building, Check, X, ChevronDown, LayoutList, Layers, Pencil } from "lucide-react";
 import SearchableSelect from "../SearchableSelect";
 import CustomSelect from "../CustomSelect";
 import DataTable from "../DataTable";
 import TakeAttendanceView from "./TakeAttendanceView";
-import SendAgendaModal, { type EmailMode } from "./SendAgendaModal";
 
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
@@ -22,7 +21,6 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const canEditInviteesAccess = canEditInvitees(user, meeting);
   const canEdit = isPast ? canEditPresenteesAccess : canEditInviteesAccess;
   const canAttendance = canEditPresenteesAccess;
-  const canSendEmail = user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'moderator';
   const displayType = isPast ? 'Presentees' : 'Invitees';
   const readOnly = !canEdit;
 
@@ -31,8 +29,6 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
   const [activeTab, setActiveTab] = useState<'search' | 'custom'>('search');
   const [isTakingAttendance, setIsTakingAttendance] = useState(false);
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
-  const [isSendAgendaModalOpen, setIsSendAgendaModalOpen] = useState(false);
-  const [emailModalMode, setEmailModalMode] = useState<EmailMode>("custom");
   const [isBulkDeleteMode, setIsBulkDeleteMode] = useState(false);
   const [selectedInviteeIds, setSelectedInviteeIds] = useState<Set<string>>(new Set());
   const [inviteeViewMode, setInviteeViewMode] = useState<'list' | 'grouped'>('list');
@@ -782,29 +778,6 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                     <Plus className="w-4 h-4" />
                     {isFetching ? "Fetching..." : "Fetch From Members"}
                   </button>
-                  {canSendEmail && (meeting.status === 'draft' || meeting.status === 'ongoing') && (
-                    <button
-                      onClick={() => {
-                        setEmailModalMode("notice");
-                        setIsSendAgendaModalOpen(true);
-                      }}
-                      className="bg-secondary text-secondary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
-                    >
-                      <Bell className="w-4 h-4" />
-                      Send Notice
-                    </button>
-                  )}
-                  {!readOnly && (
-                    <button
-                      onClick={() => {
-                        setEmailModalMode("custom");
-                        setIsSendAgendaModalOpen(true);
-                      }}
-                      className="bg-secondary text-secondary-foreground px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 hover:opacity-90 transition-opacity"
-                    >
-                      Send Agenda
-                    </button>
-                  )}
                   <button
                     onClick={() => {
                       const initiallySelected = allMembers
@@ -946,16 +919,6 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
           } : undefined}
         />
       )}
-
-            {/* Send Email Modal (Invitees tab) */}
-      <SendAgendaModal
-        isOpen={isSendAgendaModalOpen}
-        onClose={() => setIsSendAgendaModalOpen(false)}
-        meeting={meeting}
-        currentUserEmail={currentUserEmail}
-        mode={emailModalMode}
-        onSent={() => mutateInvitees()}
-      />
 
 
 

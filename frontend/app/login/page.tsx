@@ -23,11 +23,16 @@ export default function LoginPage() {
     try {
       const res = await api.post('/auth/signin', { username, password });
       const token = res.data?.data?.token;
+      const user = res.data?.data?.user;
       if (token) {
         setTabSessionToken(token);
       }
-      mutate('/auth/me');
-      const role = res.data?.data?.user?.role;
+      if (user) {
+        mutate('/auth/me', { success: true, data: user }, false);
+      } else {
+        await mutate('/auth/me');
+      }
+      const role = user?.role;
       router.push(role === 'viewer' ? '/viewer/meetings' : '/workspace/meetings');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed. Please check your credentials.');

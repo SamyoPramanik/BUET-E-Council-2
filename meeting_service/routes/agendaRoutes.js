@@ -6,11 +6,12 @@ const { auditLog } = require('../middlewares/auditMiddleware');
 const multer = require('multer');
 const { fileFilter: annexureFileFilter, MAX_FILE_SIZE_MB } = require('../config/annexureUpload');
 
-// Annexure uploads only: restricted to the formats/size configured in
-// config/annexureUpload.js.
+// Annexure uploads: multer handles streaming memory storage up to 10 GB max cap,
+// and agendaController.uploadAnnexure enforces per-meeting configured limits.
+const MAX_GLOBAL_LIMIT_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 },
+    limits: { fileSize: MAX_GLOBAL_LIMIT_BYTES },
     fileFilter: annexureFileFilter
 });
 

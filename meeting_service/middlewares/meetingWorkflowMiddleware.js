@@ -57,7 +57,7 @@ const loadMeeting = async (req) => {
                 agenda_handover_level, suppli_agenda_handover_level, resolution_handover_level, resolution_status_handover_level,
                 agenda_locked_level, suppli_agenda_locked_level, resolution_locked_level, resolution_status_locked_level, meeting_locked_level,
                 invitees_locked_level, presentees_locked_level, conclusion_locked_level,
-                is_completed, completed_at, completed_by,
+                is_completed, completed_at, completed_by, max_annexure_size_mb,
                 (SELECT value FROM system_settings WHERE key = 'min_completed_level') as min_completed_level,
                 (SELECT MAX(level) FROM roles) as max_role_level
          FROM meetings WHERE id = $1`,

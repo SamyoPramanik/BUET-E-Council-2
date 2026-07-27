@@ -163,6 +163,8 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 <div dangerouslySetInnerHTML={{ __html: agenda.content ? sanitizeHtml(agenda.content) : "<p class='italic opacity-50'>Empty agenda...</p>" }} />
               </div>
 
+              {/* Annexure List placed underneath the agenda content */}
+              <AnnexureList contentId={agenda.id} type="resolution" readOnly={!canEdit} />
             </div>
 
             {/* Bottom Section (The Resolution) */}
@@ -256,9 +258,6 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 )
               )}
             </div>
-
-            {/* Annexure List placed underneath the resolution content */}
-            <AnnexureList contentId={agenda.id} type="resolution" readOnly={!canEdit} />
 
             {/* Execution Status (Only for past meetings) */}
             {meeting.status === 'past' && agenda.resolution && (

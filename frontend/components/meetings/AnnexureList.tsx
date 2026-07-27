@@ -37,7 +37,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   const validAnnexures = (type === 'resolution'
     ? annexures.filter(an => !an.is_excluded_in_resolution)
     : annexures
-  ).sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
+  ).sort((a, b) => (a.annexure_serial || 0) - (b.annexure_serial || 0));
 
   const banglaAnnexureTags = validAnnexures.length > 0
     ? validAnnexures.map((an) => {
@@ -212,13 +212,15 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
 
     if (sourceIndex === -1 || targetIndex === -1) return;
 
+    const minGlobalSerial = Math.min(...validAnnexures.map(an => an.global_serial || an.annexure_serial || 1));
     const newOrder = [...validAnnexures];
     const [moved] = newOrder.splice(sourceIndex, 1);
     newOrder.splice(targetIndex, 0, moved);
 
     const updatedAnnexures = newOrder.map((an, idx) => ({
       ...an,
-      annexure_serial: idx + 1
+      annexure_serial: idx + 1,
+      global_serial: an.global_serial !== undefined && an.global_serial !== null ? (minGlobalSerial + idx) : (idx + 1)
     }));
 
     mutate({ ...response, data: updatedAnnexures }, false);
@@ -231,6 +233,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
         }))
       });
       toast.success("Annexures reordered");
+      mutate();
     } catch (err) {
       toast.error("Failed to reorder annexures");
       mutate();

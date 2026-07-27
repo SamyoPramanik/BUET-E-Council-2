@@ -497,16 +497,9 @@ const getAnnexures = async (req, res, next) => {
                       WHERE an.content_id = $1`;
         let params = [id];
 
-        if (type === 'resolution') {
-            // Return all annexures so resolution view can render excluded ones as blurred with a revoke option
-        } else if (type) {
-            query += ' AND an.annexure_type = $2';
-            params.push(type);
-        }
-
         query += ' ORDER BY an.annexure_serial ASC';
 
-        const result = await db.query(query, params);
+        const result = await db.query(query, [id]);
         
         // Generate presigned URLs for each file
         const annexures = await Promise.all(result.rows.map(async (annexure) => {

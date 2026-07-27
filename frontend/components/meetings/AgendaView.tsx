@@ -439,6 +439,16 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                   </span>
                 </div>
               ))}
+
+              {!isSuppliView && (
+                <div
+                  className="bg-muted/40 border border-border/80 p-3 rounded-md flex items-center gap-3 opacity-70 select-none cursor-not-allowed"
+                >
+                  <span className="font-semibold text-xs text-muted-foreground">
+                    বিবিধ : {bibidhaSerial}
+                  </span>
+                </div>
+              )}
             </div>
 
             <p className="text-xs text-muted-foreground mt-6 text-center italic">

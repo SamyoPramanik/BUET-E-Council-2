@@ -285,10 +285,7 @@ const updateMeeting = async (req, res, next) => {
         }
 
         const access = calculateMeetingAccess(meeting, req.user);
-        const isUpdatingDeputySettingsOnly = (is_suppli_visible_to_viewers !== undefined || max_annexure_size_mb !== undefined)
-            && !title && !meeting_title && !description && !conclusion && !meeting_date && !type && !status && !meeting_link && !agenda_pdf_link && !resolution_pdf_link && !transcript && !agenda_prefix;
-
-        if (!access.canEditMeeting && !(isUpdatingDeputySettingsOnly && isUserDeputyOrAbove)) {
+        if (!access.canEditMeeting) {
             return next(new CustomError('You do not have permission to edit Meeting Info.', 403));
         }
 

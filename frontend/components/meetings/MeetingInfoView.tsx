@@ -379,20 +379,17 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                   <FileText className="w-4 h-4 text-primary" /> Annexure Max Size Limit
                   <span className="text-[11px] font-normal text-muted-foreground">(Deputy Registrar & Above)</span>
                 </label>
-                <CustomSelect
-                  options={annexureSizeOptions}
-                  value={String(formData.max_annexure_size_mb)}
-                  onChange={async (val) => {
-                    setFormData(prev => ({ ...prev, max_annexure_size_mb: val }));
-                    try {
-                      await api.put(`/meetings/${meeting.id}`, { max_annexure_size_mb: val });
-                      mutate();
-                      toast.success("Max annexure size updated successfully.");
-                    } catch (err: any) {
-                      toast.error(err.response?.data?.message || "Failed to update max annexure size");
-                    }
-                  }}
-                />
+                {readOnly ? (
+                  <div className="w-full px-3 py-2 bg-input/20 border border-input rounded-md text-sm opacity-50 cursor-not-allowed">
+                    {annexureSizeOptions.find(o => o.value === String(formData.max_annexure_size_mb))?.label || `${formData.max_annexure_size_mb} MB`}
+                  </div>
+                ) : (
+                  <CustomSelect
+                    options={annexureSizeOptions}
+                    value={String(formData.max_annexure_size_mb)}
+                    onChange={(val) => setFormData({ ...formData, max_annexure_size_mb: val })}
+                  />
+                )}
                 <p className="text-xs text-muted-foreground">
                   Sets the maximum allowed file size for annexures uploaded to this meeting (from 2 MB up to 10 GB).
                 </p>
@@ -409,18 +406,9 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                   </span>
                   <input
                     type="checkbox"
+                    disabled={readOnly}
                     checked={!!formData.is_suppli_visible_to_viewers}
-                    onChange={async (e) => {
-                      const newVal = e.target.checked;
-                      setFormData(prev => ({ ...prev, is_suppli_visible_to_viewers: newVal }));
-                      try {
-                        await api.put(`/meetings/${meeting.id}`, { is_suppli_visible_to_viewers: newVal });
-                        mutate();
-                        toast.success("Supplementary agenda viewer visibility updated.");
-                      } catch (err: any) {
-                        toast.error(err.response?.data?.message || "Failed to update visibility");
-                      }
-                    }}
+                    onChange={(e) => setFormData({ ...formData, is_suppli_visible_to_viewers: e.target.checked })}
                     className="w-4 h-4 text-primary rounded border-input focus:ring-primary accent-primary cursor-pointer disabled:opacity-50"
                   />
                 </label>

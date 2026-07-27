@@ -122,7 +122,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v19';
+const PDF_TEMPLATE_VERSION = 'v20';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -473,8 +473,25 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 </div>
             ` : ''}
 
-            ${(cacheVariant === 'suppli-agenda' ? agendas.filter(ag => ag.is_suppli) : (!isResolution ? agendas.filter(ag => !ag.is_suppli) : agendas)).map(ag => {
-                const mainAgendaCount = agendas.filter(a => !a.is_suppli).length;
+            ${(cacheVariant === 'suppli-agenda'
+                ? agendas.filter(ag => ag.is_suppli)
+                : !isResolution
+                    ? agendas.filter(ag => !ag.is_suppli)
+                    : agendas.filter(ag => {
+                        // In resolution PDF: exclude Bibidha items entirely
+                        if (!ag.is_suppli) {
+                            const clean = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+                            if (clean.startsWith('বিবিধ')) return false;
+                        }
+                        return true;
+                    })
+            ).map(ag => {
+                // Exclude Bibidha from count so suppli serials sync with visual বিবিধ number
+                const mainAgendaCount = agendas.filter(a => {
+                    if (a.is_suppli) return false;
+                    const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+                    return !clean.startsWith('বিবিধ');
+                }).length;
                 const agSerialStr = ag.is_suppli
                     ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), 1)
                     : toBanglaDigits(ag.agenda_serial, 1);

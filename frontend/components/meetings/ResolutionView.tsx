@@ -24,14 +24,21 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
   const { data: response, mutate } = useSWR(`/agendas?meeting_id=${meeting.id}`, fetcher, { fallbackData: { data: [] } });
 
   // Sort main agendas first, suppli agendas last, then by serial
-  const agendas = [...(response?.data || [])].sort((a: any, b: any) => {
+  const allAgendas = [...(response?.data || [])].sort((a: any, b: any) => {
     if (a.is_suppli === b.is_suppli) {
       return (a.agenda_serial || 0) - (b.agenda_serial || 0);
     }
     return a.is_suppli ? 1 : -1;
   });
 
-  const mainAgendaCount = (agendas || []).filter((a: any) => !a.is_suppli).length;
+  // Exclude Bibidha items from resolution view entirely
+  const agendas = allAgendas.filter((a: any) => {
+    const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+    return !(!a.is_suppli && clean.startsWith('বিবিধ'));
+  });
+
+  // Exclude Bibidha from count so suppli numbering starts at the same serial as বিবিধ
+  const mainAgendaCount = agendas.filter((a: any) => !a.is_suppli).length;
 
   const { data: tagsResponse, mutate: mutateTags } = useSWR('/tags', fetcher, { fallbackData: { data: [] } });
   const allTags = tagsResponse?.data || [];

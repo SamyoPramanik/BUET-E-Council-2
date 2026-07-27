@@ -29,7 +29,14 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     isSuppliView ? `/agendas?meeting_id=${meeting.id}&is_suppli=false` : null,
     fetcher
   );
-  const mainAgendaCount = isSuppliView ? (mainAgendasRes?.data || []).length : 0;
+  // Exclude any stored Bibidha items from the count so suppli agendas start at the same
+  // serial as the visual বিবিধ placeholder (mainCount + 1)
+  const mainAgendaCount = isSuppliView
+    ? (mainAgendasRes?.data || []).filter((a: any) => {
+        const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+        return !clean.startsWith('বিবিধ');
+      }).length
+    : 0;
 
   const regularAgendas = isSuppliView
     ? agendas

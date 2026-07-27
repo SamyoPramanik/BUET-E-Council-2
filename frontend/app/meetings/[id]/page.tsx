@@ -327,7 +327,10 @@ export default function PublicMeetingView() {
               <section>
                 <div className="space-y-6">
                   {(() => {
-                    const mainAgendaCount = (agendas || []).filter((a: any) => !a.is_suppli).length;
+                    const mainAgendaCount = (agendas || []).filter((a: any) => {
+                      const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+                      return !a.is_suppli && !clean.startsWith('বিবিধ');
+                    }).length;
                     return agendas.map((agenda: any) => (
                       <AgendaItem key={agenda.id} agenda={agenda} agendaPrefix={meeting.agenda_prefix} meetingStatus={meeting.status} highlightId={highlightId} highlightType={highlightType} mainAgendaCount={mainAgendaCount} />
                     ));

@@ -88,19 +88,7 @@ const saveAnnexureFile = async (meetingId, annexureSerial, originalName, fileBuf
  */
 const removeAnnexureFile = async (meetingId, annexureSerial) => {
     try {
-        const res = await db.query('SELECT * FROM meetings WHERE id = $1', [meetingId]);
-        if (res.rows.length === 0) return;
-        const meeting = res.rows[0];
-
-        const dirPath = getMeetingDirPath(meeting);
-        if (fs.existsSync(dirPath)) {
-            const files = fs.readdirSync(dirPath);
-            const prefix = `annexure-${annexureSerial}.`;
-            const target = files.find(f => f.startsWith(prefix) || f === `annexure-${annexureSerial}`);
-            if (target) {
-                fs.unlinkSync(path.join(dirPath, target));
-            }
-        }
+        await syncMeetingAnnexures(meetingId);
     } catch (err) {
         console.error('Failed to remove annexure file from filesystem:', err);
     }
@@ -185,9 +173,10 @@ const syncMeetingAnnexures = async (meetingId) => {
                       FROM annexures prev_an
                       JOIN agenda prev_a ON prev_a.id = prev_an.content_id
                       WHERE prev_a.meeting_id = a.meeting_id
+                        AND prev_a.is_suppli = a.is_suppli
                         AND (
-                          (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
-                          (a.is_suppli, a.agenda_serial, an.annexure_serial)
+                          (prev_a.agenda_serial, prev_an.annexure_serial) <
+                          (a.agenda_serial, an.annexure_serial)
                         )
                     ) + 1 AS global_serial
              FROM annexures an
@@ -198,29 +187,62 @@ const syncMeetingAnnexures = async (meetingId) => {
         );
 
         const storageService = require('./storageService');
+        const AdmZip = require('adm-zip');
 
-        // Delete existing annexure-* files in directory to purge stale numbers
+        // Delete existing annexure-* and suppli-annexure-* files & directories in meeting folder to purge stale numbers
         if (fs.existsSync(dirPath)) {
             const files = fs.readdirSync(dirPath);
             for (const f of files) {
-                if (f.startsWith('annexure-')) {
-                    try { fs.unlinkSync(path.join(dirPath, f)); } catch (e) {}
+                if (f.startsWith('annexure-') || f.startsWith('suppli-annexure-')) {
+                    try {
+                        const fullPath = path.join(dirPath, f);
+                        if (fs.statSync(fullPath).isDirectory()) {
+                            fs.rmSync(fullPath, { recursive: true, force: true });
+                        } else {
+                            fs.unlinkSync(fullPath);
+                        }
+                    } catch (e) {}
                 }
             }
         }
 
-        // Write annexure files with their updated global serial number
+        // Write annexure files and extract zip folders with their updated global serial number
         for (const an of annexRes.rows) {
             const serial = an.global_serial || an.annexure_serial || 1;
+            const isSuppli = !!an.is_suppli;
+            const prefix = isSuppli ? 'suppli-annexure' : 'annexure';
             const ext = path.extname(an.file_name || '') || '.pdf';
-            const targetPath = path.join(dirPath, `annexure-${serial}${ext}`);
+            let cleanBaseName = path.basename(an.file_name || '', ext).replace(/[\/\\?%*:|"<>]/g, '_').trim();
+            if (cleanBaseName.toLowerCase().endsWith('.zip')) {
+                cleanBaseName = cleanBaseName.slice(0, -4);
+            }
 
             if (an.file_path) {
                 try {
                     const buffer = await storageService.getFileBuffer(an.file_path);
-                    fs.writeFileSync(targetPath, buffer);
+                    
+                    if (ext.toLowerCase() === '.zip') {
+                        // 1. Write the zip archive file itself
+                        const zipFileName = `${prefix}-${serial}-${cleanBaseName || 'folder'}.zip`;
+                        fs.writeFileSync(path.join(dirPath, zipFileName), buffer);
+
+                        // 2. Extract into an actual directory in the meeting folder on disk
+                        const folderName = `${prefix}-${serial}-${cleanBaseName || 'folder'}`;
+                        const folderPath = path.join(dirPath, folderName);
+
+                        if (fs.existsSync(folderPath)) {
+                            fs.rmSync(folderPath, { recursive: true, force: true });
+                        }
+
+                        const zip = new AdmZip(buffer);
+                        zip.extractAllTo(folderPath, true);
+                    } else {
+                        // Regular single file annexure
+                        const targetPath = path.join(dirPath, `${prefix}-${serial}${ext}`);
+                        fs.writeFileSync(targetPath, buffer);
+                    }
                 } catch (e) {
-                    console.error(`Failed to fetch buffer for annexure ${an.id}:`, e);
+                    console.error(`Failed to fetch/save buffer for annexure ${an.id}:`, e);
                 }
             }
         }

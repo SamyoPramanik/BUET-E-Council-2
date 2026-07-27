@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Edit3, Plus, FileText, GripVertical, Trash2 } from "lucide-react";
+import { Edit3, Plus, FileText, GripVertical, Trash2, FilePlus } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import AnnexureList from "./AnnexureList";
 import RevisionHistory from "./RevisionHistory";
@@ -45,6 +45,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
   // In-place creation state
   const [createAtIndex, setCreateAtIndex] = useState<number | null>(null);
+  const [createIsSuppli, setCreateIsSuppli] = useState<boolean>(isSuppliView);
   const [newContent, setNewContent] = useState(isSuppliView ? "<p>.</p>" : "");
   const [newTagIds, setNewTagIds] = useState<string[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -123,6 +124,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
   const handleStartCreate = (atIndex: number) => {
     setCreateAtIndex(atIndex);
+    setCreateIsSuppli(isSuppliView);
     setNewContent(isSuppliView ? "<p>.</p>" : "");
     setNewTagIds([]);
     setEditingId(null);
@@ -138,14 +140,14 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
         meeting_id: meeting.id,
         agenda_serial: targetSerial,
         content: newContent,
-        is_suppli: isSuppliView,
+        is_suppli: createIsSuppli,
         tag_ids: newTagIds,
-        meeting_criteria: (!isSuppliView && isEmergencyMeeting) ? 'emergency' : undefined
+        meeting_criteria: (!createIsSuppli && isEmergencyMeeting) ? 'emergency' : undefined
       });
       mutate();
       setCreateAtIndex(null);
       setNewTagIds([]);
-      toast.success("Agendum created successfully");
+      toast.success(createIsSuppli ? "Supplementary agendum created successfully" : "Agendum created successfully");
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to create agendum");
     } finally {
@@ -177,7 +179,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
       <div className="p-6">
         <div className="flex justify-between items-start mb-4">
           <h3 className="font-semibold text-lg text-primary">
-            New {title}
+            New {isSuppliView ? 'Supplementary Agendum' : title}
           </h3>
         </div>
         <div className="border border-primary/50 rounded-md overflow-hidden ring-2 ring-primary/20">
@@ -199,7 +201,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             <div className="flex gap-3 shrink-0">
               <button onClick={() => setCreateAtIndex(null)} className="px-4 py-1.5 text-sm font-medium text-muted-foreground hover:bg-background rounded-md transition-colors">Cancel</button>
               <button onClick={handleSaveNew} disabled={isSaving || !newContent} className="px-4 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-md disabled:opacity-50 transition-opacity">
-                {isSaving ? "Saving..." : "Create Agendum"}
+                {isSaving ? "Saving..." : (createIsSuppli ? "Create Supplementary Agendum" : "Create Agendum")}
               </button>
             </div>
           </div>
@@ -226,10 +228,10 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are currently no agendas for this meeting. Create a new agenda to get started.</p>
             </div>
             {!readOnly && (
-              <div className="flex gap-4 mt-4">
+              <div className="flex flex-wrap gap-3 mt-4 justify-center">
                 <button
                   onClick={() => handleStartCreate(0)}
-                  className="bg-primary text-primary-foreground py-2 px-6 rounded-md font-medium shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-2"
+                  className="bg-primary text-primary-foreground py-2 px-5 rounded-md font-medium shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-2 text-sm"
                 >
                   <Plus className="w-4 h-4" /> Create New Agendum
                 </button>
@@ -238,7 +240,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                     handleStartCreate(0);
                     setIsDrawerOpen(true);
                   }}
-                  className="bg-accent text-accent-foreground border border-border py-2 px-6 rounded-md font-medium shadow-sm hover:bg-accent/80 transition-colors flex items-center gap-2"
+                  className="bg-accent text-accent-foreground border border-border py-2 px-5 rounded-md font-medium shadow-sm hover:bg-accent/80 transition-colors flex items-center gap-2 text-sm"
                 >
                   <FileText className="w-4 h-4" /> Create from Template
                 </button>
@@ -250,85 +252,101 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             {/* If creating at index 0 (top of empty or top of list) */}
             {createAtIndex === 0 && renderCreateForm()}
 
-            {agendas.map((agenda: any, index: number) => (
-              <div key={agenda.id}>
-                {/* Agenda Card */}
-                <div className="bg-card border border-border p-6 rounded-lg relative group shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      {/* Bengali proposal heading: "প্রস্তাবনা নং {prefix}{01}" */}
-                      <h3 className="font-semibold text-lg text-primary">
-                        প্রস্তাবনা নং {(meeting.agenda_prefix || '') + (isSuppliView ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(agenda.agenda_serial || index + 1, 1)}` : toBanglaDigits(agenda.agenda_serial || index + 1))}
-                      </h3>
-                    </div>
-                    <div className="flex gap-2">
-                      {!readOnly && (
-                        <>
-                          <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} canRestore={canEdit} />
-                          <button
-                            onClick={() => handleEditClick(agenda)}
-                            className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
-                            title="Edit Agendum"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(agenda.id)}
-                            className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
-                            title="Delete Agendum"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
+            {agendas.map((agenda: any, index: number) => {
+              const cleanText = agenda.content ? agenda.content.replace(/<[^>]*>/g, '').trim() : '';
+              const isBibidha = !isSuppliView && cleanText.startsWith('বিবিধ');
+              const bibidhaSerial = (meeting.agenda_prefix || '') + toBanglaDigits(agenda.agenda_serial || index + 1, 1);
+              const isOnlyBibidhaTitle = isBibidha && /^বিবিধ\s*:\s*[\d০-৯]+$/.test(cleanText);
 
-                  {agenda.tags && agenda.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-4 -mt-2">
-                      {agenda.tags.map((tag: any) => (
-                        <span key={tag.id} className="bg-muted text-muted-foreground text-xs font-medium px-2 py-0.5 rounded-full">
-                          {tag.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {editingId === agenda.id ? (
-                    <div className="border border-primary/50 rounded-md overflow-hidden ring-2 ring-primary/20">
-                      <RichTextEditor
-                        content={editContent}
-                        onChange={setEditContent}
-                        className="p-4 min-h-[200px]"
-                      />
-                      <div className="bg-muted p-2 px-3 flex justify-between items-center gap-4 border-t border-border">
-                        <div className="flex-1 min-w-0">
-                          <TagChipSelector
-                            options={allTags}
-                            value={editTagIds}
-                            onChange={setEditTagIds}
-                            onAddNew={(name) => handleAddNewTag(name, "edit")}
-                            placeholder="Add tag"
-                          />
-                        </div>
-                        <div className="flex gap-2 shrink-0">
-                          <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
-                          <button onClick={handleSave} disabled={isSaving} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md disabled:opacity-50">
-                            {isSaving ? "Saving..." : "Save"}
-                          </button>
-                        </div>
+              return (
+                <div key={agenda.id}>
+                  {/* Agenda Card */}
+                  <div className={`bg-card border ${isBibidha ? 'border-border/80 bg-muted/20' : 'border-border'} p-6 rounded-lg relative group shadow-sm hover:shadow-md transition-shadow`}>
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        {/* Bengali heading: "বিবিধ : ০২" for Bibidha, "প্রস্তাবনা নং {prefix}{01}" for others */}
+                        <h3 className="font-semibold text-lg text-primary">
+                          {isBibidha
+                            ? `বিবিধ : ${bibidhaSerial}`
+                            : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), 1) : toBanglaDigits(agenda.agenda_serial || index + 1, 1))}`}
+                        </h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!readOnly && (
+                          <>
+                            {!isBibidha && (
+                              <>
+                                <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} canRestore={canEdit} />
+                                <button
+                                  onClick={() => handleEditClick(agenda)}
+                                  className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
+                                  title="Edit Agendum"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => handleDelete(agenda.id)}
+                              className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
+                              title="Delete Agendum"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
-                  ) : (
-                    <div
-                      className="prose prose-sm dark:prose-invert max-w-none text-foreground"
-                      dangerouslySetInnerHTML={{ __html: agenda.content ? sanitizeHtml(agenda.content) : "<p class='text-muted-foreground italic'>Empty content...</p>" }}
-                    />
-                  )}
 
-                  {/* Annexure List placed underneath the agenda content */}
-                  <AnnexureList contentId={agenda.id} type="agenda" readOnly={!canManageAnnexures} />
-                </div>
+                    {agenda.tags && agenda.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-4 -mt-2">
+                        {agenda.tags.map((tag: any) => (
+                          <span key={tag.id} className="bg-muted text-muted-foreground text-xs font-medium px-2 py-0.5 rounded-full">
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {editingId === agenda.id && !isBibidha ? (
+                      <div className="border border-primary/50 rounded-md overflow-hidden ring-2 ring-primary/20">
+                        <RichTextEditor
+                          content={editContent}
+                          onChange={setEditContent}
+                          className="p-4 min-h-[200px]"
+                        />
+                        <div className="bg-muted p-2 px-3 flex justify-between items-center gap-4 border-t border-border">
+                          <div className="flex-1 min-w-0">
+                            <TagChipSelector
+                              options={allTags}
+                              value={editTagIds}
+                              onChange={setEditTagIds}
+                              onAddNew={(name) => handleAddNewTag(name, "edit")}
+                              placeholder="Add tag"
+                            />
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
+                            <button onClick={handleSave} disabled={isSaving} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md disabled:opacity-50">
+                              {isSaving ? "Saving..." : "Save"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      !isOnlyBibidhaTitle && (
+                        <div
+                          className="prose prose-sm dark:prose-invert max-w-none text-foreground"
+                          dangerouslySetInnerHTML={{ __html: agenda.content ? sanitizeHtml(agenda.content) : "<p class='text-muted-foreground italic'>Empty content...</p>" }}
+                        />
+                      )
+                    )}
+
+                    {/* Annexure List placed underneath the agenda content (hidden for Bibidha) */}
+                    {!isBibidha && (
+                      <AnnexureList contentId={agenda.id} type="agenda" readOnly={!canManageAnnexures} />
+                    )}
+                  </div>
 
                 {/* In-place creation form right after this item if active */}
                 {createAtIndex === index + 1 && renderCreateForm()}
@@ -339,10 +357,10 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                     <div className="absolute inset-0 flex items-center">
                       <div className="w-full border-t border-dashed border-secondary"></div>
                     </div>
-                    <div className="relative flex gap-3">
+                    <div className="relative flex gap-2">
                       <button
                         onClick={() => handleStartCreate(index + 1)}
-                        className="bg-secondary text-secondary-foreground border border-secondary/50 shadow-sm py-1 px-3.5 text-xs font-semibold rounded-full flex items-center gap-1.5 hover:bg-secondary/80 hover:shadow-md transition-all hover:scale-105"
+                        className="bg-secondary text-secondary-foreground border border-secondary/50 shadow-sm py-1 px-3 text-xs font-semibold rounded-full flex items-center gap-1.5 hover:bg-secondary/80 hover:shadow-md transition-all hover:scale-105"
                       >
                         <Plus className="w-3.5 h-3.5" /> Create Agendum Here
                       </button>
@@ -351,7 +369,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                           handleStartCreate(index + 1);
                           setIsDrawerOpen(true);
                         }}
-                        className="bg-secondary text-secondary-foreground border border-secondary/50 shadow-sm py-1 px-3.5 text-xs font-semibold rounded-full flex items-center gap-1.5 hover:bg-secondary/80 hover:shadow-md transition-all hover:scale-105"
+                        className="bg-secondary text-secondary-foreground border border-secondary/50 shadow-sm py-1 px-3 text-xs font-semibold rounded-full flex items-center gap-1.5 hover:bg-secondary/80 hover:shadow-md transition-all hover:scale-105"
                       >
                         <FileText className="w-3.5 h-3.5" /> From Template
                       </button>
@@ -365,7 +383,8 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                   </div>
                 )}
               </div>
-            ))}
+            );
+          })}
           </div>
         )}
       </div>
@@ -386,7 +405,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 >
                   <GripVertical className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                   <span className="font-medium text-xs">
-                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + (isSuppliView ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(agenda.agenda_serial || index + 1, 1)}` : toBanglaDigits(agenda.agenda_serial || index + 1))}
+                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), 1) : toBanglaDigits(agenda.agenda_serial || index + 1))}
                   </span>
                   <span className="text-xs text-muted-foreground truncate flex-1 opacity-60">
                     {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 38) : '...'}...

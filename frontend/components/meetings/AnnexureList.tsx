@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import useSWR from "swr";
 import JSZip from "jszip";
 import api, { fetcher } from "../../lib/api";
@@ -39,7 +39,15 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   ).sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
 
   const banglaAnnexureTags = validAnnexures.length > 0
-    ? validAnnexures.map((an, idx) => `পরিশিষ্ট-${toBanglaDigits(type === 'resolution' ? (idx + 1) : (an.global_serial || an.annexure_serial))}`).join(', ')
+    ? validAnnexures.map((an) => {
+      if (type === 'resolution') {
+        const sameTypeValid = validAnnexures.filter(x => !!x.is_suppli === !!an.is_suppli);
+        const activeIdx = sameTypeValid.findIndex(x => x.id === an.id);
+        const num = activeIdx >= 0 ? (activeIdx + 1) : (an.global_serial || an.annexure_serial);
+        return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(num)}`;
+      }
+      return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(an.global_serial || an.annexure_serial)}`;
+    }).join(', ')
     : null;
 
   const getDisplayName = (annexure: Annexure) => {
@@ -53,15 +61,17 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
       if (annexure.is_excluded_in_resolution) {
         return name;
       }
-      const activeIdx = validAnnexures.findIndex(an => an.id === annexure.id);
+      const sameTypeValid = validAnnexures.filter(an => !!an.is_suppli === !!annexure.is_suppli);
+      const activeIdx = sameTypeValid.findIndex(an => an.id === annexure.id);
       const num = activeIdx >= 0 ? (activeIdx + 1) : (annexure.global_serial || annexure.annexure_serial);
-      return `Annexure-${num}. ${name}${isZip ? ' (Folder)' : ''}`;
+      const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;
+      return `${prefix}. ${name}${isZip ? ' (Folder)' : ''}`;
     }
     const num = annexure.global_serial || annexure.annexure_serial;
     const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;
     return `${prefix}. ${name}${isZip ? ' (Folder)' : ''}`;
   };
-  
+
   const [isUploading, setIsUploading] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [activeFolderModal, setActiveFolderModal] = useState<{ zipUrl: string; name: string } | null>(null);
@@ -69,6 +79,14 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const { confirm, ConfirmModal } = useConfirm();
+
+  // webkitdirectory is non-standard; React strips unknown boolean attrs so we set it imperatively.
+  useEffect(() => {
+    if (folderInputRef.current) {
+      folderInputRef.current.setAttribute('webkitdirectory', '');
+      folderInputRef.current.setAttribute('directory', '');
+    }
+  }, []);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -86,9 +104,8 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
     formData.append('annexure_type', type === 'agenda' ? 'agendaItem' : type);
 
     try {
-      await api.post(`/agendas/${contentId}/annexures`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      // Do NOT set Content-Type manually — axios must auto-set it with the multipart boundary.
+      await api.post(`/agendas/${contentId}/annexures`, formData);
       toast.success("Annexure uploaded successfully");
       mutate();
     } catch (err: any) {
@@ -101,7 +118,10 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
 
   const handleFolderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0) {
+      toast.error("No files found in the selected folder. Please select a non-empty folder.");
+      return;
+    }
 
     const validation = validateFilesList(files);
     if (!validation.valid && validation.offendingFile) {
@@ -118,22 +138,25 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const relativePath = (file as any).webkitRelativePath || file.name;
-        if (i === 0 && relativePath.includes('/')) {
-          rootFolderName = relativePath.split('/')[0];
+        if (relativePath && relativePath.includes('/')) {
+          const folderPart = relativePath.split('/')[0];
+          if (folderPart) rootFolderName = folderPart;
         }
         zip.file(relativePath, file);
       }
 
+      // JSZip returns a Blob; wrap it in a File so the browser sends the correct
+      // filename and MIME type to multer (a plain Blob gets named 'blob' otherwise).
       const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipFile = new window.File([zipBlob], `${rootFolderName}.zip`, { type: 'application/zip' });
 
       const formData = new FormData();
-      formData.append('file', zipBlob, `${rootFolderName}.zip`);
+      formData.append('file', zipFile);
       formData.append('annexure_type', type === 'agenda' ? 'agendaItem' : type);
 
-      await api.post(`/agendas/${contentId}/annexures`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      toast.success("Folder uploaded successfully as ZIP annexure");
+      // Do NOT set Content-Type manually — axios must auto-set it with the multipart boundary.
+      await api.post(`/agendas/${contentId}/annexures`, formData);
+      toast.success(`Folder '${rootFolderName}' uploaded successfully`);
       mutate();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to upload folder annexure");
@@ -226,13 +249,11 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
         className="hidden"
       />
 
+      {/* webkitdirectory is set imperatively via useEffect above */}
       <input
         type="file"
         ref={folderInputRef}
         onChange={handleFolderUpload}
-        // @ts-ignore - webkitdirectory is supported in modern browsers
-        webkitdirectory="true"
-        directory="true"
         multiple
         className="hidden"
       />
@@ -248,7 +269,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
             )}
           </h4>
         </div>
-        
+
         <div className="flex items-center gap-2">
           {banglaAnnexureTags && (
             <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
@@ -258,7 +279,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
 
           {!readOnly && (
             <div className="flex items-center gap-1.5">
-              <button 
+              <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
                 className="text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
@@ -268,7 +289,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                 Upload File
               </button>
 
-              <button 
+              <button
                 onClick={() => folderInputRef.current?.click()}
                 disabled={isUploading}
                 className="text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
@@ -295,25 +316,24 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
             const isZip = ['zip', 'rar', '7z'].includes(ext);
 
             return (
-              <div 
+              <div
                 key={annexure.id}
                 draggable={!readOnly && !isResolutionView}
                 onDragStart={(e) => !readOnly && !isResolutionView && handleDragStart(e, annexure.id)}
                 onDragEnd={(!readOnly && !isResolutionView) ? handleDragEnd : undefined}
                 onDragOver={(!readOnly && !isResolutionView) ? handleDragOver : undefined}
                 onDrop={(e) => !readOnly && !isResolutionView && handleDrop(e, annexure.id)}
-                className={`relative flex items-center gap-2 p-1.5 px-2.5 rounded group transition-all overflow-hidden ${
-                  isExcluded 
-                    ? 'bg-red-500/10 border border-red-500/30 backdrop-blur-[1px] opacity-60 hover:opacity-85' 
+                className={`relative flex items-center gap-2 p-1.5 px-2.5 rounded group transition-all overflow-hidden ${isExcluded
+                    ? 'bg-red-500/10 border border-red-500/30 backdrop-blur-[1px] opacity-60 hover:opacity-85'
                     : 'bg-card/40 border border-border/40 hover:border-primary/30'
-                } ${(!readOnly && !isResolutionView) ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                  } ${(!readOnly && !isResolutionView) ? 'cursor-grab active:cursor-grabbing' : ''}`}
               >
                 {!readOnly && !isResolutionView && (
                   <div className="text-muted-foreground/40 group-hover:text-muted-foreground cursor-grab">
                     <GripVertical className="w-3.5 h-3.5" />
                   </div>
                 )}
-                
+
                 <div className={`relative p-1 rounded ${isExcluded ? 'bg-red-500/20 text-red-500' : isZip ? 'bg-amber-500/20 text-amber-600' : 'bg-muted text-muted-foreground'}`}>
                   {isZip ? <Folder className="w-3.5 h-3.5" /> : <File className="w-3.5 h-3.5" />}
                 </div>
@@ -324,13 +344,12 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                   )}
                   {annexure.url ? (
                     <div className="flex items-center gap-1.5">
-                      <a 
-                        href={annexure.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className={`text-xs font-normal hover:underline truncate block ${
-                          isExcluded ? 'text-red-400 font-medium' : 'text-foreground/80 hover:text-primary'
-                        }`}
+                      <a
+                        href={annexure.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`text-xs font-normal hover:underline truncate block ${isExcluded ? 'text-red-400 font-medium' : 'text-foreground/80 hover:text-primary'
+                          }`}
                       >
                         {getDisplayName(annexure)} {isExcluded ? ' (Excluded from Resolution)' : ''}
                       </a>
@@ -373,9 +392,9 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                   )}
 
                   {annexure.url && (
-                    <a 
-                      href={annexure.url} 
-                      target="_blank" 
+                    <a
+                      href={annexure.url}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="p-1.5 text-muted-foreground hover:text-primary bg-muted rounded-md transition-colors"
                       title={isZip ? "Download Folder ZIP" : "View File"}
@@ -383,7 +402,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
                   )}
-                  
+
                   {!readOnly && (
                     isResolutionView ? (
                       isExcluded ? (

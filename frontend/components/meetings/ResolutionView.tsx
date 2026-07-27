@@ -139,7 +139,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
       ) : (
         agendas.map((agenda: any, index: number) => {
           const displaySerial = agenda.is_suppli
-            ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(agenda.agenda_serial || index + 1, 1)}`
+            ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), 1)
             : toBanglaDigits(agenda.agenda_serial || index + 1);
 
           return (

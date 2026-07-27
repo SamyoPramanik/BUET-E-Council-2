@@ -21,7 +21,17 @@ const EXECUTABLE_BLACKLIST = [
 const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_ANNEXURE_SIZE_MB || '50', 10);
 
 const fileFilter = (req, file, cb) => {
-    const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+    let ext = (file.originalname.split('.').pop() || '').toLowerCase();
+
+    // When the browser sends a Blob (not a File object), some environments name
+    // it 'blob' with no real extension. Fall back to MIME type for archives.
+    if (!ext || ext === 'blob' || file.originalname === 'blob') {
+        const mime = (file.mimetype || '').toLowerCase();
+        if (mime === 'application/zip' || mime === 'application/x-zip-compressed') ext = 'zip';
+        else if (mime === 'application/x-rar-compressed') ext = 'rar';
+        else if (mime === 'application/x-7z-compressed') ext = '7z';
+        else if (mime === 'application/pdf') ext = 'pdf';
+    }
 
     if (EXECUTABLE_BLACKLIST.includes(ext)) {
         cb(new CustomError(`Harmful file type uploaded in annexure ('${file.originalname}'). Executable files and scripts are strictly prohibited.`, 400));

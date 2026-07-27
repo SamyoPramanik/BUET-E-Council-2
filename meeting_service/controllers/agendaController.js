@@ -169,6 +169,10 @@ const createAgendam = async (req, res, next) => {
         );
         const agendam = result.rows[0];
 
+        if (!targetSuppli) {
+            await ensureBibidhaAgenda(meeting_id);
+        }
+
         await setAgendaTags(agendam.id, tag_ids);
 
         res.status(201).json({ success: true, message: 'Agendam created', data: agendam });
@@ -209,6 +213,10 @@ const updateAgendam = async (req, res, next) => {
             return next(new CustomError('Agendam not found', 404));
         }
         const agendam = result.rows[0];
+
+        if (!agendam.is_suppli) {
+            await ensureBibidhaAgenda(agendam.meeting_id);
+        }
 
         await setAgendaTags(id, tag_ids);
 
@@ -338,6 +346,8 @@ const deleteAgendam = async (req, res, next) => {
         for (let i = 0; i < suppliAgendas.rows.length; i++) {
             await db.query('UPDATE agenda SET agenda_serial = $1 WHERE id = $2', [nextSerial + i, suppliAgendas.rows[i].id]);
         }
+
+        await ensureBibidhaAgenda(meeting_id);
 
         await db.query('COMMIT');
 
@@ -536,9 +546,10 @@ const getAnnexures = async (req, res, next) => {
                                FROM annexures prev_an
                                JOIN agenda prev_a ON prev_a.id = prev_an.content_id
                                WHERE prev_a.meeting_id = a.meeting_id
+                                 AND prev_a.is_suppli = a.is_suppli
                                  AND (
-                                   (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
-                                   (a.is_suppli, a.agenda_serial, an.annexure_serial)
+                                   (prev_a.agenda_serial, prev_an.annexure_serial) <
+                                   (a.agenda_serial, an.annexure_serial)
                                  )
                              ) + 1 AS global_serial
                       FROM annexures an
@@ -601,7 +612,18 @@ const uploadAnnexure = async (req, res, next) => {
             return next(new CustomError(`Failed: Annexure size limit (${formattedLimit}) exceeded`, 400));
         }
 
-        const ext = file.originalname.split('.').pop();
+        // Derive extension — fall back to MIME type if originalname has no real ext (e.g. 'blob')
+        let ext = (file.originalname.split('.').pop() || '').toLowerCase();
+        if (!ext || ext === 'blob' || file.originalname === 'blob') {
+            const mime = (file.mimetype || '').toLowerCase();
+            if (mime === 'application/zip' || mime === 'application/x-zip-compressed') ext = 'zip';
+            else if (mime === 'application/pdf') ext = 'pdf';
+            else ext = 'bin';
+        }
+        // Use a meaningful stored filename: prefer originalname unless it's the raw 'blob' default
+        const storedName = (file.originalname && file.originalname !== 'blob')
+            ? file.originalname
+            : `upload.${ext}`;
         const fileKey = `annexures/${id}/${crypto.randomBytes(8).toString('hex')}.${ext}`;
 
         await storageService.uploadFile(file.buffer, fileKey, file.mimetype);
@@ -616,7 +638,7 @@ const uploadAnnexure = async (req, res, next) => {
 
         const result = await db.query(
             'INSERT INTO annexures (content_id, annexure_type, file_name, file_path, summary, annexure_serial, uploaded_by, is_excluded_in_resolution) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-            [id, annexure_type, file.originalname, fileKey, summary || '', nextSerial, req.user?.id || null, isExcludedDefault]
+            [id, annexure_type, storedName, fileKey, summary || '', nextSerial, req.user?.id || null, isExcludedDefault]
         );
 
         // Sync annexure to filesystem

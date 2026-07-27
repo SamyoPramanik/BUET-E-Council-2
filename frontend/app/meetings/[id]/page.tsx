@@ -28,23 +28,31 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const cleanContent = agenda.content ? agenda.content.replace(/<[^>]*>/g, '').trim() : '';
+  const isBibidha = !agenda.is_suppli && cleanContent.startsWith('বিবিধ');
+  const bibidhaSerial = (agendaPrefix || '') + toBanglaDigits(agenda.agenda_serial || 1, 1);
+
   const displaySerial = agenda.is_suppli
-    ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(agenda.agenda_serial || 1, 1)}`
-    : toBanglaDigits(agenda.agenda_serial || 1);
+    ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || 1), 1)
+    : toBanglaDigits(agenda.agenda_serial || 1, 1);
+
+  const isOnlyBibidhaTitle = isBibidha && /^বিবিধ\s*:\s*[\d০-৯]+$/.test(cleanContent);
 
   return (
     <div
       id={`agenda-${agenda.id}`}
       ref={isAgendaHighlight ? ref : undefined}
-      className={`border border-border rounded-lg p-6 bg-card transition-shadow ${isAgendaHighlight && showHighlight ? 'ring-2 ring-primary' : ''}`}
+      className={`border ${isBibidha ? 'border-border/80 bg-muted/20' : 'border-border'} rounded-lg p-6 bg-card transition-shadow ${isAgendaHighlight && showHighlight ? 'ring-2 ring-primary' : ''}`}
     >
       <h3 className="font-semibold text-lg mb-4 text-foreground">
-        প্রস্তাবনা নং {(agendaPrefix || '') + displaySerial}
+        {isBibidha ? `বিবিধ : ${bibidhaSerial}` : `প্রস্তাবনা নং ${(agendaPrefix || '') + displaySerial}`}
       </h3>
-      <div
-        className="prose prose-sm dark:prose-invert max-w-none mb-4 text-muted-foreground"
-        dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.content) }}
-      />
+      {!isOnlyBibidhaTitle && (
+        <div
+          className="prose prose-sm dark:prose-invert max-w-none mb-4 text-muted-foreground"
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.content) }}
+        />
+      )}
 
       {meetingStatus === 'past' && agenda.resolution && (
         <div
@@ -65,7 +73,7 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
                 {annexures.map((annexure: any) => {
                   const num = annexure.global_serial || annexure.annexure_serial;
                   const banglaNum = toBanglaDigits(num);
-                  const label = `পরিশিষ্ট-${banglaNum}`;
+                  const label = `${annexure.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${banglaNum}`;
 
                   return (
                     <li key={annexure.id}>

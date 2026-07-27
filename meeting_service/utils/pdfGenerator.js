@@ -122,7 +122,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v14';
+const PDF_TEMPLATE_VERSION = 'v19';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -184,14 +184,16 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                                 'id', an.id,
                                 'annexure_serial', an.annexure_serial,
                                 'is_excluded_in_resolution', an.is_excluded_in_resolution,
+                                'is_suppli', a.is_suppli,
                                 'global_serial', (
                                     SELECT COUNT(*)::int
                                     FROM annexures prev_an
                                     JOIN agenda prev_a ON prev_a.id = prev_an.content_id
                                     WHERE prev_a.meeting_id = a.meeting_id
+                                      AND prev_a.is_suppli = a.is_suppli
                                       AND (
-                                        (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
-                                        (a.is_suppli, a.agenda_serial, an.annexure_serial)
+                                        (prev_a.agenda_serial, prev_an.annexure_serial) <
+                                        (a.agenda_serial, an.annexure_serial)
                                       )
                                 ) + 1
                             ) ORDER BY an.annexure_serial ASC
@@ -471,34 +473,50 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 </div>
             ` : ''}
 
-            ${(cacheVariant === 'suppli-agenda' ? agendas.filter(ag => ag.is_suppli) : agendas).map(ag => {
+            ${(cacheVariant === 'suppli-agenda' ? agendas.filter(ag => ag.is_suppli) : (!isResolution ? agendas.filter(ag => !ag.is_suppli) : agendas)).map(ag => {
                 const mainAgendaCount = agendas.filter(a => !a.is_suppli).length;
                 const agSerialStr = ag.is_suppli
-                    ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(ag.agenda_serial, 1)}`
-                    : toBanglaDigits(ag.agenda_serial);
+                    ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), 1)
+                    : toBanglaDigits(ag.agenda_serial, 1);
+
+                const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+                const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
+                const isOnlyBibidhaTitle = isBibidha && /^বিবিধ\s*:\s*[\d০-৯]+$/.test(cleanContent);
+                const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
+                const titleStr = isBibidha ? `বিবিধ : ${fullSerial}` : `প্রস্তাবনা নং ${fullSerial}`;
 
                 const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
                     .filter(an => !isResolution || !an.is_excluded_in_resolution)
                     .sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
                 const annexureTags = validAnnexures.length > 0
-                    ? validAnnexures.map((an, idx) => `পরিশিষ্ট-${toBanglaDigits(isResolution ? (idx + 1) : (an.global_serial || an.annexure_serial))}`).join(', ')
+                    ? validAnnexures.map((an) => {
+                        if (isResolution) {
+                            const sameTypeValid = validAnnexures.filter(x => !!x.is_suppli === !!an.is_suppli);
+                            const activeIdx = sameTypeValid.findIndex(x => x.id === an.id);
+                            const num = activeIdx >= 0 ? (activeIdx + 1) : (an.global_serial || an.annexure_serial);
+                            return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(num)}`;
+                        }
+                        return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(an.global_serial || an.annexure_serial)}`;
+                      }).join(', ')
                     : null;
 
-                let contentHtml = ag.content || '';
+                let contentHtml = isOnlyBibidhaTitle ? '' : (ag.content || '');
                 if (annexureTags) {
                     const tagString = ` <b>(${annexureTags})</b>`;
                     if (contentHtml.trim().endsWith('</p>')) {
                         const lastIndex = contentHtml.lastIndexOf('</p>');
                         contentHtml = contentHtml.substring(0, lastIndex) + tagString + contentHtml.substring(lastIndex);
-                    } else {
+                    } else if (contentHtml) {
                         contentHtml += tagString;
+                    } else {
+                        contentHtml = `<p><b>(${annexureTags})</b></p>`;
                     }
                 }
 
                 return `
                 <div class="agenda-block">
-                    <div class="agenda-title">প্রস্তাবনা নং ${(meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr}</div>
-                    <div class="agenda-content">${contentHtml}</div>
+                    <div class="agenda-title">${titleStr}</div>
+                    ${contentHtml ? `<div class="agenda-content">${contentHtml}</div>` : ''}
                     ${isResolution ? `
                     <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
                     <div class="agenda-resolution">${ag.resolution || ''}</div>

@@ -257,11 +257,17 @@ export default function FolderViewerModal({ isOpen, onClose, zipUrl, annexureNam
                       className="max-w-full max-h-full object-contain rounded-lg shadow-sm border border-border/40"
                     />
                   ) : previewContent?.type === 'pdf' ? (
-                    <iframe
-                      src={previewContent.data}
-                      className="w-full h-full rounded-lg border border-border/40"
-                      title={selectedItem.name}
-                    />
+                    <div className="w-full h-full flex flex-col">
+                      <embed
+                        src={previewContent.data}
+                        type="application/pdf"
+                        className="w-full flex-1 rounded-lg border border-border/40"
+                        title={selectedItem.name}
+                      />
+                      <p className="text-[10px] text-muted-foreground/60 text-center mt-2">
+                        If the PDF doesn't render, use the Download button above.
+                      </p>
+                    </div>
                   ) : (
                     <div className="text-center p-8 text-muted-foreground">
                       <FileText className="w-10 h-10 mx-auto mb-2 opacity-40" />

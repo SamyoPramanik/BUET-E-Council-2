@@ -222,11 +222,8 @@ const syncMeetingAnnexures = async (meetingId) => {
                     const buffer = await storageService.getFileBuffer(an.file_path);
                     
                     if (ext.toLowerCase() === '.zip') {
-                        // 1. Write the zip archive file itself
-                        const zipFileName = `${prefix}-${serial}-${cleanBaseName || 'folder'}.zip`;
-                        fs.writeFileSync(path.join(dirPath, zipFileName), buffer);
-
-                        // 2. Extract into an actual directory in the meeting folder on disk
+                        // Extract into a named directory in the meeting folder on disk
+                        // (no need to also store the .zip file redundantly)
                         const folderName = `${prefix}-${serial}-${cleanBaseName || 'folder'}`;
                         const folderPath = path.join(dirPath, folderName);
 

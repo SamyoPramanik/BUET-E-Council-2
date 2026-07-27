@@ -258,9 +258,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
             </div>
 
             {/* Annexure List placed underneath the resolution content */}
-            {agenda.resolution && (
-              <AnnexureList contentId={agenda.id} type="resolution" readOnly={!canEdit} />
-            )}
+            <AnnexureList contentId={agenda.id} type="resolution" readOnly={!canEdit} />
 
             {/* Execution Status (Only for past meetings) */}
             {meeting.status === 'past' && agenda.resolution && (

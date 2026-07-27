@@ -39,12 +39,20 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   ).sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
 
   const banglaAnnexureTags = validAnnexures.length > 0
-    ? validAnnexures.map(an => `পরিশিষ্ট-${toBanglaDigits(an.global_serial || an.annexure_serial)}`).join(', ')
+    ? validAnnexures.map((an, idx) => `পরিশিষ্ট-${toBanglaDigits(type === 'resolution' ? (idx + 1) : (an.global_serial || an.annexure_serial))}`).join(', ')
     : null;
 
   const getDisplayName = (annexure: Annexure) => {
+    if (type === 'resolution') {
+      if (annexure.is_excluded_in_resolution) {
+        return annexure.file_name;
+      }
+      const activeIdx = validAnnexures.findIndex(an => an.id === annexure.id);
+      const num = activeIdx >= 0 ? (activeIdx + 1) : (annexure.global_serial || annexure.annexure_serial);
+      return `Annexure-${num}. ${annexure.file_name}`;
+    }
     const num = annexure.global_serial || annexure.annexure_serial;
-    const prefix = (type !== 'resolution' && annexure.is_suppli) ? `Supple. Annexure-${num}` : `Annexure-${num}`;
+    const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;
     return `${prefix}. ${annexure.file_name}`;
   };
   
@@ -264,7 +272,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                 title="Upload Single File (PDF, DOCX, TXT, XLSX, Images, ZIP)"
               >
                 {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-                Add File
+                Upload File
               </button>
 
               <button 

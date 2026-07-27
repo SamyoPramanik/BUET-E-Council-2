@@ -476,7 +476,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     .filter(an => !isResolution || !an.is_excluded_in_resolution)
                     .sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
                 const annexureTags = validAnnexures.length > 0
-                    ? validAnnexures.map(an => `পরিশিষ্ট-${toBanglaDigits(an.global_serial || an.annexure_serial)}`).join(', ')
+                    ? validAnnexures.map((an, idx) => `পরিশিষ্ট-${toBanglaDigits(isResolution ? (idx + 1) : (an.global_serial || an.annexure_serial))}`).join(', ')
                     : null;
 
                 let contentHtml = ag.content || '';

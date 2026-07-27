@@ -569,9 +569,11 @@ const uploadAnnexure = async (req, res, next) => {
         );
         const nextSerial = parseInt(maxSerialResult.rows[0].max_serial, 10) + 1;
 
+        const isExcludedDefault = annexure_type === 'resolution' ? false : true;
+
         const result = await db.query(
-            'INSERT INTO annexures (content_id, annexure_type, file_name, file_path, summary, annexure_serial, uploaded_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [id, annexure_type, file.originalname, fileKey, summary || '', nextSerial, req.user?.id || null]
+            'INSERT INTO annexures (content_id, annexure_type, file_name, file_path, summary, annexure_serial, uploaded_by, is_excluded_in_resolution) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+            [id, annexure_type, file.originalname, fileKey, summary || '', nextSerial, req.user?.id || null, isExcludedDefault]
         );
 
         // Sync annexure to filesystem

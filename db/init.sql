@@ -344,7 +344,7 @@ CREATE TABLE annexures (
     file_path VARCHAR(255),
     summary TEXT,
     annexure_serial INTEGER DEFAULT 1,
-    is_excluded_in_resolution BOOLEAN DEFAULT FALSE,
+    is_excluded_in_resolution BOOLEAN DEFAULT TRUE,
     uploaded_by UUID REFERENCES users (id) ON DELETE SET NULL,
     upload_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

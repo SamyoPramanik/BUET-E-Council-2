@@ -43,17 +43,23 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
     : null;
 
   const getDisplayName = (annexure: Annexure) => {
+    const ext = getFileExtension(annexure.file_name);
+    const isZip = ['zip', 'rar', '7z'].includes(ext);
+    let name = annexure.file_name;
+    if (isZip && name.toLowerCase().endsWith('.zip')) {
+      name = name.slice(0, -4);
+    }
     if (type === 'resolution') {
       if (annexure.is_excluded_in_resolution) {
-        return annexure.file_name;
+        return name;
       }
       const activeIdx = validAnnexures.findIndex(an => an.id === annexure.id);
       const num = activeIdx >= 0 ? (activeIdx + 1) : (annexure.global_serial || annexure.annexure_serial);
-      return `Annexure-${num}. ${annexure.file_name}`;
+      return `Annexure-${num}. ${name}${isZip ? ' (Folder)' : ''}`;
     }
     const num = annexure.global_serial || annexure.annexure_serial;
     const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;
-    return `${prefix}. ${annexure.file_name}`;
+    return `${prefix}. ${name}${isZip ? ' (Folder)' : ''}`;
   };
   
   const [isUploading, setIsUploading] = useState(false);
@@ -150,84 +156,67 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   };
 
   const handleToggleExclude = async (annexure: Annexure) => {
-    const isExcluded = !!annexure.is_excluded_in_resolution;
-    const action = isExcluded ? 'revoke' : 'exclude';
-
-    const updatedAnnexures = annexures.map(an => 
-      an.id === annexure.id ? { ...an, is_excluded_in_resolution: !isExcluded } : an
-    );
-    mutate({ ...response, data: updatedAnnexures }, false);
-
     try {
-      await api.delete(`/agendas/annexures/${annexure.id}?mode=resolution&action=${action}`);
-      toast.success(isExcluded ? "Annexure restored in resolution" : "Annexure excluded from resolution");
+      await api.put(`/agendas/annexures/${annexure.id}/toggle-exclude`);
+      toast.success(annexure.is_excluded_in_resolution ? "Annexure restored for resolution" : "Annexure excluded from resolution");
       mutate();
     } catch (err) {
-      toast.error("Failed to update annexure resolution status");
-      mutate();
+      toast.error("Failed to update resolution exclusion");
     }
   };
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData('text/plain', id);
     setDraggedId(id);
-    e.dataTransfer.effectAllowed = 'move';
-    setTimeout(() => {
-      if (e.target instanceof HTMLElement) {
-        e.target.style.opacity = '0.4';
-      }
-    }, 0);
   };
 
-  const handleDragEnd = (e: React.DragEvent) => {
+  const handleDragEnd = () => {
     setDraggedId(null);
-    if (e.target instanceof HTMLElement) {
-      e.target.style.opacity = '1';
-    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
   };
 
   const handleDrop = async (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
-    if (!draggedId || draggedId === targetId) return;
+    const sourceId = e.dataTransfer.getData('text/plain');
+    if (!sourceId || sourceId === targetId) return;
 
-    const items = [...annexures];
-    const draggedIndex = items.findIndex(item => item.id === draggedId);
-    const targetIndex = items.findIndex(item => item.id === targetId);
+    const sourceIndex = validAnnexures.findIndex(an => an.id === sourceId);
+    const targetIndex = validAnnexures.findIndex(an => an.id === targetId);
 
-    if (draggedIndex === -1 || targetIndex === -1) return;
+    if (sourceIndex === -1 || targetIndex === -1) return;
 
-    const [reorderedItem] = items.splice(draggedIndex, 1);
-    items.splice(targetIndex, 0, reorderedItem);
+    const newOrder = [...validAnnexures];
+    const [moved] = newOrder.splice(sourceIndex, 1);
+    newOrder.splice(targetIndex, 0, moved);
 
-    mutate({ data: items.map((item, index) => ({ ...item, annexure_serial: index + 1 })) }, false);
+    const updatedAnnexures = newOrder.map((an, idx) => ({
+      ...an,
+      annexure_serial: idx + 1
+    }));
+
+    mutate({ ...response, data: updatedAnnexures }, false);
 
     try {
-      const newOrder = items.map((item, index) => ({
-        id: item.id,
-        annexure_serial: index + 1
-      }));
-      await api.put('/agendas/annexures/reorder', { items: newOrder });
-      toast.success("Annexures reordered successfully");
-      mutate();
-    } catch (error) {
+      await Promise.all(
+        updatedAnnexures.map(an =>
+          api.put(`/agendas/annexures/${an.id}/reorder`, {
+            annexure_serial: an.annexure_serial
+          })
+        )
+      );
+      toast.success("Annexures reordered");
+    } catch (err) {
       toast.error("Failed to reorder annexures");
       mutate();
     }
   };
 
   return (
-    <div className="mt-3 pt-3 border-t border-border/40">
+    <div className="mt-4 pt-3 border-t border-border/40">
       <ConfirmModal />
-      <FolderViewerModal
-        isOpen={!!activeFolderModal}
-        onClose={() => setActiveFolderModal(null)}
-        zipUrl={activeFolderModal?.zipUrl || ''}
-        annexureName={activeFolderModal?.name || ''}
-      />
 
       <input
         type="file"
@@ -252,7 +241,11 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
         <div className="flex items-center gap-2">
           <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
           <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            Annexures {annexures.length > 0 && `(${validAnnexures.length}/${annexures.length})`}
+            Annexures {annexures.length > 0 && (
+              type === 'resolution' && validAnnexures.length !== annexures.length
+                ? `(${validAnnexures.length}/${annexures.length})`
+                : `(${validAnnexures.length})`
+            )}
           </h4>
         </div>
         
@@ -321,7 +314,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                   </div>
                 )}
                 
-                <div className={`relative p-1 rounded ${isExcluded ? 'bg-red-500/20 text-red-500' : isZip ? 'bg-amber-500/10 text-amber-500' : 'bg-muted text-muted-foreground'}`}>
+                <div className={`relative p-1 rounded ${isExcluded ? 'bg-red-500/20 text-red-500' : isZip ? 'bg-amber-500/20 text-amber-600' : 'bg-muted text-muted-foreground'}`}>
                   {isZip ? <Folder className="w-3.5 h-3.5" /> : <File className="w-3.5 h-3.5" />}
                 </div>
 
@@ -330,20 +323,34 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                     <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-[1.5px] bg-red-500/80 pointer-events-none z-10" />
                   )}
                   {annexure.url ? (
-                    <a 
-                      href={annexure.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className={`text-xs font-normal hover:underline truncate block ${
-                        isExcluded ? 'text-red-400 font-medium' : 'text-foreground/80 hover:text-primary'
-                      }`}
-                    >
-                      {getDisplayName(annexure)} {isExcluded ? ' (Excluded from Resolution)' : ''}
-                    </a>
+                    <div className="flex items-center gap-1.5">
+                      <a 
+                        href={annexure.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className={`text-xs font-normal hover:underline truncate block ${
+                          isExcluded ? 'text-red-400 font-medium' : 'text-foreground/80 hover:text-primary'
+                        }`}
+                      >
+                        {getDisplayName(annexure)} {isExcluded ? ' (Excluded from Resolution)' : ''}
+                      </a>
+                      {isZip && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.2 rounded shrink-0">
+                          <Folder className="w-2.5 h-2.5" /> Folder
+                        </span>
+                      )}
+                    </div>
                   ) : (
-                    <p className={`text-xs font-normal truncate ${isExcluded ? 'text-red-400 font-medium' : 'text-foreground/80'}`}>
-                      {getDisplayName(annexure)} {isExcluded ? ' (Excluded from Resolution)' : ''}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-xs font-normal truncate ${isExcluded ? 'text-red-400 font-medium' : 'text-foreground/80'}`}>
+                        {getDisplayName(annexure)} {isExcluded ? ' (Excluded from Resolution)' : ''}
+                      </p>
+                      {isZip && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.2 rounded shrink-0">
+                          <Folder className="w-2.5 h-2.5" /> Folder
+                        </span>
+                      )}
+                    </div>
                   )}
                   {annexure.uploaded_by_username && (
                     <p className="text-[10px] text-muted-foreground/60 truncate">
@@ -361,7 +368,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
                       title="Preview Folder Contents Online"
                     >
                       <Folder className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Preview Folder</span>
+                      <span className="hidden sm:inline">Browse Folder</span>
                     </button>
                   )}
 
@@ -413,6 +420,15 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
           })
         )}
       </div>
+
+      {activeFolderModal && (
+        <FolderViewerModal
+          isOpen={!!activeFolderModal}
+          onClose={() => setActiveFolderModal(null)}
+          zipUrl={activeFolderModal.zipUrl}
+          annexureName={activeFolderModal.name}
+        />
+      )}
     </div>
   );
 }

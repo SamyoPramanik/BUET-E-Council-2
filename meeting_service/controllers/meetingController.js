@@ -259,6 +259,12 @@ const createMeeting = async (req, res, next) => {
         const newMeeting = result.rows[0];
         meetingFileSystem.createMeetingDir(newMeeting);
 
+        // Insert default main agenda "বিবিধ : ১"
+        await db.query(
+            `INSERT INTO agenda (meeting_id, agenda_serial, content, is_suppli) VALUES ($1, 1, 'বিবিধ : ১', false)`,
+            [newMeeting.id]
+        );
+
         res.status(201).json({ success: true, message: 'Meeting created', data: newMeeting });
     } catch (error) {
         next(error);

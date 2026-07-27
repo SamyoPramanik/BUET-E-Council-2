@@ -4,6 +4,7 @@ const storageService = require('../utils/storageService');
 const meetingFileSystem = require('../utils/meetingFileSystem');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
+const { toBanglaDigits } = require('../utils/agendaSerial');
 
 const setAgendaTags = async (agendaId, tagIds) => {
     if (!Array.isArray(tagIds)) return;
@@ -13,6 +14,45 @@ const setAgendaTags = async (agendaId, tagIds) => {
             'INSERT INTO agenda_tags (agenda_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
             [agendaId, tagId]
         );
+    }
+};
+
+const ensureBibidhaAgenda = async (meetingId) => {
+    if (!meetingId) return;
+    const res = await db.query(
+        'SELECT id, agenda_serial, content FROM agenda WHERE meeting_id = $1 AND is_suppli = false ORDER BY agenda_serial ASC',
+        [meetingId]
+    );
+    const mainAgendas = res.rows;
+    let bibidhaIndex = mainAgendas.findIndex(a => a.content && a.content.trim().startsWith('বিবিধ'));
+
+    if (bibidhaIndex === -1) {
+        const nextSerial = mainAgendas.length + 1;
+        const banglaNum = toBanglaDigits(nextSerial, 1);
+        const bibidhaContent = `বিবিধ : ${banglaNum}`;
+        await db.query(
+            'INSERT INTO agenda (meeting_id, agenda_serial, content, is_suppli) VALUES ($1, $2, $3, false)',
+            [meetingId, nextSerial, bibidhaContent]
+        );
+    } else {
+        const bibidha = mainAgendas[bibidhaIndex];
+        const lastSerial = mainAgendas.length;
+        const banglaNum = toBanglaDigits(lastSerial, 1);
+        const expectedContent = `বিবিধ : ${banglaNum}`;
+
+        if (bibidha.agenda_serial !== lastSerial || (bibidha.content && bibidha.content.trim() !== expectedContent)) {
+            mainAgendas.splice(bibidhaIndex, 1);
+            mainAgendas.push(bibidha);
+            for (let i = 0; i < mainAgendas.length; i++) {
+                const isLast = i === mainAgendas.length - 1;
+                const serial = i + 1;
+                const content = isLast ? `বিবিধ : ${toBanglaDigits(serial, 1)}` : mainAgendas[i].content;
+                await db.query(
+                    'UPDATE agenda SET agenda_serial = $1, content = $2 WHERE id = $3',
+                    [serial, content, mainAgendas[i].id]
+                );
+            }
+        }
     }
 };
 
@@ -28,6 +68,7 @@ const getAgendams = async (req, res, next) => {
         const is_suppli = req.query.is_suppli;
 
         if (meeting_id) {
+            await ensureBibidhaAgenda(meeting_id);
             const meetingRes = await db.query('SELECT status, type, is_suppli_visible_to_viewers FROM meetings WHERE id = $1', [meeting_id]);
             if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
             const meeting = meetingRes.rows[0];

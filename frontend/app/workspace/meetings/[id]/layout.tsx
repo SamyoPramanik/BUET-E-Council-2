@@ -35,11 +35,23 @@ export default function MeetingWorkspaceLayout({
   const { data: response, mutate } = useSWR(`/meetings/${params.id}`, fetcher);
   const meeting = response?.data;
 
-  // The full activity/edit history is visible to admin/superadmin only.
-  const { isAdmin } = useAuth();
-  const navItems = isAdmin
-    ? [...navigation, { name: 'History', view: 'history', icon: History }]
-    : navigation;
+  const { isAdmin, user } = useAuth();
+  const isViewer = user?.role === 'viewer';
+  const isPast = meeting?.status === 'past' || meeting?.is_completed === true;
+
+  let navItems = navigation;
+  if (isViewer) {
+    if (isPast) {
+      navItems = [{ name: 'Resolution', view: 'resolution', icon: FileCheck }];
+    } else {
+      navItems = [{ name: 'Agenda', view: 'agenda', icon: LayoutList }];
+      if (meeting?.is_suppli_visible_to_viewers) {
+        navItems.push({ name: 'Supplementary Agenda', view: 'suppli-agenda', icon: Layers });
+      }
+    }
+  } else if (isAdmin) {
+    navItems = [...navigation, { name: 'History', view: 'history', icon: History }];
+  }
 
   return (
     <div className="flex flex-1 w-full h-full overflow-hidden">

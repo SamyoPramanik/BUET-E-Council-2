@@ -51,7 +51,12 @@ export default function ManageMeetingsPage() {
   ];
 
   const handleEdit = (meeting: any) => {
-    router.push(`/workspace/meetings/${meeting.id}?view=info`);
+    if (isViewer) {
+      const isPast = meeting.status === 'past' || meeting.is_completed;
+      router.push(`/workspace/meetings/${meeting.id}?view=${isPast ? 'resolution' : 'agenda'}`);
+    } else {
+      router.push(`/workspace/meetings/${meeting.id}?view=info`);
+    }
   };
 
   const handleDelete = (meeting: any) => {
@@ -158,7 +163,14 @@ export default function ManageMeetingsPage() {
         } : undefined}
         onEdit={handleEdit}
         onDelete={isAdmin ? handleDelete : undefined}
-        onView={(meeting) => window.open(`/workspace/meetings/${meeting.id}?view=info`, '_self')}
+        onView={(meeting) => {
+          if (isViewer) {
+            const isPast = meeting.status === 'past' || meeting.is_completed;
+            window.open(`/workspace/meetings/${meeting.id}?view=${isPast ? 'resolution' : 'agenda'}`, '_self');
+          } else {
+            window.open(`/workspace/meetings/${meeting.id}?view=info`, '_self');
+          }
+        }}
         customActions={
           canCreateMeeting && (
             <button

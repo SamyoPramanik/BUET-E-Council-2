@@ -175,6 +175,7 @@ CREATE TABLE meetings (
     completed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     completed_by UUID REFERENCES users (id) ON DELETE SET NULL,
     max_annexure_size_mb INTEGER DEFAULT 50,
+    is_suppli_visible_to_viewers BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -922,3 +923,5 @@ DROP TRIGGER IF EXISTS trg_clear_search_cache_agenda_tags ON agenda_tags;
 CREATE TRIGGER trg_clear_search_cache_agenda_tags
 AFTER INSERT OR UPDATE OR DELETE ON agenda_tags
 FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS is_suppli_visible_to_viewers BOOLEAN DEFAULT FALSE;

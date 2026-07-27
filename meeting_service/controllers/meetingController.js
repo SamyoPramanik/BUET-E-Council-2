@@ -269,7 +269,7 @@ const updateMeeting = async (req, res, next) => {
     const client = await db.pool.connect();
     try {
         const { id } = req.params;
-        const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, max_annexure_size_mb } = req.body;
+        const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, max_annexure_size_mb, is_suppli_visible_to_viewers } = req.body;
 
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
@@ -280,6 +280,22 @@ const updateMeeting = async (req, res, next) => {
         }
 
         await client.query('BEGIN');
+
+        if (is_suppli_visible_to_viewers !== undefined && is_suppli_visible_to_viewers !== null) {
+            const isUserAdmin = isAdminRole(req.user);
+            let canToggleSuppliVisibility = isUserAdmin;
+            if (!canToggleSuppliVisibility && req.user?.role_level !== null && req.user?.role_level !== undefined) {
+                const depRoleRes = await client.query("SELECT level FROM roles WHERE LOWER(level_title) LIKE '%deputy registrar%' LIMIT 1");
+                const minLevel = depRoleRes.rows.length > 0 ? depRoleRes.rows[0].level : 2;
+                if (Number(req.user.role_level) >= minLevel) {
+                    canToggleSuppliVisibility = true;
+                }
+            }
+            if (!canToggleSuppliVisibility) {
+                await client.query('ROLLBACK');
+                return next(new CustomError('Only Deputy Registrar & Above can change supplementary agenda viewer visibility.', 403));
+            }
+        }
 
         if (status && status === 'past') {
             await client.query(
@@ -316,9 +332,10 @@ const updateMeeting = async (req, res, next) => {
                 resolution_pdf_link = COALESCE($10, resolution_pdf_link),
                 transcript = COALESCE($11, transcript),
                 agenda_prefix = COALESCE($12, agenda_prefix),
-                max_annexure_size_mb = COALESCE($13, max_annexure_size_mb)
-             WHERE id = $14 RETURNING *`,
-            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, validMaxAnnexureSize, id]
+                max_annexure_size_mb = COALESCE($13, max_annexure_size_mb),
+                is_suppli_visible_to_viewers = COALESCE($14, is_suppli_visible_to_viewers)
+             WHERE id = $15 RETURNING *`,
+            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, validMaxAnnexureSize, is_suppli_visible_to_viewers !== undefined ? !!is_suppli_visible_to_viewers : null, id]
         );
 
         await client.query('COMMIT');

@@ -14,10 +14,13 @@ import MaterialsView from "../../../../components/meetings/MaterialsView";
 import HistoryView from "../../../../components/meetings/HistoryView";
 import EmailTabView from "../../../../components/meetings/EmailTabView";
 
+import { useAuth } from "../../../../hooks/useAuth";
+
 export default function MeetingWorkspace() {
   const params = useParams();
   const searchParams = useSearchParams();
   const view = searchParams.get('view') || 'info';
+  const { user } = useAuth();
 
   // Fetch the meeting details
   const { data: response, error, mutate } = useSWR(`/meetings/${params.id}`, fetcher);
@@ -26,6 +29,19 @@ export default function MeetingWorkspace() {
   if (!response) return <div className="p-8 text-muted-foreground">Loading workspace...</div>;
 
   const meeting = response.data;
+  const isViewer = user?.role === 'viewer';
+  const isPast = meeting?.status === 'past' || meeting?.is_completed === true;
+
+  if (isViewer) {
+    if (isPast) {
+      return <ResolutionView meeting={meeting} />;
+    } else {
+      if (view === 'suppli-agenda' && meeting?.is_suppli_visible_to_viewers) {
+        return <AgendaView meeting={meeting} type="suppli-agenda" />;
+      }
+      return <AgendaView meeting={meeting} type="agenda" />;
+    }
+  }
 
   // Render the appropriate view
   switch (view) {

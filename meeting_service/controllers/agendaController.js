@@ -28,7 +28,7 @@ const getAgendams = async (req, res, next) => {
         const is_suppli = req.query.is_suppli;
 
         if (meeting_id) {
-            const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [meeting_id]);
+            const meetingRes = await db.query('SELECT status, type, is_suppli_visible_to_viewers FROM meetings WHERE id = $1', [meeting_id]);
             if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
             const meeting = meetingRes.rows[0];
 
@@ -39,6 +39,9 @@ const getAgendams = async (req, res, next) => {
                 const restrictedType = viewerTypeRestriction(req.user);
                 if (restrictedType && meeting.type !== restrictedType) {
                     return next(new CustomError('Meeting not found', 404));
+                }
+                if ((is_suppli === 'true' || is_suppli === true) && !meeting.is_suppli_visible_to_viewers) {
+                    return res.status(200).json({ success: true, data: [] });
                 }
             }
         }

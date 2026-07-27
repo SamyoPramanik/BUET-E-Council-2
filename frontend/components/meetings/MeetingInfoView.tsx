@@ -51,7 +51,8 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
     type: meeting.type || "syndicate",
     status: meeting.status || "draft",
     agenda_prefix: meeting.agenda_prefix || "",
-    max_annexure_size_mb: String(meeting.max_annexure_size_mb || 50)
+    max_annexure_size_mb: String(meeting.max_annexure_size_mb || 50),
+    is_suppli_visible_to_viewers: !!meeting.is_suppli_visible_to_viewers
   });
 
   useEffect(() => {
@@ -62,7 +63,8 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
       type: meeting.type || "syndicate",
       status: meeting.status || "draft",
       agenda_prefix: meeting.agenda_prefix || "",
-      max_annexure_size_mb: String(meeting.max_annexure_size_mb || 50)
+      max_annexure_size_mb: String(meeting.max_annexure_size_mb || 50),
+      is_suppli_visible_to_viewers: !!meeting.is_suppli_visible_to_viewers
     });
   }, [meeting]);
 
@@ -390,6 +392,28 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                 )}
                 <p className="text-xs text-muted-foreground">
                   Sets the maximum allowed file size for annexures uploaded to this meeting (from 2 MB up to 10 GB).
+                </p>
+              </div>
+            )}
+
+            {/* SUPPLEMENTARY AGENDA VIEWER VISIBILITY (Restricted to Deputy Registrar & Above) */}
+            {canManageAnnexureSize && (
+              <div className="space-y-2 pt-3 border-t border-border">
+                <label className="text-sm font-medium flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-amber-500" /> Allow Viewers to View Supplementary Agenda
+                    <span className="text-[11px] font-normal text-muted-foreground">(Deputy Registrar & Above)</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    disabled={readOnly}
+                    checked={!!formData.is_suppli_visible_to_viewers}
+                    onChange={(e) => setFormData({ ...formData, is_suppli_visible_to_viewers: e.target.checked })}
+                    className="w-4 h-4 text-primary rounded border-input focus:ring-primary accent-primary cursor-pointer disabled:opacity-50"
+                  />
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  When enabled, users with the viewer role can select and view supplementary agenda items for this ongoing meeting.
                 </p>
               </div>
             )}

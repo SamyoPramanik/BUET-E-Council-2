@@ -29,8 +29,8 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
   }, []);
 
   const displaySerial = agenda.is_suppli
-    ? mainAgendaCount + (agenda.agenda_serial || 1)
-    : (agenda.agenda_serial || 1);
+    ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(agenda.agenda_serial || 1, 1)}`
+    : toBanglaDigits(agenda.agenda_serial || 1);
 
   return (
     <div
@@ -39,7 +39,7 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
       className={`border border-border rounded-lg p-6 bg-card transition-shadow ${isAgendaHighlight && showHighlight ? 'ring-2 ring-primary' : ''}`}
     >
       <h3 className="font-semibold text-lg mb-4 text-foreground">
-        প্রস্তাবনা নং {(agendaPrefix || '') + toBanglaDigits(displaySerial)}
+        প্রস্তাবনা নং {(agendaPrefix || '') + displaySerial}
       </h3>
       <div
         className="prose prose-sm dark:prose-invert max-w-none mb-4 text-muted-foreground"

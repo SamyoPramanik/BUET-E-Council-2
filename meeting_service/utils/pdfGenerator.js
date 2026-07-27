@@ -472,6 +472,11 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             ` : ''}
 
             ${agendas.map(ag => {
+                const mainAgendaCount = agendas.filter(a => !a.is_suppli).length;
+                const agSerialStr = ag.is_suppli
+                    ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(ag.agenda_serial, 1)}`
+                    : toBanglaDigits(ag.agenda_serial);
+
                 const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
                     .filter(an => !isResolution || !an.is_excluded_in_resolution)
                     .sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
@@ -492,7 +497,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
 
                 return `
                 <div class="agenda-block">
-                    <div class="agenda-title">প্রস্তাবনা নং ${(meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</div>
+                    <div class="agenda-title">প্রস্তাবনা নং ${(meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr}</div>
                     <div class="agenda-content">${contentHtml}</div>
                     ${isResolution ? `
                     <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>

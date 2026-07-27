@@ -258,7 +258,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                     <div>
                       {/* Bengali proposal heading: "প্রস্তাবনা নং {prefix}{01}" */}
                       <h3 className="font-semibold text-lg text-primary">
-                        প্রস্তাবনা নং {(meeting.agenda_prefix || '') + toBanglaDigits(isSuppliView ? mainAgendaCount + (agenda.agenda_serial || index + 1) : (agenda.agenda_serial || index + 1))}
+                        প্রস্তাবনা নং {(meeting.agenda_prefix || '') + (isSuppliView ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(agenda.agenda_serial || index + 1, 1)}` : toBanglaDigits(agenda.agenda_serial || index + 1))}
                       </h3>
                     </div>
                     <div className="flex gap-2">
@@ -386,7 +386,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 >
                   <GripVertical className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
                   <span className="font-medium text-xs">
-                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + toBanglaDigits(isSuppliView ? mainAgendaCount + (agenda.agenda_serial || index + 1) : (agenda.agenda_serial || index + 1))}
+                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + (isSuppliView ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(agenda.agenda_serial || index + 1, 1)}` : toBanglaDigits(agenda.agenda_serial || index + 1))}
                   </span>
                   <span className="text-xs text-muted-foreground truncate flex-1 opacity-60">
                     {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 38) : '...'}...

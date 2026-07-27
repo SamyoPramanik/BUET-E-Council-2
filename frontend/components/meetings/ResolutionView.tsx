@@ -139,8 +139,8 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
       ) : (
         agendas.map((agenda: any, index: number) => {
           const displaySerial = agenda.is_suppli
-            ? mainAgendaCount + (agenda.agenda_serial || index + 1)
-            : (agenda.agenda_serial || index + 1);
+            ? `${toBanglaDigits(mainAgendaCount)}.${toBanglaDigits(agenda.agenda_serial || index + 1, 1)}`
+            : toBanglaDigits(agenda.agenda_serial || index + 1);
 
           return (
             <div key={agenda.id} className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm group">
@@ -148,7 +148,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 {/* Top Section (Read-Only Agenda) */}
                 <div className="mb-6">
                   <h3 className="font-semibold text-base text-primary mb-2">
-                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + toBanglaDigits(displaySerial)}
+                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + displaySerial}
                   </h3>
               {agenda.tags && agenda.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">

@@ -45,7 +45,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
   // In-place creation state
   const [createAtIndex, setCreateAtIndex] = useState<number | null>(null);
-  const [newContent, setNewContent] = useState("");
+  const [newContent, setNewContent] = useState(isSuppliView ? "<p>.</p>" : "");
   const [newTagIds, setNewTagIds] = useState<string[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -123,7 +123,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
   const handleStartCreate = (atIndex: number) => {
     setCreateAtIndex(atIndex);
-    setNewContent("");
+    setNewContent(isSuppliView ? "<p>.</p>" : "");
     setNewTagIds([]);
     setEditingId(null);
   };

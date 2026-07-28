@@ -1,32 +1,54 @@
 const CustomError = require('../errors/CustomError');
 
-// Single place to tune what annexure files are accepted. To allow/remove a
-// format, just add/remove its extension here (and its mime type below, if
-// you want the stricter mime check - extensions without a mapping still
-// pass on extension alone).
-const ALLOWED_EXTENSIONS = ['pdf', 'docx'];
+// Allowed readable document, spreadsheet, presentation, image, audio/video, and archive formats
+const ALLOWED_EXTENSIONS = [
+    'pdf', 'docx', 'doc', 'txt', 'rtf', 'odt',
+    'xlsx', 'xls', 'csv', 'ods',
+    'pptx', 'ppt', 'odp',
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'tiff',
+    'mp3', 'mp4', 'wav', 'm4a', 'avi', 'mkv',
+    'zip', 'rar', '7z', 'tar', 'gz'
+];
 
-const MIME_TYPES_BY_EXTENSION = {
-    pdf: ['application/pdf'],
-    docx: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-};
+// Strict executable & script blacklist
+const EXECUTABLE_BLACKLIST = [
+    'exe', 'bat', 'cmd', 'sh', 'bash', 'ps1', 'vbs', 'vbe', 'js', 'jse',
+    'wsf', 'wsh', 'msc', 'com', 'scr', 'pif', 'msi', 'msp', 'hta', 'cpl',
+    'jar', 'py', 'pl', 'php', 'asp', 'aspx', 'jsp', 'cgi', 'htm', 'html', 'shtml'
+];
 
 // Overridable via env so ops can raise/lower the cap without a code change.
-const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_ANNEXURE_SIZE_MB || '20', 10);
+const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_ANNEXURE_SIZE_MB || '50', 10);
 
 const fileFilter = (req, file, cb) => {
-    const ext = (file.originalname.split('.').pop() || '').toLowerCase();
-    const allowedMimes = MIME_TYPES_BY_EXTENSION[ext];
+    let ext = (file.originalname.split('.').pop() || '').toLowerCase();
 
-    if (!ALLOWED_EXTENSIONS.includes(ext) || (allowedMimes && !allowedMimes.includes(file.mimetype))) {
-        cb(new CustomError(`Unsupported file type. Allowed formats: ${ALLOWED_EXTENSIONS.join(', ').toUpperCase()}`, 400));
+    // When the browser sends a Blob (not a File object), some environments name
+    // it 'blob' with no real extension. Fall back to MIME type for archives.
+    if (!ext || ext === 'blob' || file.originalname === 'blob') {
+        const mime = (file.mimetype || '').toLowerCase();
+        if (mime === 'application/zip' || mime === 'application/x-zip-compressed') ext = 'zip';
+        else if (mime === 'application/x-rar-compressed') ext = 'rar';
+        else if (mime === 'application/x-7z-compressed') ext = '7z';
+        else if (mime === 'application/pdf') ext = 'pdf';
+    }
+
+    if (EXECUTABLE_BLACKLIST.includes(ext)) {
+        cb(new CustomError(`Harmful file type uploaded in annexure ('${file.originalname}'). Executable files and scripts are strictly prohibited.`, 400));
         return;
     }
+
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        cb(new CustomError(`Unsupported file type ('${file.originalname}'). Allowed formats: PDF, DOCX, TXT, XLSX, PPTX, PNG, JPG, ZIP, etc.`, 400));
+        return;
+    }
+
     cb(null, true);
 };
 
 module.exports = {
     ALLOWED_EXTENSIONS,
+    EXECUTABLE_BLACKLIST,
     MAX_FILE_SIZE_MB,
     fileFilter,
 };

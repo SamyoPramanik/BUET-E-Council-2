@@ -8,6 +8,8 @@ import DataTable from "../../../components/DataTable";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
 import { useAuth } from "../../../hooks/useAuth";
+import { Sparkles, Loader2 } from "lucide-react";
+import { translateText, autoFillBilingualFields } from "../../../lib/translator";
 
 export default function ManageOfficesPage() {
   const { canEdit } = useAuth();
@@ -17,10 +19,33 @@ export default function ManageOfficesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
   const [newOffice, setNewOffice] = useState({
     name_bangla: "",
     name_english: ""
   });
+
+  const handleTranslate = async (sourceField: 'name_bangla' | 'name_english') => {
+    const text = newOffice[sourceField];
+    if (!text.trim()) return;
+    setIsTranslating(true);
+    try {
+      const targetLang = sourceField === 'name_bangla' ? 'en' : 'bn';
+      const translated = await translateText(text, targetLang);
+      if (translated) {
+        if (sourceField === 'name_bangla') {
+          setNewOffice(prev => ({ ...prev, name_english: prev.name_english || translated }));
+        } else {
+          setNewOffice(prev => ({ ...prev, name_bangla: prev.name_bangla || translated }));
+        }
+        toast.success("Translated successfully!");
+      }
+    } catch (e) {
+      toast.error("Translation failed");
+    } finally {
+      setIsTranslating(false);
+    }
+  };
 
   const columns = [
     { key: "serial", label: "Serial No" },
@@ -147,22 +172,69 @@ export default function ManageOfficesPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-card w-full max-w-md rounded-lg shadow-xl border border-border p-6 relative">
-            <h3 className="text-lg font-semibold mb-4">{isEditMode ? "Edit Office" : "Add New Office"}</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">{isEditMode ? "Edit Office" : "Add New Office"}</h3>
+              {isTranslating && (
+                <span className="flex items-center gap-1 text-xs text-amber-500 font-medium animate-pulse">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Translating...
+                </span>
+              )}
+            </div>
             <form onSubmit={handleAddSubmit} className="space-y-4">
               
               <div className="space-y-1">
-                <label className="text-xs font-medium">Name (Bangla)</label>
-                <input required value={newOffice.name_bangla} onChange={e => setNewOffice({...newOffice, name_bangla: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium">Name (Bangla)</label>
+                  <button
+                    type="button"
+                    onClick={() => handleTranslate('name_bangla')}
+                    disabled={isTranslating || !newOffice.name_bangla}
+                    className="text-[11px] text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-500" /> Translate to English
+                  </button>
+                </div>
+                <input
+                  required
+                  value={newOffice.name_bangla}
+                  onChange={e => setNewOffice({...newOffice, name_bangla: e.target.value})}
+                  onBlur={async () => {
+                    if (newOffice.name_bangla && !newOffice.name_english) {
+                      handleTranslate('name_bangla');
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium">Name (English)</label>
-                <input required value={newOffice.name_english} onChange={e => setNewOffice({...newOffice, name_english: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium">Name (English)</label>
+                  <button
+                    type="button"
+                    onClick={() => handleTranslate('name_english')}
+                    disabled={isTranslating || !newOffice.name_english}
+                    className="text-[11px] text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-500" /> Translate to Bangla
+                  </button>
+                </div>
+                <input
+                  required
+                  value={newOffice.name_english}
+                  onChange={e => setNewOffice({...newOffice, name_english: e.target.value})}
+                  onBlur={async () => {
+                    if (newOffice.name_english && !newOffice.name_bangla) {
+                      handleTranslate('name_english');
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                />
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80">Cancel</button>
-                <button type="submit" className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">{isEditMode ? "Update Office" : "Save Office"}</button>
+                <button type="submit" disabled={isTranslating} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50">{isEditMode ? "Update Office" : "Save Office"}</button>
               </div>
 
             </form>

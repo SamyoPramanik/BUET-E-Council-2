@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, ChangeEvent } from "react";
-import { FileJson, X, Check, AlertCircle, Plus, Loader2, FileWarning } from "lucide-react";
+import { FileJson, X, Check, AlertCircle, Plus, Loader2, FileWarning, Languages, Sparkles } from "lucide-react";
 import api, { fetcher } from "../../lib/api";
 import useSWR from "swr";
 import { toast } from "sonner";
 import SearchableSelect from "../SearchableSelect";
 import { resolveDepartmentByMergeRule, saveCustomDepartmentRule } from "../../lib/departmentMergeRules";
 import { resolveOfficeByMergeRule, saveCustomOfficeRule } from "../../lib/officeMergeRules";
+import { autoFillBilingualFields, translateText, isBanglaText } from "../../lib/translator";
 
 interface ImportItem {
   key: string;
@@ -49,6 +50,72 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
     alias_bangla: '',
     faculty_id: ''
   });
+  const [isAutoTranslating, setIsAutoTranslating] = useState(false);
+
+  const openCreateModal = async (type: 'department' | 'office', originalName: string) => {
+    setEditingEntity({ type, originalName });
+    setIsAutoTranslating(true);
+    setEntityForm({
+      name_english: originalName,
+      name_bangla: originalName,
+      alias_english: '',
+      alias_bangla: '',
+      faculty_id: faculties[0]?.id || ''
+    });
+
+    try {
+      const autoFilled = await autoFillBilingualFields(originalName);
+      let aliasEn = '';
+      let aliasBn = '';
+      if (type === 'department') {
+        aliasEn = autoFilled.name_english.replace(/department of /i, '').trim();
+        aliasBn = autoFilled.name_bangla.replace(/বিভাগ/g, '').trim();
+      }
+      setEntityForm({
+        name_english: autoFilled.name_english,
+        name_bangla: autoFilled.name_bangla,
+        alias_english: aliasEn || autoFilled.name_english,
+        alias_bangla: aliasBn || autoFilled.name_bangla,
+        faculty_id: faculties[0]?.id || ''
+      });
+    } catch (e) {
+      console.error('Translation error', e);
+    } finally {
+      setIsAutoTranslating(false);
+    }
+  };
+
+  const handleManualTranslate = async (sourceField: 'name_english' | 'name_bangla') => {
+    const textToTranslate = entityForm[sourceField];
+    if (!textToTranslate.trim()) return;
+    setIsAutoTranslating(true);
+    try {
+      const targetLang = sourceField === 'name_english' ? 'bn' : 'en';
+      const result = await translateText(textToTranslate, targetLang);
+      if (result) {
+        if (sourceField === 'name_english') {
+          const aliasBn = result.replace(/বিভাগ/g, '').trim();
+          setEntityForm(prev => ({
+            ...prev,
+            name_bangla: result,
+            alias_bangla: prev.alias_bangla || aliasBn
+          }));
+        } else {
+          const aliasEn = result.replace(/department of /i, '').trim();
+          setEntityForm(prev => ({
+            ...prev,
+            name_english: result,
+            alias_english: prev.alias_english || aliasEn
+          }));
+        }
+        toast.success("Translation complete!");
+      }
+    } catch (e) {
+      toast.error("Failed to auto-translate");
+    } finally {
+      setIsAutoTranslating(false);
+    }
+  };
 
   const { data: deptRes, mutate: mutateDepts } = useSWR('/departments', fetcher);
   const { data: officeRes, mutate: mutateOffices } = useSWR('/offices', fetcher);
@@ -411,10 +478,7 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
                             />
                           </div>
                           <button
-                            onClick={() => {
-                              setEditingEntity({ type: 'department', originalName: dept });
-                              setEntityForm({ name_english: dept, name_bangla: dept, alias_english: '', alias_bangla: '', faculty_id: faculties[0]?.id || '' });
-                            }}
+                            onClick={() => openCreateModal('department', dept)}
                             className="flex items-center gap-1 bg-primary text-primary-foreground px-2.5 py-1.5 rounded-md text-xs hover:bg-primary/90 transition-colors shrink-0"
                           >
                             <Plus className="w-3.5 h-3.5" /> Create
@@ -433,10 +497,7 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
                             />
                           </div>
                           <button
-                            onClick={() => {
-                              setEditingEntity({ type: 'office', originalName: office });
-                              setEntityForm({ name_english: office, name_bangla: office, alias_english: '', alias_bangla: '', faculty_id: '' });
-                            }}
+                            onClick={() => openCreateModal('office', office)}
                             className="flex items-center gap-1 bg-primary text-primary-foreground px-2.5 py-1.5 rounded-md text-xs hover:bg-primary/90 transition-colors shrink-0"
                           >
                             <Plus className="w-3.5 h-3.5" /> Create
@@ -475,10 +536,27 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
         {editingEntity && (
           <div className="absolute inset-0 z-50 bg-black/60 flex items-center justify-center p-4 rounded-xl">
             <div className="bg-card w-full max-w-md rounded-lg shadow-xl p-6 border border-border">
-              <h3 className="text-lg font-bold mb-4 capitalize">Create New {editingEntity.type}</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold capitalize">Create New {editingEntity.type}</h3>
+                {isAutoTranslating && (
+                  <span className="flex items-center gap-1.5 text-xs text-amber-500 font-medium animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Translating...
+                  </span>
+                )}
+              </div>
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Name (English) *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm font-medium">Name (English) *</label>
+                    <button
+                      type="button"
+                      onClick={() => handleManualTranslate('name_english')}
+                      disabled={isAutoTranslating || !entityForm.name_english}
+                      className="text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-500" /> Translate to Bangla
+                    </button>
+                  </div>
                   <input
                     value={entityForm.name_english}
                     onChange={e => setEntityForm({ ...entityForm, name_english: e.target.value })}
@@ -486,7 +564,17 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1 block">Name (Bangla) *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm font-medium">Name (Bangla) *</label>
+                    <button
+                      type="button"
+                      onClick={() => handleManualTranslate('name_bangla')}
+                      disabled={isAutoTranslating || !entityForm.name_bangla}
+                      className="text-xs text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-500" /> Translate to English
+                    </button>
+                  </div>
                   <input
                     value={entityForm.name_bangla}
                     onChange={e => setEntityForm({ ...entityForm, name_bangla: e.target.value })}
@@ -532,7 +620,7 @@ export default function JsonImportDialog({ onClose, onImportSuccess }: { onClose
                   </button>
                   <button
                     onClick={submitEntityForm}
-                    disabled={!entityForm.name_english || !entityForm.name_bangla || (editingEntity.type === 'department' && (!entityForm.alias_english || !entityForm.alias_bangla || !entityForm.faculty_id))}
+                    disabled={isAutoTranslating || !entityForm.name_english || !entityForm.name_bangla || (editingEntity.type === 'department' && (!entityForm.alias_english || !entityForm.alias_bangla || !entityForm.faculty_id))}
                     className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
                   >
                     Save & Map

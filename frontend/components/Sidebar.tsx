@@ -22,6 +22,7 @@ export default function Sidebar({ type = 'admin', role, isOpen = false, onClose 
   const adminLinks = [
     { name: 'Meetings', href: '/workspace/meetings', icon: Calendar },
     { name: 'Templates', href: '/workspace/templates', icon: FileText },
+    { name: 'Categories', href: '/workspace/categories', icon: LayoutGrid },
     { name: 'Members', href: '/workspace/members', icon: Users },
     { name: 'Faculties', href: '/workspace/faculties', icon: Building2 },
     { name: 'Departments', href: '/workspace/departments', icon: Briefcase },

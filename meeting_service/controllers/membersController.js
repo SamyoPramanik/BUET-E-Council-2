@@ -177,6 +177,10 @@ const fetchExternalMembers = async (req, res, next) => {
         const usersData = usersResponse.data;
         const deanHeadData = deanHeadResponse.data;
 
+        if (!Array.isArray(usersData) || usersData.length === 0) {
+            return next(new CustomError('External API returned empty or invalid member data', 502));
+        }
+
         const client = await db.pool.connect();
         
         const designationMap = {
@@ -207,9 +211,18 @@ const fetchExternalMembers = async (req, res, next) => {
             });
 
             let syncCount = 0;
+            const syncedMemberIds = [];
 
             for (const [index, u] of usersData.entries()) {
                 const name = u['Bangla Name:'];
+                if (!name || !name.trim()) continue;
+
+                // Skip inactive / retired members if Service Status is present and not 'Current'
+                const serviceStatus = u['Service Status:'] || u['service_status:'] || u['Service Status'];
+                if (serviceStatus && serviceStatus.trim().toLowerCase() !== 'current') {
+                    continue;
+                }
+
                 let designation = u['designation:'];
                 if (designationMap[designation]) {
                     designation = designationMap[designation];
@@ -217,8 +230,6 @@ const fetchExternalMembers = async (req, res, next) => {
                 
                 const deptSort = u['dept_sort:'];
                 let rawEmail = u['email:'];
-
-                if (!name) continue;
 
                 let email = null;
                 if (rawEmail) {
@@ -229,7 +240,7 @@ const fetchExternalMembers = async (req, res, next) => {
                 let department_id = (deptSort && deptMap[deptSort.toLowerCase()]) ? deptMap[deptSort.toLowerCase()] : null;
                 let office_id = null;
 
-                const dh = deanHeadData.find(d => d['Bangla Name:'] === name);
+                const dh = Array.isArray(deanHeadData) ? deanHeadData.find(d => d['Bangla Name:'] === name) : null;
                 if (dh) {
                     const dhDesig = dh['designation:'];
                     const dhOffice = dh['In-Charge-Office:'];
@@ -242,26 +253,47 @@ const fetchExternalMembers = async (req, res, next) => {
                         officeStr = `${dhDesig}, ${dhOffice}`;
                     }
 
-                    if (officeMap[officeStr.toLowerCase()]) {
-                        office_id = officeMap[officeStr.toLowerCase()];
+                    // Alias map for API string variations (& vs and, typos in external API)
+                    const officeAliasMap = {
+                        "dean, faculty of post graduate stadies": "dean, faculty of post graduate studies",
+                        "vice chancellor, bangladesh university of engineering & technology": "vice chancellor, bangladesh university of engineering and technology",
+                        "pro-vice chancellor, bangladesh university of engineering & technology": "pro-vice chancellor, bangladesh university of engineering and technology"
+                    };
+
+                    const rawKey = officeStr.toLowerCase().trim();
+                    const lookupKey = officeAliasMap[rawKey] || rawKey;
+
+                    if (officeMap[lookupKey]) {
+                        office_id = officeMap[lookupKey];
                     } else {
                         const newOfficeRes = await client.query(
                             'INSERT INTO offices (name_english, name_bangla) VALUES ($1, $2) RETURNING id',
                             [officeStr, officeStr]
                         );
                         office_id = newOfficeRes.rows[0].id;
-                        officeMap[officeStr.toLowerCase()] = office_id;
+                        officeMap[rawKey] = office_id;
+                        officeMap[lookupKey] = office_id;
                     }
                 }
 
                 const memberRes = await client.query('SELECT id FROM members WHERE name = $1', [name]);
 
+                let memberId;
                 if (memberRes.rows.length > 0) {
+                    memberId = memberRes.rows[0].id;
+
+                    if (email) {
+                        const emailCheck = await client.query('SELECT id FROM members WHERE email = $1 AND id != $2', [email, memberId]);
+                        if (emailCheck.rows.length > 0) {
+                            email = null;
+                        }
+                    }
+
                     await client.query(
                         `UPDATE members 
-                         SET designation = $1, department_id = $2, office_id = $3, email = $4 
-                         WHERE id = $5`,
-                        [designation, department_id, office_id, email, memberRes.rows[0].id]
+                         SET designation = $1, department_id = $2, office_id = $3, email = $4, serial = $5
+                         WHERE id = $6`,
+                        [designation, department_id, office_id, email, index + 1, memberId]
                     );
                 } else {
                     if (email) {
@@ -271,20 +303,33 @@ const fetchExternalMembers = async (req, res, next) => {
                         }
                     }
 
-                    // New members take their serial from this array's position, since it
-                    // reflects the academic council's seniority order (index 0 -> serial 1).
-                    // Members that already exist keep whatever serial they currently have.
-                    await client.query(
+                    const insertRes = await client.query(
                         `INSERT INTO members (name, designation, department_id, office_id, email, serial)
-                         VALUES ($1, $2, $3, $4, $5, $6)`,
+                         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
                         [name, designation, department_id, office_id, email, index + 1]
                     );
+                    memberId = insertRes.rows[0].id;
                 }
+
+                syncedMemberIds.push(memberId);
                 syncCount++;
             }
 
+            // Purge obsolete members from database that are no longer in the external API
+            let deletedCount = 0;
+            if (syncedMemberIds.length > 0) {
+                const deleteRes = await client.query(
+                    'DELETE FROM members WHERE NOT (id = ANY($1::uuid[])) RETURNING id',
+                    [syncedMemberIds]
+                );
+                deletedCount = deleteRes.rows.length;
+            }
+
             await client.query('COMMIT');
-            res.status(200).json({ success: true, message: `Synced ${syncCount} members successfully` });
+            res.status(200).json({ 
+                success: true, 
+                message: `Synced ${syncCount} members from external API (${deletedCount} obsolete member(s) removed)` 
+            });
 
         } catch (e) {
             await client.query('ROLLBACK');

@@ -57,7 +57,7 @@ const loadMeeting = async (req) => {
                 agenda_handover_level, suppli_agenda_handover_level, resolution_handover_level, resolution_status_handover_level,
                 agenda_locked_level, suppli_agenda_locked_level, resolution_locked_level, resolution_status_locked_level, meeting_locked_level,
                 invitees_locked_level, presentees_locked_level, conclusion_locked_level,
-                is_completed, completed_at, completed_by,
+                is_completed, completed_at, completed_by, max_annexure_size_mb,
                 (SELECT value FROM system_settings WHERE key = 'min_completed_level') as min_completed_level,
                 (SELECT MAX(level) FROM roles) as max_role_level
          FROM meetings WHERE id = $1`,
@@ -309,20 +309,25 @@ const requireMeetingOperator = async (req, res, next) => {
 
         let isSuppliTarget = false;
         if (req.baseUrl.includes('/agendas')) {
+            let agId = req.params.id;
+            if (!agId && req.params.annexureId) {
+                const anR = await db.query('SELECT content_id FROM annexures WHERE id = $1', [req.params.annexureId]);
+                agId = anR.rows[0]?.content_id;
+            }
             if (req.method === 'POST' && (req.body?.is_suppli === true || req.body?.is_suppli === 'true')) {
                 isSuppliTarget = true;
-            } else if (req.params.id) {
-                const r = await db.query('SELECT is_suppli FROM agenda WHERE id = $1', [req.params.id]);
+            } else if (agId) {
+                const r = await db.query('SELECT is_suppli FROM agenda WHERE id = $1', [agId]);
                 if (r.rows[0]?.is_suppli) isSuppliTarget = true;
             }
         }
 
         if (isSuppliTarget) {
-            if (!access.canEditSuppliAgenda) {
+            if (!access.canEditSuppliAgenda && !access.canEditResolution && !access.canEditMeeting) {
                 return next(new CustomError('Access denied. Supplementary agenda is locked for your level.', 403));
             }
         } else {
-            if (!access.canEditAgenda && !access.canEditMeeting) {
+            if (!access.canEditAgenda && !access.canEditResolution && !access.canEditMeeting) {
                 return next(new CustomError('Access denied. Meeting or agenda editing is restricted.', 403));
             }
         }

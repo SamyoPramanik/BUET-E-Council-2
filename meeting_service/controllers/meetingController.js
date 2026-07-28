@@ -8,7 +8,7 @@ const meetingFileSystem = require('../utils/meetingFileSystem');
 const { sendMail } = require('../utils/mailer');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
-const { extractAgendaPrefix } = require('../utils/agendaSerial');
+const { extractAgendaPrefix, parseAgendumBody } = require('../utils/agendaSerial');
 const { loadMeeting, calculateMeetingAccess } = require('../middlewares/meetingWorkflowMiddleware');
 
 // A viewer whose account is scoped to a specific member_type (academic/syndicate)
@@ -259,6 +259,12 @@ const createMeeting = async (req, res, next) => {
         const newMeeting = result.rows[0];
         meetingFileSystem.createMeetingDir(newMeeting);
 
+        // Insert default main agenda "বিবিধ :"
+        await db.query(
+            `INSERT INTO agenda (meeting_id, agenda_serial, content, is_suppli) VALUES ($1, 1, 'বিবিধ :', false)`,
+            [newMeeting.id]
+        );
+
         res.status(201).json({ success: true, message: 'Meeting created', data: newMeeting });
     } catch (error) {
         next(error);
@@ -269,10 +275,20 @@ const updateMeeting = async (req, res, next) => {
     const client = await db.pool.connect();
     try {
         const { id } = req.params;
-        const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix } = req.body;
+        const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, max_annexure_size_mb, is_suppli_visible_to_viewers } = req.body;
 
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const isUserAdmin = isAdminRole(req.user);
+        let isUserDeputyOrAbove = isUserAdmin;
+        if (!isUserDeputyOrAbove && req.user?.role_level !== null && req.user?.role_level !== undefined) {
+            const depRoleRes = await client.query("SELECT level FROM roles WHERE LOWER(level_title) LIKE '%deputy registrar%' LIMIT 1");
+            const minLevel = depRoleRes.rows.length > 0 ? depRoleRes.rows[0].level : 2;
+            if (Number(req.user.role_level) >= minLevel) {
+                isUserDeputyOrAbove = true;
+            }
+        }
 
         const access = calculateMeetingAccess(meeting, req.user);
         if (!access.canEditMeeting) {
@@ -280,6 +296,11 @@ const updateMeeting = async (req, res, next) => {
         }
 
         await client.query('BEGIN');
+
+        if (is_suppli_visible_to_viewers !== undefined && is_suppli_visible_to_viewers !== null && !isUserDeputyOrAbove) {
+            await client.query('ROLLBACK');
+            return next(new CustomError('Only Deputy Registrar & Above can change supplementary agenda viewer visibility.', 403));
+        }
 
         if (status && status === 'past') {
             await client.query(
@@ -291,6 +312,15 @@ const updateMeeting = async (req, res, next) => {
                 `UPDATE meetings SET is_completed = FALSE WHERE id = $1`,
                 [id]
             );
+        }
+
+        // Validate max_annexure_size_mb if provided (range 2 MB to 10240 MB)
+        let validMaxAnnexureSize = null;
+        if (max_annexure_size_mb !== undefined && max_annexure_size_mb !== null) {
+            const parsedMb = parseInt(max_annexure_size_mb, 10);
+            if (!isNaN(parsedMb) && parsedMb >= 2 && parsedMb <= 10240) {
+                validMaxAnnexureSize = parsedMb;
+            }
         }
 
         const result = await client.query(
@@ -306,9 +336,11 @@ const updateMeeting = async (req, res, next) => {
                 agenda_pdf_link = COALESCE($9, agenda_pdf_link),
                 resolution_pdf_link = COALESCE($10, resolution_pdf_link),
                 transcript = COALESCE($11, transcript),
-                agenda_prefix = COALESCE($12, agenda_prefix)
-             WHERE id = $13 RETURNING *`,
-            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, id]
+                agenda_prefix = COALESCE($12, agenda_prefix),
+                max_annexure_size_mb = COALESCE($13, max_annexure_size_mb),
+                is_suppli_visible_to_viewers = COALESCE($14, is_suppli_visible_to_viewers)
+             WHERE id = $15 RETURNING *`,
+            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, validMaxAnnexureSize, is_suppli_visible_to_viewers !== undefined ? !!is_suppli_visible_to_viewers : null, id]
         );
 
         await client.query('COMMIT');
@@ -1371,6 +1403,8 @@ const generatePdf = async (req, res, next) => {
 
         if (type === 'agenda') {
             pdfBuffer = await generateMeetingPdf(id, false);
+        } else if (type === 'suppli-agenda' || type === 'suppli_agenda') {
+            pdfBuffer = await generateMeetingPdf(id, false, 'suppli-agenda');
         } else if (type === 'resolution') {
             pdfBuffer = await generateMeetingPdf(id, true);
         } else if (type === 'attendance') {
@@ -1405,7 +1439,7 @@ const uploadMaterial = async (req, res, next) => {
             return next(new CustomError('id, type, and file are required', 400));
         }
 
-        const validTypes = ['agenda', 'resolution', 'resolution-status'];
+        const validTypes = ['agenda', 'suppli-agenda', 'resolution', 'resolution-status'];
         if (!validTypes.includes(type)) {
             return next(new CustomError('Invalid material type', 400));
         }
@@ -1414,6 +1448,8 @@ const uploadMaterial = async (req, res, next) => {
         const meetingCheck = await db.query('SELECT * FROM meetings WHERE id = $1', [id]);
         if (meetingCheck.rows.length === 0) return next(new CustomError('Meeting not found', 404));
 
+        await db.query('ALTER TABLE meetings ADD COLUMN IF NOT EXISTS suppli_agenda_pdf_link VARCHAR(255)');
+
         const ext = file.originalname.split('.').pop() || 'pdf';
         const fileKey = `materials/${id}/${type}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
 
@@ -1421,6 +1457,7 @@ const uploadMaterial = async (req, res, next) => {
 
         let column = '';
         if (type === 'agenda') column = 'agenda_pdf_link';
+        else if (type === 'suppli-agenda') column = 'suppli_agenda_pdf_link';
         else if (type === 'resolution') column = 'resolution_pdf_link';
         else if (type === 'resolution-status') column = 'resolution_status_pdf_link';
 
@@ -1582,22 +1619,30 @@ const bulkImportMeeting = async (req, res, next) => {
         if (hasAgendas) {
             for (const [index, a] of agendas.entries()) {
                 // Only the first agendum had its marker stripped (if any); the rest use their content as-is.
-                const content = index === 0 ? firstAgendaExtraction.content : a.content;
+                const rawContent = index === 0 ? firstAgendaExtraction.content : a.content;
+                const explicitSerial = (a.serial !== undefined && a.serial !== null) ? a.serial : ((a.agenda_serial !== undefined && a.agenda_serial !== null) ? a.agenda_serial : null);
+                const defaultSerial = explicitSerial !== null ? explicitSerial : index + 1;
+                const parsedBody = parseAgendumBody(rawContent, defaultSerial);
+
+                let finalSerial = (a.serial === 0 || a.agenda_serial === 0 || parsedBody.isBibidha)
+                    ? 0
+                    : (explicitSerial !== null ? explicitSerial : (parsedBody.serial !== null ? parsedBody.serial : defaultSerial));
+
                 const res = await client.query(
                     `INSERT INTO agenda
                     (content, resolution, agenda_serial, meeting_id)
                     VALUES ($1, $2, $3, $4) RETURNING id`,
                     [
-                        content,
+                        parsedBody.content,
                         a.resolution,
-                        a.agenda_serial,
+                        finalSerial,
                         meetingId
                     ]
                 );
                 const agendaId = res.rows[0].id;
 
-                if (content) {
-                    indexAgendaContent(agendaId, content).catch(() => {});
+                if (rawContent) {
+                    indexAgendaContent(agendaId, rawContent).catch(() => {});
                 }
                 if (a.resolution) {
                     indexResolutionContent(agendaId, a.resolution).catch(() => {});
@@ -2120,6 +2165,14 @@ const handoverSuppliAgenda = async (req, res, next) => {
     }
 };
 
+const getUserLockInfo = (user) => {
+    const roleTitle = (user?.role === 'admin' || user?.role === 'superadmin')
+        ? 'Admin'
+        : (user?.level_title || user?.role || 'Editor');
+    const username = user?.username || user?.name || 'User';
+    return { roleTitle, username };
+};
+
 const lockSuppliAgenda = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -2132,7 +2185,11 @@ const lockSuppliAgenda = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET suppli_agenda_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET suppli_agenda_locked_level = $1, suppli_agenda_locked_by_username = $2, suppli_agenda_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Supplementary agenda locked successfully.' });
     } catch (err) {
         next(err);
@@ -2150,7 +2207,10 @@ const unlockSuppliAgenda = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock supplementary agenda locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET suppli_agenda_locked_level = NULL, suppli_agenda_handover_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET suppli_agenda_locked_level = NULL, suppli_agenda_handover_level = NULL, suppli_agenda_locked_by_username = NULL, suppli_agenda_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Supplementary agenda unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2191,7 +2251,11 @@ const lockAgenda = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET agenda_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET agenda_locked_level = $1, agenda_locked_by_username = $2, agenda_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Agenda locked successfully.' });
     } catch (err) {
         next(err);
@@ -2209,7 +2273,10 @@ const unlockAgenda = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock an agenda locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET agenda_locked_level = NULL, agenda_handover_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET agenda_locked_level = NULL, agenda_handover_level = NULL, agenda_locked_by_username = NULL, agenda_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Agenda unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2228,7 +2295,11 @@ const lockResolution = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET resolution_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET resolution_locked_level = $1, resolution_locked_by_username = $2, resolution_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Resolution locked successfully.' });
     } catch (err) {
         next(err);
@@ -2246,7 +2317,10 @@ const unlockResolution = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock a resolution locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET resolution_locked_level = NULL, resolution_handover_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET resolution_locked_level = NULL, resolution_handover_level = NULL, resolution_locked_by_username = NULL, resolution_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Resolution unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2265,7 +2339,11 @@ const lockMeeting = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET meeting_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET meeting_locked_level = $1, meeting_locked_by_username = $2, meeting_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Meeting locked successfully.' });
     } catch (err) {
         next(err);
@@ -2283,7 +2361,10 @@ const unlockMeeting = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock a meeting info locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET meeting_locked_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET meeting_locked_level = NULL, meeting_locked_by_username = NULL, meeting_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Meeting unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2302,7 +2383,11 @@ const lockInvitees = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET invitees_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET invitees_locked_level = $1, invitees_locked_by_username = $2, invitees_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Invitees locked successfully.' });
     } catch (err) {
         next(err);
@@ -2320,7 +2405,10 @@ const unlockInvitees = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock invitees locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET invitees_locked_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET invitees_locked_level = NULL, invitees_locked_by_username = NULL, invitees_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Invitees unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2339,7 +2427,11 @@ const lockPresentees = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET presentees_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET presentees_locked_level = $1, presentees_locked_by_username = $2, presentees_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Presentees locked successfully.' });
     } catch (err) {
         next(err);
@@ -2357,7 +2449,10 @@ const unlockPresentees = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock presentees locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET presentees_locked_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET presentees_locked_level = NULL, presentees_locked_by_username = NULL, presentees_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Presentees unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2376,7 +2471,11 @@ const lockConclusion = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET conclusion_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET conclusion_locked_level = $1, conclusion_locked_by_username = $2, conclusion_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Conclusion locked successfully.' });
     } catch (err) {
         next(err);
@@ -2394,7 +2493,10 @@ const unlockConclusion = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock a conclusion locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET conclusion_locked_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET conclusion_locked_level = NULL, conclusion_locked_by_username = NULL, conclusion_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Conclusion unlocked successfully.' });
     } catch (err) {
         next(err);
@@ -2549,7 +2651,11 @@ const lockResolutionStatus = async (req, res, next) => {
         }
 
         const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
-        await db.query('UPDATE meetings SET resolution_status_locked_level = $1 WHERE id = $2', [levelToSet, id]);
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET resolution_status_locked_level = $1, resolution_status_locked_by_username = $2, resolution_status_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
         res.status(200).json({ success: true, message: 'Resolution Status locked successfully.' });
     } catch (err) {
         next(err);
@@ -2567,7 +2673,10 @@ const unlockResolutionStatus = async (req, res, next) => {
             return next(new CustomError('Lower levels cannot unlock resolution status locked by a higher level.', 403));
         }
 
-        await db.query('UPDATE meetings SET resolution_status_locked_level = NULL, resolution_status_handover_level = NULL WHERE id = $1', [id]);
+        await db.query(
+            'UPDATE meetings SET resolution_status_locked_level = NULL, resolution_status_handover_level = NULL, resolution_status_locked_by_username = NULL, resolution_status_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
         res.status(200).json({ success: true, message: 'Resolution Status unlocked successfully.' });
     } catch (err) {
         next(err);

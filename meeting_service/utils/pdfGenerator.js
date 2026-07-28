@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const storageService = require('./storageService');
 const meetingFileSystem = require('./meetingFileSystem');
-const { toBanglaDigits } = require('./agendaSerial');
+const { toBanglaDigits, getSerialWidth, stripResolutionPrefix } = require('./agendaSerial');
 
 const getFontBase64 = () => {
     const sonarPath = path.join(__dirname, 'fonts', 'SonarBangla.ttf');
@@ -26,6 +26,119 @@ const getFontBase64 = () => {
 
 // Read and encode the Bangla font once at startup, then reuse for every request.
 const FONT_BASE64 = getFontBase64();
+
+function convertMarkdownTablesToHtml(content) {
+    if (!content || typeof content !== 'string') return content || '';
+    if (content.includes('<table') || content.includes('<TABLE')) return content;
+    if (!content.includes('|')) return content;
+
+    // Step 1: Replace line breaks and paragraph tags with newlines
+    let raw = content
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<p[^>]*>/gi, '\n');
+
+    // Step 2: Replace double pipes `| |` -> `|\n|`
+    raw = raw.replace(/\|\s*\|/g, '|\n|');
+
+    const isSep = (str) => /^\|?\s*[:\-]{2,}(?:\s*\|\s*[:\-]{2,})*\s*\|?$/.test(str.trim());
+
+    let rawLines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    let lines = [];
+
+    for (let i = 0; i < rawLines.length; i++) {
+        let line = rawLines[i];
+        if (i + 1 < rawLines.length && isSep(rawLines[i + 1])) {
+            if (line.includes('|')) {
+                let parts = line.split('|').map(s => s.trim());
+                let items = [];
+                for (let k = 0; k < parts.length; k++) {
+                    let p = parts[k];
+                    if (!p) continue;
+                    if (k > 0 && k < parts.length - 1) {
+                        items.push(`| ${p} |`);
+                    } else {
+                        items.push(p);
+                    }
+                }
+                if (items.length > 1) {
+                    items.forEach(it => lines.push(it));
+                    continue;
+                }
+            }
+        }
+        lines.push(line);
+    }
+
+    let result = [];
+    let idx = 0;
+
+    while (idx < lines.length) {
+        if (idx + 1 < lines.length && isSep(lines[idx + 1])) {
+            let headerRaw = lines[idx];
+
+            let leadText = '';
+            let headerTablePart = headerRaw;
+            const firstPipeIdx = headerRaw.indexOf('|');
+            if (firstPipeIdx > 0) {
+                leadText = headerRaw.substring(0, firstPipeIdx).trim();
+                headerTablePart = headerRaw.substring(firstPipeIdx).trim();
+            }
+
+            if (leadText) {
+                result.push(`<p>${leadText}</p>`);
+            }
+
+            let dataLines = [];
+            let j = idx + 2;
+
+            while (j < lines.length) {
+                let curLine = lines[j];
+                if (!curLine || isSep(curLine)) break;
+                if (j + 1 < lines.length && isSep(lines[j + 1])) break;
+                if (j + 2 < lines.length && isSep(lines[j + 2])) break;
+                if (curLine.includes('|')) {
+                    dataLines.push(curLine);
+                    j++;
+                } else {
+                    break;
+                }
+            }
+
+            const headers = headerTablePart.split('|').map(s => s.trim()).filter((s, k, arr) => !(k === 0 && s === '') && !(k === arr.length - 1 && s === ''));
+            if (headers.length === 0 && headerTablePart) headers.push(headerTablePart.replace(/\|/g, '').trim());
+
+            let tableHtml = '<table class="meeting-table" border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;margin:12px 0;border:1px solid #000;"><thead><tr>';
+            headers.forEach(h => {
+                tableHtml += `<th style="border:1px solid #000;padding:6px;background-color:rgba(0,0,0,0.05);font-weight:600;text-align:left;">${h}</th>`;
+            });
+            tableHtml += '</tr></thead><tbody>';
+
+            dataLines.forEach(dLine => {
+                const cells = dLine.split('|').map(s => s.trim()).filter((s, k, arr) => !(k === 0 && s === '') && !(k === arr.length - 1 && s === ''));
+                if (cells.length > 0) {
+                    tableHtml += '<tr>';
+                    cells.forEach(c => {
+                        tableHtml += `<td style="border:1px solid #000;padding:6px;">${c}</td>`;
+                    });
+                    tableHtml += '</tr>';
+                }
+            });
+            tableHtml += '</tbody></table>';
+
+            result.push(tableHtml);
+            idx = j;
+        } else {
+            let cleanText = lines[idx].replace(/^\||\|$/g, '').trim();
+            if (cleanText) {
+                result.push(`<p>${cleanText}</p>`);
+            }
+            idx++;
+        }
+    }
+
+    return result.join('\n');
+}
 
 // Reuse a single Chromium instance across requests instead of launching one per PDF.
 let browserPromise = null;
@@ -122,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v14';
+const PDF_TEMPLATE_VERSION = 'v24';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -161,7 +274,7 @@ const storeCachedPdf = async (cacheKey, pdfBuffer, fingerprint) => {
 
 const generatePdf = async (meetingId, isResolution, cacheVariant) => {
     try {
-        const meetingQuery = `SELECT title, meeting_date, description, agenda_prefix FROM meetings WHERE id = $1`;
+        const meetingQuery = `SELECT title, meeting_date, description, agenda_prefix, type FROM meetings WHERE id = $1`;
         const presenteesQuery = `
             SELECT p.id, p.name, p.designation, p.serial, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM invitees p
@@ -170,6 +283,9 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             WHERE p.meeting_id = $1 AND p.is_present = true
             ORDER BY p.serial ASC NULLS LAST
         `;
+        const resFilter = isResolution
+            ? ' AND prev_an.is_excluded_in_resolution = false'
+            : " AND (prev_an.annexure_type IS NULL OR prev_an.annexure_type != 'resolution')";
         const agendasQuery = `
             SELECT 
                 a.id,
@@ -183,21 +299,26 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                             json_build_object(
                                 'id', an.id,
                                 'annexure_serial', an.annexure_serial,
+                                'annexure_type', an.annexure_type,
                                 'is_excluded_in_resolution', an.is_excluded_in_resolution,
+                                'is_suppli', a.is_suppli,
                                 'global_serial', (
                                     SELECT COUNT(*)::int
                                     FROM annexures prev_an
                                     JOIN agenda prev_a ON prev_a.id = prev_an.content_id
                                     WHERE prev_a.meeting_id = a.meeting_id
+                                      AND prev_a.is_suppli = a.is_suppli
+                                      ${resFilter}
                                       AND (
-                                        (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
-                                        (a.is_suppli, a.agenda_serial, an.annexure_serial)
+                                        (prev_a.agenda_serial, prev_an.annexure_serial) <
+                                        (a.agenda_serial, an.annexure_serial)
                                       )
                                 ) + 1
                             ) ORDER BY an.annexure_serial ASC
                         )
                         FROM annexures an
                         WHERE an.content_id = a.id
+                          ${isResolution ? '' : "AND (an.annexure_type IS NULL OR an.annexure_type != 'resolution')"}
                     ),
                     '[]'
                 ) AS annexures
@@ -376,24 +497,42 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         // Agenda (pre-meeting notice) and resolution (post-meeting minutes) are
         // different documents, not the same content with an extra line: they
         // carry different titles and tense ("to be held" vs "held").
-        const docLabel = isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচি';
+        const docLabel = cacheVariant === 'suppli-agenda' ? 'সম্পূরক আলোচ্যসূচি' : (isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচি');
         const dateVerb = isResolution ? 'অনুষ্ঠিত' : 'অনুষ্ঠিতব্য';
+
+        // Build council label based on meeting type
+        const typeStr = (meeting.type || '').toLowerCase();
+        const isSyndicate = typeStr === 'syndicate' || typeStr.includes('syndicate');
+        const councilLabel = isSyndicate ? 'সিন্ডিকেটের' : 'একাডেমিক কাউন্সিলের';
 
         // Supplementary agenda items (is_suppli) are printed after the main
         // agenda/resolution items under their own heading, never interleaved.
         const mainAgendas = agendas.filter(ag => !ag.is_suppli);
         const suppliAgendas = agendas.filter(ag => ag.is_suppli);
 
-        const renderAgendaBlock = (ag) => `
+        const renderAgendaBlock = (ag) => {
+            const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+            const isBibidha = !ag.is_suppli && (ag.agenda_serial === 0 || cleanContent.startsWith('বিবিধ'));
+            let displayContent = ag.content || '';
+            if (isBibidha) {
+                displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+            }
+            const isOnlyBibidhaTitle = isBibidha && !displayContent.replace(/<[^>]*>/g, '').trim();
+            if (isResolution && isBibidha && isOnlyBibidhaTitle && !ag.resolution) {
+                return '';
+            }
+
+            return `
             <div class="agenda-block">
-                <div class="agenda-title">প্রস্তাবনা নং ${(meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</div>
+                <div class="agenda-title">${isBibidha ? 'বিবিধ :' : 'প্রস্তাবনা নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</div>
                 <div class="agenda-content">${ag.content || ''}</div>
                 ${isResolution ? `
                 <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
-                <div class="agenda-resolution">${ag.resolution || ''}</div>
+                <div class="agenda-resolution">${(ag.resolution || '').replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*সিদ্ধান্ত\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1')}</div>
                 ` : ''}
             </div>
-        `;
+            `;
+        };
 
         let html = `
         <!DOCTYPE html>
@@ -453,8 +592,12 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             </style>
         </head>
         <body>
+            ${cacheVariant === 'suppli-agenda' ? `
+            <div class="text-center sub-title">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
+            ` : `
             <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
             <div class="text-center sub-title">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
+            `}
 
             ${isResolution ? `
                 ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}
@@ -471,32 +614,80 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 </div>
             ` : ''}
 
-            ${agendas.map(ag => {
+            ${(cacheVariant === 'suppli-agenda'
+                ? agendas.filter(ag => ag.is_suppli)
+                : !isResolution
+                    ? agendas.filter(ag => !ag.is_suppli)
+                    : agendas.filter(ag => {
+                        if (!ag.is_suppli) {
+                            const clean = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+                            if (clean.startsWith('বিবিধ')) {
+                                const hasResolution = ag.resolution && ag.resolution.replace(/<[^>]*>/g, '').trim().length > 0;
+                                const strippedText = clean.replace(/^\s*বিবিধ\s*[:.\-]?\s*([ঀ-৥ৰ-৿]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
+                                const hasContent = strippedText.length > 0;
+                                return hasResolution || hasContent;
+                            }
+                        }
+                        return true;
+                    })
+            ).map(ag => {
+                // Exclude Bibidha from count so suppli serials sync with visual বিবিধ number
+                const mainAgendaCount = agendas.filter(a => {
+                    if (a.is_suppli) return false;
+                    const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+                    return !clean.startsWith('বিবিধ');
+                }).length;
+                const serialWidth = getSerialWidth(agendas.length);
+                const agSerialStr = ag.is_suppli
+                    ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), serialWidth)
+                    : toBanglaDigits(ag.agenda_serial, serialWidth);
+
+                const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+                const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
+                const strippedText = cleanContent.replace(/^\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
+                const isOnlyBibidhaTitle = isBibidha && !strippedText;
+                const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
+                const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
+                const titleStr = isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
+
                 const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
-                    .filter(an => !isResolution || !an.is_excluded_in_resolution)
+                    .filter(an => isResolution ? !an.is_excluded_in_resolution : (an.annexure_type !== 'resolution'))
                     .sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
                 const annexureTags = validAnnexures.length > 0
-                    ? validAnnexures.map(an => `পরিশিষ্ট-${toBanglaDigits(an.global_serial || an.annexure_serial)}`).join(', ')
+                    ? validAnnexures.map((an) => {
+                        const num = an.global_serial || an.annexure_serial;
+                        return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(num)}`;
+                      }).join(', ')
                     : null;
 
-                let contentHtml = ag.content || '';
+                let contentHtml = isOnlyBibidhaTitle ? '' : convertMarkdownTablesToHtml(ag.content || '');
+                if (isBibidha) {
+                    contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                } else if (contentHtml) {
+                    contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*প্রস্তাব(?:না)?\s*নং\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]+\s*)*[০-৯\d\s\/\-]*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                    contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
+                }
                 if (annexureTags) {
                     const tagString = ` <b>(${annexureTags})</b>`;
                     if (contentHtml.trim().endsWith('</p>')) {
                         const lastIndex = contentHtml.lastIndexOf('</p>');
                         contentHtml = contentHtml.substring(0, lastIndex) + tagString + contentHtml.substring(lastIndex);
-                    } else {
+                    } else if (contentHtml) {
                         contentHtml += tagString;
+                    } else {
+                        contentHtml = `<p><b>(${annexureTags})</b></p>`;
                     }
                 }
 
+                const rawRes = convertMarkdownTablesToHtml(ag.resolution || '');
+                const cleanRes = stripResolutionPrefix(rawRes);
                 return `
                 <div class="agenda-block">
-                    <div class="agenda-title">প্রস্তাবনা নং ${(meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</div>
-                    <div class="agenda-content">${contentHtml}</div>
+                    <div class="agenda-title">${titleStr}</div>
+                    ${contentHtml ? `<div class="agenda-content">${contentHtml}</div>` : ''}
                     ${isResolution ? `
                     <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
-                    <div class="agenda-resolution">${ag.resolution || ''}</div>
+                    <div class="agenda-resolution">${cleanRes}</div>
                     ` : ''}
                 </div>
                 `;
@@ -509,7 +700,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         // Cache for future requests (best-effort; keyed by the content fingerprint).
         await storeCachedPdf(cacheKey, pdfBuffer, fingerprint);
         try {
-            await meetingFileSystem.saveMeetingPdf(meetingId, type, pdfBuffer);
+            const pdfType = cacheVariant || (isResolution ? 'resolution' : 'agenda');
+            await meetingFileSystem.saveMeetingPdf(meetingId, pdfType, pdfBuffer);
         } catch (e) {
             console.error('Error saving meeting PDF to filesystem:', e);
         }

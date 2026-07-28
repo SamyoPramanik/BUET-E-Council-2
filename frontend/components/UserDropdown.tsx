@@ -25,13 +25,6 @@ export default function UserDropdown() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    if (error) {
-      // If not authenticated, redirect to login page
-      router.push('/login');
-    }
-  }, [error, router]);
-
   const handleSignOut = async () => {
     setIsOpen(false);
     try {

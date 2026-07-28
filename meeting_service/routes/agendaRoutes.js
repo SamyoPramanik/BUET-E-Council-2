@@ -6,11 +6,12 @@ const { auditLog } = require('../middlewares/auditMiddleware');
 const multer = require('multer');
 const { fileFilter: annexureFileFilter, MAX_FILE_SIZE_MB } = require('../config/annexureUpload');
 
-// Annexure uploads only: restricted to the formats/size configured in
-// config/annexureUpload.js.
+// Annexure uploads: multer handles streaming memory storage up to 10 GB max cap,
+// and agendaController.uploadAnnexure enforces per-meeting configured limits.
+const MAX_GLOBAL_LIMIT_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 },
+    limits: { fileSize: MAX_GLOBAL_LIMIT_BYTES },
     fileFilter: annexureFileFilter
 });
 
@@ -39,6 +40,7 @@ router.delete('/resolutions/:resId', requireResolutionEditor, agendaController.d
 router.get('/:id/annexures', agendaController.getAnnexures);
 router.post('/:id/annexures', requireMeetingOperator, upload.single('file'), agendaController.uploadAnnexure);
 router.put('/annexures/reorder', requireMeetingOperator, agendaController.reorderAnnexures);
+router.put('/annexures/:annexureId/toggle-exclude', requireMeetingOperator, agendaController.toggleAnnexureExclusion);
 router.delete('/annexures/:annexureId', requireMeetingOperator, agendaController.deleteAnnexure);
 
 // Revision history (agenda content and resolution text)

@@ -14,7 +14,23 @@ import TemplateDrawer from "../TemplateDrawer";
 import { useAuth } from "../../hooks/useAuth";
 import { canEditResolution } from "../../lib/meetingAccess";
 import { useConfirm } from "../../hooks/useConfirm";
-import { toBanglaDigits } from "../../lib/banglaNumerals";
+import { toBanglaDigits, getSerialWidth } from "../../lib/banglaNumerals";
+
+function stripLeadingResolutionPrefix(content: string): string {
+  if (!content) return '';
+  let str = content.normalize('NFC').replace(/&nbsp;/g, ' ').replace(/\u00a0/g, ' ').trim();
+  // Strip standalone paragraph(s) containing only 'সিদ্ধান্ত' (with optional colon/punctuation/spaces)
+  str = str.replace(/^(?:\s*<p[^>]*>\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*<\/p>\s*)+/gi, '');
+  // Strip inline leading 'সিদ্ধান্ত' prefix at start of paragraph
+  str = str.replace(/^(?:\s*<p[^>]*>)?\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*/gi, (match) => {
+    return match.includes('<p') ? '<p>' : '';
+  });
+  // Strip trailing standalone paragraph(s) containing only 'সিদ্ধান্ত'
+  str = str.replace(/(?:\s*<p[^>]*>\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*<\/p>\s*)+$/gi, '');
+  // Clean up any residual empty strong/b/span tags at start of <p>
+  str = str.replace(/(<p[^>]*>)\s*(?:<(strong|b|span|em)[^>]*>\s*<\/\2>\s*)+/gi, '$1');
+  return str.trim();
+}
 
 export default function ResolutionView({ meeting }: { meeting: any }) {
   const { user } = useAuth();
@@ -24,14 +40,21 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
   const { data: response, mutate } = useSWR(`/agendas?meeting_id=${meeting.id}`, fetcher, { fallbackData: { data: [] } });
 
   // Sort main agendas first, suppli agendas last, then by serial
-  const agendas = [...(response?.data || [])].sort((a: any, b: any) => {
+  const allAgendas = [...(response?.data || [])].sort((a: any, b: any) => {
     if (a.is_suppli === b.is_suppli) {
       return (a.agenda_serial || 0) - (b.agenda_serial || 0);
     }
     return a.is_suppli ? 1 : -1;
   });
 
-  const mainAgendaCount = (agendas || []).filter((a: any) => !a.is_suppli).length;
+  // Main agenda count (excluding Bibidha) for supplementary numbering
+  const mainAgendaCount = allAgendas.filter((a: any) => {
+    if (a.is_suppli) return false;
+    const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+    return !(a.agenda_serial === 0 || clean.startsWith('বিবিধ'));
+  }).length;
+
+  const agendas = allAgendas;
 
   const { data: tagsResponse, mutate: mutateTags } = useSWR('/tags', fetcher, { fallbackData: { data: [] } });
   const allTags = tagsResponse?.data || [];
@@ -60,7 +83,8 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await api.put(`/agendas/resolutions/${editingId}`, { resolution: editContent, tag_ids: editTagIds });
+      const cleanResolution = stripLeadingResolutionPrefix(editContent);
+      await api.put(`/agendas/resolutions/${editingId}`, { resolution: cleanResolution, tag_ids: editTagIds });
       mutate();
       setEditingId(null);
       toast.success("Resolution saved successfully");
@@ -73,7 +97,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
 
   const handleEditClick = (agenda: any) => {
     setEditingId(agenda.id);
-    setEditContent(agenda.resolution || "");
+    setEditContent(stripLeadingResolutionPrefix(agenda.resolution || ""));
     setEditTagIds((agenda.tags || []).map((t: any) => t.id));
   };
 
@@ -132,15 +156,31 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
             <FileText className="w-8 h-8 text-muted-foreground" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-primary">No Agendas Found</h3>
-            <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are no agendas to add resolutions for. Please create an agenda first.</p>
+            <h3 className="text-lg font-semibold text-primary">No Agendum Found</h3>
+            <p className="text-sm text-muted-foreground mt-1 max-w-sm">There are no agendum items to add resolutions for. Please create an agendum first.</p>
           </div>
         </div>
       ) : (
         agendas.map((agenda: any, index: number) => {
+          const cleanContent = (agenda.content || '').replace(/<[^>]*>/g, '').trim();
+          const isBibidha = !agenda.is_suppli && (agenda.agenda_serial === 0 || cleanContent.startsWith('বিবিধ'));
+          let displayContent = agenda.content || '';
+          if (isBibidha) {
+            displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+          } else {
+            displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*প্রস্তাব(?:না)?\s*নং\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]+\s*)*[০-৯\d\s\/\-]*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+            displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
+          }
+          const isOnlyBibidhaTitle = isBibidha && !displayContent.replace(/<[^>]*>/g, '').trim();
+          if (isBibidha && isOnlyBibidhaTitle && !agenda.resolution) {
+            return null;
+          }
+          const totalAgendasCount = (agendas || []).length;
+          const serialWidth = getSerialWidth(totalAgendasCount);
+          const bibidhaSerial = (meeting.agenda_prefix || '') + toBanglaDigits((mainAgendaCount || 0) + 1, serialWidth);
           const displaySerial = agenda.is_suppli
-            ? mainAgendaCount + (agenda.agenda_serial || index + 1)
-            : (agenda.agenda_serial || index + 1);
+            ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), serialWidth)
+            : toBanglaDigits(agenda.agenda_serial || index + 1, serialWidth);
 
           return (
             <div key={agenda.id} className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm group">
@@ -148,7 +188,9 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 {/* Top Section (Read-Only Agenda) */}
                 <div className="mb-6">
                   <h3 className="font-semibold text-base text-primary mb-2">
-                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + toBanglaDigits(displaySerial)}
+                    {isBibidha
+                      ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`)
+                      : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + displaySerial}`}
                   </h3>
               {agenda.tags && agenda.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
@@ -160,9 +202,11 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 </div>
               )}
               <div className="text-muted-foreground bg-muted/30 p-4 rounded-md border-l-4 border-muted/50 prose prose-sm dark:prose-invert max-w-none">
-                <div dangerouslySetInnerHTML={{ __html: agenda.content ? sanitizeHtml(agenda.content) : "<p class='italic opacity-50'>Empty agenda...</p>" }} />
+                <div dangerouslySetInnerHTML={{ __html: displayContent ? sanitizeHtml(displayContent) : "<p class='italic opacity-50'>Empty agenda...</p>" }} />
               </div>
 
+              {/* Annexure List placed underneath the agenda content */}
+              <AnnexureList contentId={agenda.id} type="resolution" readOnly={!canEdit} />
             </div>
 
             {/* Bottom Section (The Resolution) */}
@@ -231,7 +275,11 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
               ) : agenda.resolution ? (
                 <div
                   className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-background border border-border p-5 rounded-md shadow-inner"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.resolution) }}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHtml(
+                      stripLeadingResolutionPrefix(agenda.resolution)
+                    )
+                  }}
                 />
               ) : (
                 !readOnly && (
@@ -256,11 +304,6 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 )
               )}
             </div>
-
-            {/* Annexure List placed underneath the resolution content */}
-            {agenda.resolution && (
-              <AnnexureList contentId={agenda.id} type="resolution" readOnly={!canEdit} />
-            )}
 
             {/* Execution Status (Only for past meetings) */}
             {meeting.status === 'past' && agenda.resolution && (

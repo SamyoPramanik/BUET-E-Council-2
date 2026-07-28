@@ -9,6 +9,8 @@ import SearchableSelect from "../../../components/SearchableSelect";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
 import { useAuth } from "../../../hooks/useAuth";
+import { Sparkles, Loader2 } from "lucide-react";
+import { translateText } from "../../../lib/translator";
 
 export default function ManageDepartmentsPage() {
   const { canEdit } = useAuth();
@@ -21,6 +23,7 @@ export default function ManageDepartmentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
   const [newDepartment, setNewDepartment] = useState({
     name_bangla: "",
     name_english: "",
@@ -29,6 +32,38 @@ export default function ManageDepartmentsPage() {
     faculty_id: "",
     serial: ""
   });
+
+  const handleTranslateName = async (sourceField: 'name_bangla' | 'name_english') => {
+    const text = newDepartment[sourceField];
+    if (!text.trim()) return;
+    setIsTranslating(true);
+    try {
+      const targetLang = sourceField === 'name_bangla' ? 'en' : 'bn';
+      const translated = await translateText(text, targetLang);
+      if (translated) {
+        if (sourceField === 'name_bangla') {
+          const aliasEn = translated.replace(/department of /i, '').trim();
+          setNewDepartment(prev => ({
+            ...prev,
+            name_english: prev.name_english || translated,
+            alias_english: prev.alias_english || aliasEn
+          }));
+        } else {
+          const aliasBn = translated.replace(/বিভাগ/g, '').trim();
+          setNewDepartment(prev => ({
+            ...prev,
+            name_bangla: prev.name_bangla || translated,
+            alias_bangla: prev.alias_bangla || aliasBn
+          }));
+        }
+        toast.success("Translated successfully!");
+      }
+    } catch (e) {
+      toast.error("Translation failed");
+    } finally {
+      setIsTranslating(false);
+    }
+  };
 
   const columns = [
     { key: "serial", label: "Serial No" },
@@ -179,17 +214,64 @@ export default function ManageDepartmentsPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6 relative max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">{isEditMode ? "Edit Department" : "Add New Department"}</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">{isEditMode ? "Edit Department" : "Add New Department"}</h3>
+              {isTranslating && (
+                <span className="flex items-center gap-1 text-xs text-amber-500 font-medium animate-pulse">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Translating...
+                </span>
+              )}
+            </div>
             <form onSubmit={handleAddSubmit} className="space-y-4">
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium">Name (Bangla)</label>
-                  <input required value={newDepartment.name_bangla} onChange={e => setNewDepartment({...newDepartment, name_bangla: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium">Name (Bangla)</label>
+                    <button
+                      type="button"
+                      onClick={() => handleTranslateName('name_bangla')}
+                      disabled={isTranslating || !newDepartment.name_bangla}
+                      className="text-[11px] text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-500" /> Translate
+                    </button>
+                  </div>
+                  <input
+                    required
+                    value={newDepartment.name_bangla}
+                    onChange={e => setNewDepartment({...newDepartment, name_bangla: e.target.value})}
+                    onBlur={async () => {
+                      if (newDepartment.name_bangla && !newDepartment.name_english) {
+                        handleTranslateName('name_bangla');
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                  />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium">Name (English)</label>
-                  <input required value={newDepartment.name_english} onChange={e => setNewDepartment({...newDepartment, name_english: e.target.value})} className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm" />
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium">Name (English)</label>
+                    <button
+                      type="button"
+                      onClick={() => handleTranslateName('name_english')}
+                      disabled={isTranslating || !newDepartment.name_english}
+                      className="text-[11px] text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-500" /> Translate
+                    </button>
+                  </div>
+                  <input
+                    required
+                    value={newDepartment.name_english}
+                    onChange={e => setNewDepartment({...newDepartment, name_english: e.target.value})}
+                    onBlur={async () => {
+                      if (newDepartment.name_english && !newDepartment.name_bangla) {
+                        handleTranslateName('name_english');
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm"
+                  />
                 </div>
               </div>
 

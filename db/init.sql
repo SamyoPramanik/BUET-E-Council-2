@@ -137,6 +137,7 @@ CREATE TABLE meetings (
     online_meeting_link VARCHAR(255),
     agenda_prefix VARCHAR(10),
     agenda_pdf_link VARCHAR(255),
+    suppli_agenda_pdf_link VARCHAR(255),
     transcript VARCHAR(255),
     resolution_pdf_link VARCHAR(255),
     resolution_status_pdf_link VARCHAR(255),
@@ -148,16 +149,34 @@ CREATE TABLE meetings (
     resolution_handover_level INTEGER DEFAULT NULL,
     resolution_status_handover_level INTEGER DEFAULT NULL,
     agenda_locked_level INTEGER DEFAULT NULL,
+    agenda_locked_by_username VARCHAR(255) DEFAULT NULL,
+    agenda_locked_by_role VARCHAR(255) DEFAULT NULL,
     suppli_agenda_locked_level INTEGER DEFAULT NULL,
+    suppli_agenda_locked_by_username VARCHAR(255) DEFAULT NULL,
+    suppli_agenda_locked_by_role VARCHAR(255) DEFAULT NULL,
     resolution_locked_level INTEGER DEFAULT NULL,
+    resolution_locked_by_username VARCHAR(255) DEFAULT NULL,
+    resolution_locked_by_role VARCHAR(255) DEFAULT NULL,
     resolution_status_locked_level INTEGER DEFAULT NULL,
+    resolution_status_locked_by_username VARCHAR(255) DEFAULT NULL,
+    resolution_status_locked_by_role VARCHAR(255) DEFAULT NULL,
     meeting_locked_level INTEGER DEFAULT NULL,
+    meeting_locked_by_username VARCHAR(255) DEFAULT NULL,
+    meeting_locked_by_role VARCHAR(255) DEFAULT NULL,
     invitees_locked_level INTEGER DEFAULT NULL,
+    invitees_locked_by_username VARCHAR(255) DEFAULT NULL,
+    invitees_locked_by_role VARCHAR(255) DEFAULT NULL,
     presentees_locked_level INTEGER DEFAULT NULL,
+    presentees_locked_by_username VARCHAR(255) DEFAULT NULL,
+    presentees_locked_by_role VARCHAR(255) DEFAULT NULL,
     conclusion_locked_level INTEGER DEFAULT NULL,
+    conclusion_locked_by_username VARCHAR(255) DEFAULT NULL,
+    conclusion_locked_by_role VARCHAR(255) DEFAULT NULL,
     is_completed BOOLEAN DEFAULT FALSE,
     completed_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     completed_by UUID REFERENCES users (id) ON DELETE SET NULL,
+    max_annexure_size_mb INTEGER DEFAULT 50,
+    is_suppli_visible_to_viewers BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -194,6 +213,14 @@ CREATE TABLE agenda (
             coalesce(resolution_plain, '')
         )
     ) STORED
+);
+
+-- Categories Table (master category list for grouping agendas)
+CREATE TABLE categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
+    serial INTEGER DEFAULT 1,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Tags Table (user-facing agenda tagging)
@@ -327,7 +354,7 @@ CREATE TABLE annexures (
     file_path VARCHAR(255),
     summary TEXT,
     annexure_serial INTEGER DEFAULT 1,
-    is_excluded_in_resolution BOOLEAN DEFAULT FALSE,
+    is_excluded_in_resolution BOOLEAN DEFAULT TRUE,
     uploaded_by UUID REFERENCES users (id) ON DELETE SET NULL,
     upload_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -905,3 +932,23 @@ DROP TRIGGER IF EXISTS trg_clear_search_cache_agenda_tags ON agenda_tags;
 CREATE TRIGGER trg_clear_search_cache_agenda_tags
 AFTER INSERT OR UPDATE OR DELETE ON agenda_tags
 FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
+
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS is_suppli_visible_to_viewers BOOLEAN DEFAULT FALSE;
+ALTER TABLE agenda ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories (id) ON DELETE SET NULL;
+
+INSERT INTO categories (serial, name) VALUES
+(1, '(উপাচার্য মহোদয় কর্তৃক গৃহীত ব্যবস্থা)'),
+(2, '(ছাত্র-ছাত্রীদের আবেদন ও গ্রেড পরিবর্তন সংক্রান্ত)'),
+(3, '(বিভিন্ন বিভাগের কোর্স কারিকুলাম সংক্রান্ত)'),
+(4, '(বিভিন্ন কমিটি/অনুষদ সভার সুপারিশ সংক্রান্ত)'),
+(5, '(কমিটি গঠন/বিভিন্ন কমিটিতে মনোনয়ন সংক্রান্ত)'),
+(6, '(স্নাতক শ্রেণিসমূহের টার্ম ফাইনাল ও সাপ্লিমেন্টারি পরীক্ষার প্রশ্নপত্র প্রণয়ন সংক্রান্ত)'),
+(7, '(Testimonial প্রদান সংক্রান্ত)'),
+(8, '(ইকুইভ্যালেন্স বিষয় সংক্রান্ত)'),
+(9, '(২০২৪-২০২৫ শিক্ষাবর্ষে ভর্তি পরীক্ষা সংক্রান্ত)'),
+(10, '(CASR সংক্রান্ত)'),
+(11, '(স্নাতক পর্যায়ের পরীক্ষা কমিটি সংক্রান্ত)'),
+(12, '(ইকুইভ্যালেন্স কমিটির সুপারিশ সংক্রান্ত)'),
+(13, '(শিক্ষার্থীদের শাস্তি মওকুফের আবেদন সংক্রান্ত)'),
+(14, '(অন্যান্য বিষয় সংক্রান্ত)')
+ON CONFLICT (name) DO NOTHING;

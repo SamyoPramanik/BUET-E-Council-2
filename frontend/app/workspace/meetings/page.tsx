@@ -10,11 +10,12 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
 import JsonImportDialog from "../../../components/meetings/JsonImportDialog";
-import { FileJson, Calendar, CheckCircle2, Lock, ArrowRightLeft } from "lucide-react";
+import { FileJson, Calendar, CheckCircle2, Lock, ArrowRightLeft, FileText } from "lucide-react";
 import { useAuth } from "../../../hooks/useAuth";
 
 export default function ManageMeetingsPage() {
-  const { canCreateMeeting, isAdmin } = useAuth();
+  const { canCreateMeeting, isAdmin, user } = useAuth();
+  const isViewer = user?.role === 'viewer';
   const router = useRouter();
   const { data: response, error, mutate } = useSWR('/meetings', fetcher);
   const { confirm, ConfirmModal } = useConfirm();
@@ -38,7 +39,7 @@ export default function ManageMeetingsPage() {
 
   const criteriaOptions = [
     { value: "regular", label: "Regular" },
-    { value: "emergency", label: "Emergency" }
+    { value: "emergency", label: "Immediate" }
   ];
 
   const columns = [
@@ -50,7 +51,12 @@ export default function ManageMeetingsPage() {
   ];
 
   const handleEdit = (meeting: any) => {
-    router.push(`/workspace/meetings/${meeting.id}?view=info`);
+    if (isViewer) {
+      const isPast = meeting.status === 'past' || meeting.is_completed;
+      router.push(`/workspace/meetings/${meeting.id}?view=${isPast ? 'resolution' : 'agenda'}`);
+    } else {
+      router.push(`/workspace/meetings/${meeting.id}?view=info`);
+    }
   };
 
   const handleDelete = (meeting: any) => {
@@ -97,20 +103,35 @@ export default function ManageMeetingsPage() {
 
   const meetings = allMeetings
     .filter((m: any) => typeFilter === 'all' || m.type === typeFilter)
+    .filter((m: any) => !isViewer || m.status !== 'draft')
     .map((m: any) => {
-      const isCompleted = m.is_completed === true;
+      const status = m.status || (m.is_completed ? 'past' : 'draft');
+      let statusBadge;
+
+      if (status === 'draft') {
+        statusBadge = (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 capitalize">
+            <FileText className="w-3 h-3" /> Draft
+          </span>
+        );
+      } else if (status === 'ongoing') {
+        statusBadge = (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 capitalize">
+            <Calendar className="w-3 h-3" /> Ongoing
+          </span>
+        );
+      } else {
+        statusBadge = (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 capitalize">
+            <CheckCircle2 className="w-3 h-3" /> Past
+          </span>
+        );
+      }
+
       return {
         ...m,
         creator_username: m.creator_username || '—',
-        status_badge: isCompleted ? (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
-            <CheckCircle2 className="w-3 h-3" /> Completed
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
-            <Calendar className="w-3 h-3" /> Active
-          </span>
-        ),
+        status_badge: statusBadge,
       };
     });
 
@@ -142,7 +163,10 @@ export default function ManageMeetingsPage() {
         } : undefined}
         onEdit={handleEdit}
         onDelete={isAdmin ? handleDelete : undefined}
-        onView={(meeting) => window.open(`/workspace/meetings/${meeting.id}?view=info`, '_self')}
+        onView={(meeting) => {
+          const isPast = meeting.status === 'past' || meeting.is_completed;
+          window.open(`/workspace/meetings/${meeting.id}?view=${isPast ? 'resolution' : 'agenda'}`, '_self');
+        }}
         customActions={
           canCreateMeeting && (
             <button

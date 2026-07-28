@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { ChevronDown } from "lucide-react";
 import { fetcher } from "../../../lib/api";
 import { sanitizeHtml } from "../../../lib/sanitize";
-import { toBanglaDigits } from "../../../lib/banglaNumerals";
+import { toBanglaDigits, getSerialWidth } from "../../../lib/banglaNumerals";
 import Header from "../../../components/Header";
 
 // Component to render a single agenda and its annexures
@@ -28,23 +28,40 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const cleanContent = agenda.content ? agenda.content.replace(/<[^>]*>/g, '').trim() : '';
+  const isBibidha = !agenda.is_suppli && cleanContent.startsWith('বিবিধ');
+  let displayContent = agenda.content || '';
+  if (isBibidha) {
+    displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+  } else {
+    displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*প্রস্তাব(?:না)?\s*নং\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]+\s*)*[০-৯\d\s\/\-]*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+    displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
+  }
+
+  const strippedText = displayContent.replace(/<[^>]*>/g, '').trim();
+  const isOnlyBibidhaTitle = isBibidha && !strippedText;
+
+  const serialWidth = getSerialWidth(mainAgendaCount + (agenda.agenda_serial || 1));
+  const bibidhaSerial = (agendaPrefix || '') + toBanglaDigits((mainAgendaCount || 0) + 1, serialWidth);
   const displaySerial = agenda.is_suppli
-    ? mainAgendaCount + (agenda.agenda_serial || 1)
-    : (agenda.agenda_serial || 1);
+    ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || 1), serialWidth)
+    : toBanglaDigits(agenda.agenda_serial || 1, serialWidth);
 
   return (
     <div
       id={`agenda-${agenda.id}`}
       ref={isAgendaHighlight ? ref : undefined}
-      className={`border border-border rounded-lg p-6 bg-card transition-shadow ${isAgendaHighlight && showHighlight ? 'ring-2 ring-primary' : ''}`}
+      className={`border ${isBibidha ? 'border-border/80 bg-muted/20' : 'border-border'} rounded-lg p-6 bg-card transition-shadow ${isAgendaHighlight && showHighlight ? 'ring-2 ring-primary' : ''}`}
     >
       <h3 className="font-semibold text-lg mb-4 text-foreground">
-        প্রস্তাবনা নং {(agendaPrefix || '') + toBanglaDigits(displaySerial)}
+        {isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${(agendaPrefix || '') + displaySerial}`}
       </h3>
-      <div
-        className="prose prose-sm dark:prose-invert max-w-none mb-4 text-muted-foreground"
-        dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.content) }}
-      />
+      {!isOnlyBibidhaTitle && (
+        <div
+          className="prose prose-sm dark:prose-invert max-w-none mb-4 text-muted-foreground"
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayContent) }}
+        />
+      )}
 
       {meetingStatus === 'past' && agenda.resolution && (
         <div
@@ -65,7 +82,7 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
                 {annexures.map((annexure: any) => {
                   const num = annexure.global_serial || annexure.annexure_serial;
                   const banglaNum = toBanglaDigits(num);
-                  const label = `পরিশিষ্ট-${banglaNum}`;
+                  const label = `${annexure.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${banglaNum}`;
 
                   return (
                     <li key={annexure.id}>
@@ -319,7 +336,10 @@ export default function PublicMeetingView() {
               <section>
                 <div className="space-y-6">
                   {(() => {
-                    const mainAgendaCount = (agendas || []).filter((a: any) => !a.is_suppli).length;
+                    const mainAgendaCount = (agendas || []).filter((a: any) => {
+                      const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+                      return !a.is_suppli && !clean.startsWith('বিবিধ');
+                    }).length;
                     return agendas.map((agenda: any) => (
                       <AgendaItem key={agenda.id} agenda={agenda} agendaPrefix={meeting.agenda_prefix} meetingStatus={meeting.status} highlightId={highlightId} highlightType={highlightType} mainAgendaCount={mainAgendaCount} />
                     ));

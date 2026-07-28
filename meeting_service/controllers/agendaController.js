@@ -94,12 +94,13 @@ const getAgendams = async (req, res, next) => {
         }
 
         let query = `
-            SELECT a.*, COALESCE(
+            SELECT a.*, c.name AS category_name, c.serial AS category_serial, COALESCE(
                 (SELECT json_agg(json_build_object('id', t.id, 'name', t.name) ORDER BY t.name)
                  FROM agenda_tags at2 JOIN tags t ON t.id = at2.tag_id WHERE at2.agenda_id = a.id),
                 '[]'
             ) as tags
-            FROM agenda a`;
+            FROM agenda a
+            LEFT JOIN categories c ON c.id = a.category_id`;
         let params = [];
 
         if (meeting_id) {
@@ -133,7 +134,7 @@ const getAgendams = async (req, res, next) => {
 
 const createAgendam = async (req, res, next) => {
     try {
-        const { meeting_id, agenda_serial, content, is_executed, execution_status, is_suppli, tag_ids, meeting_criteria } = req.body;
+        const { meeting_id, agenda_serial, content, is_executed, execution_status, is_suppli, tag_ids, meeting_criteria, category_id } = req.body;
 
         if (!meeting_id) {
             return next(new CustomError('meeting_id is required', 400));
@@ -164,8 +165,8 @@ const createAgendam = async (req, res, next) => {
         }
 
         const result = await db.query(
-            'INSERT INTO agenda (meeting_id, agenda_serial, content, is_executed, execution_status, is_suppli) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [meeting_id, requestedSerial || 1, content || '', is_executed || 'no', execution_status, targetSuppli]
+            'INSERT INTO agenda (meeting_id, agenda_serial, content, is_executed, execution_status, is_suppli, category_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [meeting_id, requestedSerial || 1, content || '', is_executed || 'no', execution_status, targetSuppli, category_id || null]
         );
         const agendam = result.rows[0];
 
@@ -186,7 +187,7 @@ const createAgendam = async (req, res, next) => {
 const updateAgendam = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { agenda_serial, content, is_executed, execution_status, tag_ids } = req.body;
+        const { agenda_serial, content, is_executed, execution_status, tag_ids, category_id } = req.body;
 
         if (content !== undefined) {
             const existing = await db.query('SELECT content FROM agenda WHERE id = $1', [id]);
@@ -199,14 +200,18 @@ const updateAgendam = async (req, res, next) => {
             }
         }
 
+        const hasCategory = category_id !== undefined;
+        const catVal = category_id || null;
+
         const result = await db.query(
             `UPDATE agenda
              SET agenda_serial = COALESCE($1, agenda_serial),
                  content = COALESCE($2, content),
                  is_executed = COALESCE($3, is_executed),
-                 execution_status = COALESCE($4, execution_status)
-             WHERE id = $5 RETURNING *`,
-            [agenda_serial, content, is_executed, execution_status, id]
+                 execution_status = COALESCE($4, execution_status),
+                 category_id = CASE WHEN $5::boolean THEN $6::uuid ELSE category_id END
+             WHERE id = $7 RETURNING *`,
+            [agenda_serial, content, is_executed, execution_status, hasCategory, catVal, id]
         );
 
         if (result.rows.length === 0) {
@@ -538,6 +543,9 @@ const getAnnexures = async (req, res, next) => {
             }
         }
         
+        const isResolutionType = req.query.type === 'resolution' || type === 'resolution';
+        const resolutionFilter = isResolutionType ? ' AND prev_an.is_excluded_in_resolution = false' : '';
+
         if (type === 'agenda') type = 'agendaItem';
 
         let query = `SELECT an.*, a.is_suppli, u.username AS uploaded_by_username,
@@ -547,6 +555,7 @@ const getAnnexures = async (req, res, next) => {
                                JOIN agenda prev_a ON prev_a.id = prev_an.content_id
                                WHERE prev_a.meeting_id = a.meeting_id
                                  AND prev_a.is_suppli = a.is_suppli
+                                 ${resolutionFilter}
                                  AND (
                                    (prev_a.agenda_serial, prev_an.annexure_serial) <
                                    (a.agenda_serial, an.annexure_serial)

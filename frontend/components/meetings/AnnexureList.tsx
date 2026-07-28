@@ -78,7 +78,6 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const { confirm, ConfirmModal } = useConfirm();
 
   // webkitdirectory is non-standard; React strips unknown boolean attrs so we set it imperatively.
   useEffect(() => {

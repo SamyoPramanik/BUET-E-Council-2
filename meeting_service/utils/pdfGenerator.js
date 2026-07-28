@@ -122,7 +122,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v22';
+const PDF_TEMPLATE_VERSION = 'v24';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -170,6 +170,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             WHERE p.meeting_id = $1 AND p.is_present = true
             ORDER BY p.serial ASC NULLS LAST
         `;
+        const resFilter = isResolution ? ' AND prev_an.is_excluded_in_resolution = false' : '';
         const agendasQuery = `
             SELECT 
                 a.id,
@@ -191,6 +192,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                                     JOIN agenda prev_a ON prev_a.id = prev_an.content_id
                                     WHERE prev_a.meeting_id = a.meeting_id
                                       AND prev_a.is_suppli = a.is_suppli
+                                      ${resFilter}
                                       AND (
                                         (prev_a.agenda_serial, prev_an.annexure_serial) <
                                         (a.agenda_serial, an.annexure_serial)

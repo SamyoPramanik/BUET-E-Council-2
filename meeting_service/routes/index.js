@@ -12,6 +12,7 @@ const tagRoutes = require('./tagRoutes');
 const searchRoutes = require('./searchRoutes');
 const storageRoutes = require('./storageRoutes');
 const auditLogRoutes = require('./auditLogRoutes');
+const categoryRoutes = require('./categoryRoutes');
 
 router.use('/meetings', meetingRoutes);
 router.use('/faculties', facultiesRoutes);
@@ -24,5 +25,6 @@ router.use('/tags', tagRoutes);
 router.use('/search', searchRoutes);
 router.use('/storage', storageRoutes);
 router.use('/audit-logs', auditLogRoutes);
+router.use('/categories', categoryRoutes);
 
 module.exports = router;

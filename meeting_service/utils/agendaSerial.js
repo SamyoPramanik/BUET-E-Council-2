@@ -95,12 +95,17 @@ function getSerialWidth(totalCount) {
 function stripResolutionPrefix(content) {
     if (!content) return '';
     let str = String(content).normalize('NFC').replace(/&nbsp;/g, ' ').replace(/\u00a0/g, ' ').trim();
-    str = str.replace(/^(?:\s*<p[^>]*>\s*(?:<br\s*\/?>)?\s*<\/p>|\s*<br\s*\/?>)*/i, '');
-    str = str.replace(/^(?:\s*<p[^>]*>)?\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*/i, (match) => {
+    // Strip standalone paragraph(s) containing only 'সিদ্ধান্ত'
+    str = str.replace(/^(?:\s*<p[^>]*>\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*<\/p>\s*)+/gi, '');
+    // Strip inline leading 'সিদ্ধান্ত' prefix
+    str = str.replace(/^(?:\s*<p[^>]*>)?\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*/gi, (match) => {
         return match.includes('<p') ? '<p>' : '';
     });
+    // Strip trailing standalone paragraph(s) containing only 'সিদ্ধান্ত'
+    str = str.replace(/(?:\s*<p[^>]*>\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*<\/p>\s*)+$/gi, '');
+    // Clean up empty strong/b/span tags
     str = str.replace(/(<p[^>]*>)\s*(?:<(?<tag>strong|b|span|em)[^>]*>\s*<\/\k<tag>>\s*)+/gi, '$1');
-    return str;
+    return str.trim();
 }
 
 module.exports = { extractAgendaPrefix, toBanglaDigits, parseAgendumBody, parseBanglaNumber, getSerialWidth, stripProposalPrefix, stripResolutionPrefix };

@@ -18,12 +18,18 @@ import { toBanglaDigits, getSerialWidth } from "../../lib/banglaNumerals";
 
 function stripLeadingResolutionPrefix(content: string): string {
   if (!content) return '';
-  let str = content.normalize('NFC').trim();
-  str = str.replace(
-    /^(?:\s*<p[^>]*>)?\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*/i,
-    (match) => (match.includes('<p') ? '<p>' : '')
-  );
-  return str;
+  let str = content.normalize('NFC').replace(/&nbsp;/g, ' ').replace(/\u00a0/g, ' ').trim();
+  // Strip standalone paragraph(s) containing only 'সিদ্ধান্ত' (with optional colon/punctuation/spaces)
+  str = str.replace(/^(?:\s*<p[^>]*>\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*<\/p>\s*)+/gi, '');
+  // Strip inline leading 'সিদ্ধান্ত' prefix at start of paragraph
+  str = str.replace(/^(?:\s*<p[^>]*>)?\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*/gi, (match) => {
+    return match.includes('<p') ? '<p>' : '';
+  });
+  // Strip trailing standalone paragraph(s) containing only 'সিদ্ধান্ত'
+  str = str.replace(/(?:\s*<p[^>]*>\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*<\/p>\s*)+$/gi, '');
+  // Clean up any residual empty strong/b/span tags at start of <p>
+  str = str.replace(/(<p[^>]*>)\s*(?:<(?<tag>strong|b|span|em)[^>]*>\s*<\/\k<tag>>\s*)+/gi, '$1');
+  return str.trim();
 }
 
 export default function ResolutionView({ meeting }: { meeting: any }) {
@@ -271,7 +277,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                   className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-background border border-border p-5 rounded-md shadow-inner"
                   dangerouslySetInnerHTML={{
                     __html: sanitizeHtml(
-                      (agenda.resolution || '').replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*সিদ্ধান্ত\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1')
+                      stripLeadingResolutionPrefix(agenda.resolution)
                     )
                   }}
                 />

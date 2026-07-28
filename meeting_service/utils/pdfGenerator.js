@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const storageService = require('./storageService');
 const meetingFileSystem = require('./meetingFileSystem');
-const { toBanglaDigits, getSerialWidth } = require('./agendaSerial');
+const { toBanglaDigits, getSerialWidth, stripResolutionPrefix } = require('./agendaSerial');
 
 const getFontBase64 = () => {
     const sonarPath = path.join(__dirname, 'fonts', 'SonarBangla.ttf');
@@ -679,11 +679,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     }
                 }
 
-                const rawRes = convertMarkdownTablesToHtml(ag.resolution || '').normalize('NFC').trim();
-                const cleanRes = rawRes.replace(
-                    /^(?:\s*<p[^>]*>)?\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*/i,
-                    (match) => (match.includes('<p') ? '<p>' : '')
-                );
+                const rawRes = convertMarkdownTablesToHtml(ag.resolution || '');
+                const cleanRes = stripResolutionPrefix(rawRes);
                 return `
                 <div class="agenda-block">
                     <div class="agenda-title">${titleStr}</div>

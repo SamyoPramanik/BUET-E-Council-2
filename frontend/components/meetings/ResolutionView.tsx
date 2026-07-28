@@ -16,6 +16,16 @@ import { canEditResolution } from "../../lib/meetingAccess";
 import { useConfirm } from "../../hooks/useConfirm";
 import { toBanglaDigits, getSerialWidth } from "../../lib/banglaNumerals";
 
+function stripLeadingResolutionPrefix(content: string): string {
+  if (!content) return '';
+  let str = content.normalize('NFC').trim();
+  str = str.replace(
+    /^(?:\s*<p[^>]*>)?\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*/i,
+    (match) => (match.includes('<p') ? '<p>' : '')
+  );
+  return str;
+}
+
 export default function ResolutionView({ meeting }: { meeting: any }) {
   const { user } = useAuth();
   const canEdit = canEditResolution(user, meeting);
@@ -67,7 +77,8 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await api.put(`/agendas/resolutions/${editingId}`, { resolution: editContent, tag_ids: editTagIds });
+      const cleanResolution = stripLeadingResolutionPrefix(editContent);
+      await api.put(`/agendas/resolutions/${editingId}`, { resolution: cleanResolution, tag_ids: editTagIds });
       mutate();
       setEditingId(null);
       toast.success("Resolution saved successfully");
@@ -80,7 +91,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
 
   const handleEditClick = (agenda: any) => {
     setEditingId(agenda.id);
-    setEditContent(agenda.resolution || "");
+    setEditContent(stripLeadingResolutionPrefix(agenda.resolution || ""));
     setEditTagIds((agenda.tags || []).map((t: any) => t.id));
   };
 

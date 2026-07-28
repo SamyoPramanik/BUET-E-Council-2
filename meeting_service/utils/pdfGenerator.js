@@ -679,7 +679,11 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     }
                 }
 
-                const cleanRes = convertMarkdownTablesToHtml(ag.resolution || '').replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*সিদ্ধান্ত\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                const rawRes = convertMarkdownTablesToHtml(ag.resolution || '').normalize('NFC').trim();
+                const cleanRes = rawRes.replace(
+                    /^(?:\s*<p[^>]*>)?\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*/i,
+                    (match) => (match.includes('<p') ? '<p>' : '')
+                );
                 return `
                 <div class="agenda-block">
                     <div class="agenda-title">${titleStr}</div>

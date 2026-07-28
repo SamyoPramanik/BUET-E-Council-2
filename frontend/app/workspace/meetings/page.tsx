@@ -39,7 +39,7 @@ export default function ManageMeetingsPage() {
 
   const criteriaOptions = [
     { value: "regular", label: "Regular" },
-    { value: "emergency", label: "Emergency" }
+    { value: "emergency", label: "Immediate" }
   ];
 
   const columns = [

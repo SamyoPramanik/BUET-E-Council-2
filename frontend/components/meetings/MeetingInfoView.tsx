@@ -308,7 +308,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div className="space-y-1">
                 <label className="text-sm font-medium">Date</label>
                 <input 
@@ -349,6 +349,26 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                     onChange={(val) => setFormData({...formData, status: val})}
                   />
                 )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Meeting Criteria</label>
+                <div className="w-full px-3 py-2 bg-input/10 border border-input/60 rounded-md text-sm flex items-center h-[38px]">
+                  {Boolean(
+                    (meeting.title || '').match(/immediate|emergency|জরুরী|জরুরি/i) ||
+                    (meeting.meeting_title || '').match(/immediate|emergency|জরুরী|জরুরি/i) ||
+                    (formData.title || '').match(/immediate|emergency|জরুরী|জরুরি/i) ||
+                    (formData.meeting_title || '').match(/immediate|emergency|জরুরী|জরুরি/i)
+                  ) ? (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
+                      <ShieldAlert className="w-3.5 h-3.5" /> Immediate (1 Agendum Max)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Regular Meeting
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

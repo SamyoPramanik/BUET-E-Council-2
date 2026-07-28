@@ -155,6 +155,9 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
             displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
           }
           const isOnlyBibidhaTitle = isBibidha && !displayContent.replace(/<[^>]*>/g, '').trim();
+          if (isBibidha && isOnlyBibidhaTitle && !agenda.resolution) {
+            return null;
+          }
           const totalAgendasCount = (agendas || []).length;
           const serialWidth = getSerialWidth(totalAgendasCount);
           const bibidhaSerial = (meeting.agenda_prefix || '') + toBanglaDigits((mainAgendaCount || 0) + 1, serialWidth);

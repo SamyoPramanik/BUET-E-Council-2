@@ -535,7 +535,9 @@ const getAnnexures = async (req, res, next) => {
         }
         
         const isResolutionType = req.query.type === 'resolution' || type === 'resolution';
-        const resolutionFilter = isResolutionType ? ' AND prev_an.is_excluded_in_resolution = false' : '';
+        const resolutionFilter = isResolutionType
+            ? ' AND prev_an.is_excluded_in_resolution = false'
+            : " AND (prev_an.annexure_type IS NULL OR prev_an.annexure_type != 'resolution')";
 
         if (type === 'agenda') type = 'agendaItem';
 

@@ -51,8 +51,11 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     return !isSuppliView && (a.agenda_serial === 0 || clean.startsWith('বিবিধ'));
   });
 
-  const isEmergencyMeeting = typeof window !== 'undefined'
-    && window.localStorage.getItem(`meeting_criteria_${meeting.id}`) === 'emergency';
+  const isEmergencyMeeting = Boolean(
+    (meeting.title || '').match(/immediate|emergency|জরুরী|জরুরি/i) ||
+    (meeting.meeting_title || '').match(/immediate|emergency|জরুরী|জরুরি/i) ||
+    (typeof window !== 'undefined' && window.localStorage.getItem(`meeting_criteria_${meeting.id}`) === 'emergency')
+  );
   const emergencyLimitReached = !isSuppliView && isEmergencyMeeting && regularAgendas.length >= 1;
 
   const { data: tagsResponse, mutate: mutateTags } = useSWR('/tags', fetcher, { fallbackData: { data: [] } });
@@ -358,6 +361,11 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     </div>
   );
 
+  const hasCustomAgendas = regularAgendas.some((a: any) => {
+    const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+    return !(!isSuppliView && (a.agenda_serial === 0 || clean.startsWith('বিবিধ')));
+  });
+
   return (
     <div className="flex items-start gap-8 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
       <ConfirmModal />
@@ -366,7 +374,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
           <h2 className="text-2xl font-bold">{title}</h2>
         </div>
 
-        {regularAgendas.length === 0 && createAtIndex === null ? (
+        {!hasCustomAgendas && createAtIndex === null ? (
           <div className="space-y-6">
             <div className="bg-card border border-border border-dashed rounded-lg p-6 flex flex-col items-center justify-center text-center space-y-4 shadow-sm h-64">
               <div className="bg-muted p-4 rounded-full">
@@ -396,6 +404,43 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 </div>
               )}
             </div>
+
+            {regularAgendas.map((agenda: any, index: number) => {
+              const cleanText = agenda.content ? agenda.content.replace(/<[^>]*>/g, '').trim() : '';
+              const isBibidha = !isSuppliView && (agenda.agenda_serial === 0 || cleanText.startsWith('বিবিধ'));
+              if (!isBibidha) return null;
+              let displayContent = agenda.content || '';
+              displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+              const strippedText = displayContent.replace(/<[^>]*>/g, '').trim();
+              const isOnlyBibidhaTitle = isBibidha && !strippedText;
+
+              return (
+                <div key={agenda.id} className="bg-card border border-border/80 bg-muted/20 p-6 rounded-lg relative group shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="font-semibold text-lg text-primary flex items-center gap-2 flex-wrap">
+                      {isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`}
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      {!readOnly && (
+                        <button
+                          onClick={() => handleDelete(agenda.id)}
+                          className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
+                          title="Delete Agendum"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {!isOnlyBibidhaTitle && (
+                    <div
+                      className="prose prose-sm dark:prose-invert max-w-none text-foreground"
+                      dangerouslySetInnerHTML={{ __html: displayContent ? sanitizeHtml(displayContent) : "<p class='text-muted-foreground italic'>Empty content...</p>" }}
+                    />
+                  )}
+                </div>
+              );
+            })}
 
             {!isSuppliView && !hasBibidhaInAgendas && (
               <div className="bg-muted/40 border border-border/80 p-6 rounded-lg shadow-sm opacity-80 select-none">

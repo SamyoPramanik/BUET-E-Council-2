@@ -90,9 +90,19 @@ router.post('/signup', requireAuth, async (req, res) => {
             password = generatedPassword;
         }
 
-        const userCheck = await db.query('SELECT id FROM users WHERE username = $1 OR email = $2', [username || '', email]);
+        const trimmedUsername = (username || '').trim();
+        const trimmedEmail = (email || '').trim();
+
+        const userCheck = await db.query(
+            'SELECT id, username, email FROM users WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($2)',
+            [trimmedUsername, trimmedEmail]
+        );
         if (userCheck.rows.length > 0) {
-            return res.status(409).json({ success: false, message: 'Username or email already exists' });
+            const existingUser = userCheck.rows.find(u => u.username.toLowerCase() === trimmedUsername.toLowerCase());
+            if (existingUser) {
+                return res.status(409).json({ success: false, message: `Username '${trimmedUsername}' is already taken.` });
+            }
+            return res.status(409).json({ success: false, message: `Email '${trimmedEmail}' is already registered.` });
         }
 
         const salt = await bcrypt.genSalt(10);
@@ -500,13 +510,32 @@ router.put('/users/:id', requireAuth, async (req, res) => {
         }
 
         const { username, email, password, role, role_id, member_type, status } = req.body;
+
+        if (username || email) {
+            const checkU = username ? username.trim() : '';
+            const checkE = email ? email.trim() : '';
+            const conflictCheck = await db.query(
+                `SELECT id, username, email FROM users 
+                 WHERE ((${checkU ? 'LOWER(username) = LOWER($1)' : '1=0'}) 
+                    OR (${checkE ? 'LOWER(email) = LOWER($2)' : '1=0'})) 
+                   AND id != $3`,
+                [checkU, checkE, id]
+            );
+            if (conflictCheck.rows.length > 0) {
+                const existingUser = conflictCheck.rows.find(u => checkU && u.username.toLowerCase() === checkU.toLowerCase());
+                if (existingUser) {
+                    return res.status(409).json({ success: false, message: `Username '${checkU}' is already taken.` });
+                }
+                return res.status(409).json({ success: false, message: `Email '${checkE}' is already registered.` });
+            }
+        }
         
         let updateQueries = [];
         let queryParams = [];
         let paramIndex = 1;
 
-        if (username) { updateQueries.push(`username = $${paramIndex++}`); queryParams.push(username); }
-        if (email) { updateQueries.push(`email = $${paramIndex++}`); queryParams.push(email); }
+        if (username) { updateQueries.push(`username = $${paramIndex++}`); queryParams.push(username.trim()); }
+        if (email) { updateQueries.push(`email = $${paramIndex++}`); queryParams.push(email.trim()); }
         if (member_type) { updateQueries.push(`member_type = $${paramIndex++}`); queryParams.push(member_type); }
         if (status) { updateQueries.push(`status = $${paramIndex++}`); queryParams.push(status); }
 
@@ -723,7 +752,13 @@ router.post('/upload-csv', requireAuth, requireAdmin, upload.single('file'), asy
 
                     // Validate every row before writing anything — no partial imports.
                     const errors = [];
+                    const existingUsersRes = await db.query('SELECT username, email FROM users');
+                    const existingDbUsernames = new Set(existingUsersRes.rows.map(u => u.username.toLowerCase()));
+                    const existingDbEmails = new Set(existingUsersRes.rows.map(u => u.email.toLowerCase()));
+
                     const seenUsernames = new Set();
+                    const seenEmails = new Set();
+
                     results.forEach((row, idx) => {
                         const rowNum = idx + 2; // +1 for 0-index, +1 for header row
                         const username = (row.username || '').trim();
@@ -738,8 +773,16 @@ router.post('/upload-csv', requireAuth, requireAdmin, upload.single('file'), asy
                         if (role && !CSV_VALID_ROLES.includes(role)) errors.push(`Row ${rowNum}: invalid role "${role}"`);
                         if (type && !CSV_VALID_TYPES.includes(type)) errors.push(`Row ${rowNum}: invalid type "${type}"`);
                         if (username) {
-                            if (seenUsernames.has(username)) errors.push(`Row ${rowNum}: duplicate username "${username}" in file`);
-                            seenUsernames.add(username);
+                            const lowerU = username.toLowerCase();
+                            if (existingDbUsernames.has(lowerU)) errors.push(`Row ${rowNum}: username "${username}" already exists in database`);
+                            if (seenUsernames.has(lowerU)) errors.push(`Row ${rowNum}: duplicate username "${username}" in file`);
+                            seenUsernames.add(lowerU);
+                        }
+                        if (email) {
+                            const lowerE = email.toLowerCase();
+                            if (existingDbEmails.has(lowerE)) errors.push(`Row ${rowNum}: email "${email}" already exists in database`);
+                            if (seenEmails.has(lowerE)) errors.push(`Row ${rowNum}: duplicate email "${email}" in file`);
+                            seenEmails.add(lowerE);
                         }
                     });
 

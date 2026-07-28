@@ -258,7 +258,11 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
               ) : agenda.resolution ? (
                 <div
                   className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-background border border-border p-5 rounded-md shadow-inner"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.resolution) }}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHtml(
+                      (agenda.resolution || '').replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*সিদ্ধান্ত\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1')
+                    )
+                  }}
                 />
               ) : (
                 !readOnly && (

@@ -528,7 +528,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 <div class="agenda-content">${ag.content || ''}</div>
                 ${isResolution ? `
                 <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
-                <div class="agenda-resolution">${ag.resolution || ''}</div>
+                <div class="agenda-resolution">${(ag.resolution || '').replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*সিদ্ধান্ত\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1')}</div>
                 ` : ''}
             </div>
             `;
@@ -679,13 +679,14 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     }
                 }
 
+                const cleanRes = convertMarkdownTablesToHtml(ag.resolution || '').replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*সিদ্ধান্ত\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
                 return `
                 <div class="agenda-block">
                     <div class="agenda-title">${titleStr}</div>
                     ${contentHtml ? `<div class="agenda-content">${contentHtml}</div>` : ''}
                     ${isResolution ? `
                     <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
-                    <div class="agenda-resolution">${convertMarkdownTablesToHtml(ag.resolution || '')}</div>
+                    <div class="agenda-resolution">${cleanRes}</div>
                     ` : ''}
                 </div>
                 `;

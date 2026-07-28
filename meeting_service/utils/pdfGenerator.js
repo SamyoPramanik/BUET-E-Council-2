@@ -29,10 +29,20 @@ const FONT_BASE64 = getFontBase64();
 
 function convertMarkdownTablesToHtml(content) {
     if (!content || typeof content !== 'string') return content || '';
+    if (content.includes('<table') || content.includes('<TABLE')) return content;
     if (!content.includes('|')) return content;
 
-    return content.replace(/(?:<p[^>]*>)?\s*([^|\n<]+(?:\|[^|\n<]+)+)\s*\|?\s*[:\-]{2,}[:\-\s|]*\|?\s*([^<]+?)(?:<\/p>|$)/gi, (match, headerRow, bodyRows) => {
-        const headers = headerRow.split('|').map(s => s.replace(/<[^>]*>/g, '').trim()).filter(s => s && !/^[-:]+$/.test(s));
+    const mdTableRegex = /(?:(?:^|\n|<p[^>]*>|<br\s*\/?>)\s*)([^\n<]+?\|[^\n<]+?(?:[\r\n]|<br\s*\/?>)\s*\|?\s*[:\-]{2,}(?:\s*\|\s*[:\-]{2,})+\s*\|?(?:[\r\n]|<br\s*\/?>)\s*(?:[^\n<]+?\|[^\n<]+?(?:[\r\n]|<br\s*\/?>|$))+)/gi;
+
+    return content.replace(mdTableRegex, (match) => {
+        const rawLines = match.replace(/<\/?p[^>]*>/gi, '\n').replace(/<br\s*\/?>/gi, '\n').split('\n').map(l => l.trim()).filter(Boolean);
+        const sepIdx = rawLines.findIndex(l => /^\|?\s*[:\-]{2,}(?:\s*\|\s*[:\-]{2,})+\s*\|?$/.test(l));
+        if (sepIdx <= 0) return match;
+
+        const headerLine = rawLines[sepIdx - 1];
+        const dataLines = rawLines.slice(sepIdx + 1);
+
+        const headers = headerLine.split('|').map(s => s.trim()).filter((s, i, arr) => !(i === 0 && s === '') && !(i === arr.length - 1 && s === ''));
         if (headers.length === 0) return match;
 
         let html = '<table class="meeting-table" border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;margin:12px 0;border:1px solid #000;"><thead><tr>';
@@ -41,9 +51,8 @@ function convertMarkdownTablesToHtml(content) {
         });
         html += '</tr></thead><tbody>';
 
-        const rowTokens = bodyRows.split(/(?:\|?\s*\||\n+)/).map(r => r.trim()).filter(Boolean);
-        rowTokens.forEach(rowStr => {
-            const cells = rowStr.split('|').map(s => s.replace(/<[^>]*>/g, '').trim()).filter(s => s.length > 0 && !/^[-:]+$/.test(s));
+        dataLines.forEach(dLine => {
+            const cells = dLine.split('|').map(s => s.trim()).filter((s, i, arr) => !(i === 0 && s === '') && !(i === arr.length - 1 && s === ''));
             if (cells.length > 0) {
                 html += '<tr>';
                 cells.forEach(c => {
@@ -53,6 +62,7 @@ function convertMarkdownTablesToHtml(content) {
             }
         });
         html += '</tbody></table>';
+
         return html;
     });
 }

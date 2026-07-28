@@ -28,7 +28,7 @@ function stripLeadingResolutionPrefix(content: string): string {
   // Strip trailing standalone paragraph(s) containing only 'সিদ্ধান্ত'
   str = str.replace(/(?:\s*<p[^>]*>\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*<\/p>\s*)+$/gi, '');
   // Clean up any residual empty strong/b/span tags at start of <p>
-  str = str.replace(/(<p[^>]*>)\s*(?:<(?<tag>strong|b|span|em)[^>]*>\s*<\/\k<tag>>\s*)+/gi, '$1');
+  str = str.replace(/(<p[^>]*>)\s*(?:<(strong|b|span|em)[^>]*>\s*<\/\2>\s*)+/gi, '$1');
   return str.trim();
 }
 

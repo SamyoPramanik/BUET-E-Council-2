@@ -14,7 +14,7 @@ import TemplateDrawer from "../TemplateDrawer";
 import { useAuth } from "../../hooks/useAuth";
 import { canEditResolution } from "../../lib/meetingAccess";
 import { useConfirm } from "../../hooks/useConfirm";
-import { toBanglaDigits } from "../../lib/banglaNumerals";
+import { toBanglaDigits, getSerialWidth } from "../../lib/banglaNumerals";
 
 export default function ResolutionView({ meeting }: { meeting: any }) {
   const { user } = useAuth();
@@ -31,14 +31,14 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
     return a.is_suppli ? 1 : -1;
   });
 
-  // Exclude Bibidha items from resolution view entirely
-  const agendas = allAgendas.filter((a: any) => {
+  // Main agenda count (excluding Bibidha) for supplementary numbering
+  const mainAgendaCount = allAgendas.filter((a: any) => {
+    if (a.is_suppli) return false;
     const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
-    return !(!a.is_suppli && clean.startsWith('বিবিধ'));
-  });
+    return !(a.agenda_serial === 0 || clean.startsWith('বিবিধ'));
+  }).length;
 
-  // Exclude Bibidha from count so suppli numbering starts at the same serial as বিবিধ
-  const mainAgendaCount = agendas.filter((a: any) => !a.is_suppli).length;
+  const agendas = allAgendas;
 
   const { data: tagsResponse, mutate: mutateTags } = useSWR('/tags', fetcher, { fallbackData: { data: [] } });
   const allTags = tagsResponse?.data || [];
@@ -145,9 +145,22 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
         </div>
       ) : (
         agendas.map((agenda: any, index: number) => {
+          const cleanContent = (agenda.content || '').replace(/<[^>]*>/g, '').trim();
+          const isBibidha = !agenda.is_suppli && (agenda.agenda_serial === 0 || cleanContent.startsWith('বিবিধ'));
+          let displayContent = agenda.content || '';
+          if (isBibidha) {
+            displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+          } else {
+            displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*প্রস্তাব(?:না)?\s*নং\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]+\s*)*[০-৯\d\s\/\-]*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+            displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
+          }
+          const isOnlyBibidhaTitle = isBibidha && !displayContent.replace(/<[^>]*>/g, '').trim();
+          const totalAgendasCount = (agendas || []).length;
+          const serialWidth = getSerialWidth(totalAgendasCount);
+          const bibidhaSerial = (meeting.agenda_prefix || '') + toBanglaDigits((mainAgendaCount || 0) + 1, serialWidth);
           const displaySerial = agenda.is_suppli
-            ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), 1)
-            : toBanglaDigits(agenda.agenda_serial || index + 1);
+            ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), serialWidth)
+            : toBanglaDigits(agenda.agenda_serial || index + 1, serialWidth);
 
           return (
             <div key={agenda.id} className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm group">
@@ -155,7 +168,9 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 {/* Top Section (Read-Only Agenda) */}
                 <div className="mb-6">
                   <h3 className="font-semibold text-base text-primary mb-2">
-                    প্রস্তাবনা নং {(meeting.agenda_prefix || '') + displaySerial}
+                    {isBibidha
+                      ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`)
+                      : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + displaySerial}`}
                   </h3>
               {agenda.tags && agenda.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
@@ -167,7 +182,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 </div>
               )}
               <div className="text-muted-foreground bg-muted/30 p-4 rounded-md border-l-4 border-muted/50 prose prose-sm dark:prose-invert max-w-none">
-                <div dangerouslySetInnerHTML={{ __html: agenda.content ? sanitizeHtml(agenda.content) : "<p class='italic opacity-50'>Empty agenda...</p>" }} />
+                <div dangerouslySetInnerHTML={{ __html: displayContent ? sanitizeHtml(displayContent) : "<p class='italic opacity-50'>Empty agenda...</p>" }} />
               </div>
 
               {/* Annexure List placed underneath the agenda content */}

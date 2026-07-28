@@ -1,5 +1,10 @@
 const BANGLA_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 
+export function getSerialWidth(totalCount: number): number {
+  if (!totalCount || totalCount <= 99) return 2;
+  return String(totalCount).length;
+}
+
 // Converts a non-negative integer to its Bangla-digit string, zero-padded to
 // at least minWidth digits (default 2, e.g. 1 -> "০১"). Display-only mirror
 // of meeting_service/utils/agendaSerial.js's toBanglaDigits.

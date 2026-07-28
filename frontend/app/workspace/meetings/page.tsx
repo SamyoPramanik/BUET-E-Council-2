@@ -164,12 +164,8 @@ export default function ManageMeetingsPage() {
         onEdit={handleEdit}
         onDelete={isAdmin ? handleDelete : undefined}
         onView={(meeting) => {
-          if (isViewer) {
-            const isPast = meeting.status === 'past' || meeting.is_completed;
-            window.open(`/workspace/meetings/${meeting.id}?view=${isPast ? 'resolution' : 'agenda'}`, '_self');
-          } else {
-            window.open(`/workspace/meetings/${meeting.id}?view=info`, '_self');
-          }
+          const isPast = meeting.status === 'past' || meeting.is_completed;
+          window.open(`/workspace/meetings/${meeting.id}?view=${isPast ? 'resolution' : 'agenda'}`, '_self');
         }}
         customActions={
           canCreateMeeting && (

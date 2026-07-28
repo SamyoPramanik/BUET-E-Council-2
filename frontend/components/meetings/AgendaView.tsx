@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
 import { canEditAgenda, canEditSuppliAgenda } from "../../lib/meetingAccess";
-import { toBanglaDigits } from "../../lib/banglaNumerals";
+import { toBanglaDigits, getSerialWidth } from "../../lib/banglaNumerals";
 import TemplateDrawer from "../TemplateDrawer";
 
 export default function AgendaView({ meeting, type }: { meeting: any, type: string }) {
@@ -32,22 +32,24 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     isSuppliView ? `/agendas?meeting_id=${meeting.id}&is_suppli=false` : null,
     fetcher
   );
-  const mainAgendaCount = isSuppliView
-    ? (mainAgendasRes?.data || []).filter((a: any) => {
-        const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
-        return !clean.startsWith('বিবিধ');
-      }).length
-    : 0;
+  const mainAgendasList = isSuppliView ? (mainAgendasRes?.data || []) : agendas;
+  const mainAgendaCount = mainAgendasList.filter((a: any) => {
+    if (a.is_suppli) return false;
+    const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+    return a.agenda_serial !== 0 && !clean.startsWith('বিবিধ');
+  }).length;
 
-  const regularAgendas = isSuppliView
-    ? agendas
-    : agendas.filter((a: any) => {
-        const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
-        return !clean.startsWith('বিবিধ');
-      });
+  const totalAgendasCount = (agendas || []).length;
+  const serialWidth = getSerialWidth(totalAgendasCount);
 
-  const bibidhaSerialNum = regularAgendas.length + 1;
-  const bibidhaSerial = (meeting.agenda_prefix || '') + toBanglaDigits(bibidhaSerialNum, 1);
+  const bibidhaSerialNum = mainAgendaCount + 1;
+  const bibidhaSerial = (meeting.agenda_prefix || '') + toBanglaDigits(bibidhaSerialNum, serialWidth);
+
+  const regularAgendas = agendas;
+  const hasBibidhaInAgendas = regularAgendas.some((a: any) => {
+    const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+    return !isSuppliView && (a.agenda_serial === 0 || clean.startsWith('বিবিধ'));
+  });
 
   const isEmergencyMeeting = typeof window !== 'undefined'
     && window.localStorage.getItem(`meeting_criteria_${meeting.id}`) === 'emergency';
@@ -174,6 +176,10 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     const map = new Map<string, typeof groups[0]>();
 
     regularAgendas.forEach((agenda: any) => {
+      const clean = (agenda.content || '').replace(/<[^>]*>/g, '').trim();
+      const isBibidha = !isSuppliView && (agenda.agenda_serial === 0 || clean.startsWith('বিবিধ'));
+      if (isBibidha) return;
+
       const catId = agenda.category_id || null;
       const catName = agenda.category_name || '(Uncategorized)';
       const key = catId || 'uncategorized';
@@ -391,7 +397,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               )}
             </div>
 
-            {!isSuppliView && (
+            {!isSuppliView && !hasBibidhaInAgendas && (
               <div className="bg-muted/40 border border-border/80 p-6 rounded-lg shadow-sm opacity-80 select-none">
                 <h3 className="font-semibold text-lg text-muted-foreground">
                   বিবিধ : {bibidhaSerial}
@@ -406,9 +412,17 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
             {regularAgendas.map((agenda: any, index: number) => {
               const cleanText = agenda.content ? agenda.content.replace(/<[^>]*>/g, '').trim() : '';
-              const isBibidha = !isSuppliView && cleanText.startsWith('বিবিধ');
-              const bibidhaSerial = (meeting.agenda_prefix || '') + toBanglaDigits(agenda.agenda_serial || index + 1, 1);
-              const isOnlyBibidhaTitle = isBibidha && /^বিবিধ\s*:\s*[\d০-৯]+$/.test(cleanText);
+              const isBibidha = !isSuppliView && (agenda.agenda_serial === 0 || cleanText.startsWith('বিবিধ'));
+              let displayContent = agenda.content || '';
+              if (isBibidha) {
+                displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+              } else {
+                displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*প্রস্তাব(?:না)?\s*নং\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]+\s*)*[০-৯\d\s\/\-]*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                displayContent = displayContent.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
+              }
+
+              const strippedText = displayContent.replace(/<[^>]*>/g, '').trim();
+              const isOnlyBibidhaTitle = isBibidha && !strippedText;
 
               return (
                 <div key={agenda.id}>
@@ -418,8 +432,8 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       <div className="space-y-1">
                         <h3 className="font-semibold text-lg text-primary flex items-center gap-2 flex-wrap">
                           {isBibidha
-                            ? `বিবিধ : ${bibidhaSerial}`
-                            : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), 1) : toBanglaDigits(agenda.agenda_serial || index + 1, 1))}`}
+                            ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`)
+                            : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || index + 1, serialWidth))}`}
                         </h3>
                         {agenda.category_name && !isBibidha && (
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
@@ -511,7 +525,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       !isOnlyBibidhaTitle && (
                         <div
                           className="prose prose-sm dark:prose-invert max-w-none text-foreground"
-                          dangerouslySetInnerHTML={{ __html: agenda.content ? sanitizeHtml(agenda.content) : "<p class='text-muted-foreground italic'>Empty content...</p>" }}
+                          dangerouslySetInnerHTML={{ __html: displayContent ? sanitizeHtml(displayContent) : "<p class='text-muted-foreground italic'>Empty content...</p>" }}
                         />
                       )
                     )}
@@ -556,7 +570,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               </div>
             );
           })}
-            {!isSuppliView && (
+            {!isSuppliView && !hasBibidhaInAgendas && (
               <div className="bg-muted/40 border border-border/80 p-6 rounded-lg shadow-sm opacity-80 select-none">
                 <h3 className="font-semibold text-lg text-muted-foreground">
                   বিবিধ : {bibidhaSerial}
@@ -597,6 +611,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                     <div className="space-y-1.5">
                       {group.agendas.map((agenda: any) => {
                         const globalIdx = regularAgendas.findIndex((a: any) => a.id === agenda.id);
+                        const isAgendaBibidha = !isSuppliView && (agenda.agenda_serial === 0 || (agenda.content && agenda.content.replace(/<[^>]*>/g, '').trim().startsWith('বিবিধ')));
                         return (
                           <div
                             key={agenda.id}
@@ -608,7 +623,9 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                           >
                             <GripVertical className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
                             <span className="font-medium text-xs shrink-0">
-                              প্রস্তাবনা নং {(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), 1) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1))}
+                              {isAgendaBibidha
+                                ? `বিবিধ : ${bibidhaSerial}`
+                                : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1, serialWidth))}`}
                             </span>
                             <span className="text-xs text-muted-foreground truncate flex-1 opacity-70">
                               {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...

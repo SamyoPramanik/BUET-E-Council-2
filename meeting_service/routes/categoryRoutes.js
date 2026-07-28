@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const categoryController = require('../controllers/categoryController');
-const { requireRole } = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/roleMiddleware');
 
 const canEdit = requireRole(['admin', 'superadmin', 'moderator', 'file_initiator']);
 

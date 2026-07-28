@@ -4,7 +4,7 @@ const storageService = require('../utils/storageService');
 const meetingFileSystem = require('../utils/meetingFileSystem');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
-const { toBanglaDigits } = require('../utils/agendaSerial');
+const { toBanglaDigits, stripProposalPrefix } = require('../utils/agendaSerial');
 
 const setAgendaTags = async (agendaId, tagIds) => {
     if (!Array.isArray(tagIds)) return;
@@ -19,8 +19,6 @@ const setAgendaTags = async (agendaId, tagIds) => {
 
 const ensureBibidhaAgenda = async (meetingId) => {
     if (!meetingId) return;
-    const meetingRes = await db.query('SELECT agenda_prefix FROM meetings WHERE id = $1', [meetingId]);
-    const prefix = meetingRes.rows[0]?.agenda_prefix || '';
 
     const res = await db.query(
         'SELECT id, agenda_serial, content FROM agenda WHERE meeting_id = $1 AND is_suppli = false ORDER BY agenda_serial ASC',
@@ -29,33 +27,24 @@ const ensureBibidhaAgenda = async (meetingId) => {
     const mainAgendas = res.rows;
     let bibidhaIndex = mainAgendas.findIndex(a => a.content && a.content.trim().startsWith('বিবিধ'));
 
-    const getBibidhaText = (serial) => {
-        const numStr = prefix ? `${prefix}${toBanglaDigits(serial, 1)}` : toBanglaDigits(serial, 1);
-        return `বিবিধ : ${numStr}`;
-    };
-
     if (bibidhaIndex === -1) {
         const nextSerial = mainAgendas.length + 1;
-        const bibidhaContent = getBibidhaText(nextSerial);
         await db.query(
             'INSERT INTO agenda (meeting_id, agenda_serial, content, is_suppli) VALUES ($1, $2, $3, false)',
-            [meetingId, nextSerial, bibidhaContent]
+            [meetingId, nextSerial, 'বিবিধ :']
         );
     } else {
         const bibidha = mainAgendas[bibidhaIndex];
         const lastSerial = mainAgendas.length;
-        const expectedContent = getBibidhaText(lastSerial);
 
-        if (bibidha.agenda_serial !== lastSerial || (bibidha.content && bibidha.content.trim() !== expectedContent)) {
+        if (bibidha.agenda_serial !== lastSerial || bibidhaIndex !== mainAgendas.length - 1) {
             mainAgendas.splice(bibidhaIndex, 1);
             mainAgendas.push(bibidha);
             for (let i = 0; i < mainAgendas.length; i++) {
-                const isLast = i === mainAgendas.length - 1;
                 const serial = i + 1;
-                const content = isLast ? getBibidhaText(serial) : mainAgendas[i].content;
                 await db.query(
-                    'UPDATE agenda SET agenda_serial = $1, content = $2 WHERE id = $3',
-                    [serial, content, mainAgendas[i].id]
+                    'UPDATE agenda SET agenda_serial = $1 WHERE id = $2',
+                    [serial, mainAgendas[i].id]
                 );
             }
         }
@@ -164,9 +153,10 @@ const createAgendam = async (req, res, next) => {
             );
         }
 
+        const cleanedContent = stripProposalPrefix(content || '');
         const result = await db.query(
             'INSERT INTO agenda (meeting_id, agenda_serial, content, is_executed, execution_status, is_suppli, category_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [meeting_id, requestedSerial || 1, content || '', is_executed || 'no', execution_status, targetSuppli, category_id || null]
+            [meeting_id, requestedSerial || 1, cleanedContent, is_executed || 'no', execution_status, targetSuppli, category_id || null]
         );
         const agendam = result.rows[0];
 
@@ -178,7 +168,7 @@ const createAgendam = async (req, res, next) => {
 
         res.status(201).json({ success: true, message: 'Agendam created', data: agendam });
 
-        if (content) indexAgendaContent(agendam.id, content).catch(() => {});
+        if (cleanedContent) indexAgendaContent(agendam.id, cleanedContent).catch(() => {});
     } catch (error) {
         next(error);
     }
@@ -202,6 +192,7 @@ const updateAgendam = async (req, res, next) => {
 
         const hasCategory = category_id !== undefined;
         const catVal = category_id || null;
+        const cleanedUpdatedContent = content !== undefined ? stripProposalPrefix(content) : undefined;
 
         const result = await db.query(
             `UPDATE agenda
@@ -211,7 +202,7 @@ const updateAgendam = async (req, res, next) => {
                  execution_status = COALESCE($4, execution_status),
                  category_id = CASE WHEN $5::boolean THEN $6::uuid ELSE category_id END
              WHERE id = $7 RETURNING *`,
-            [agenda_serial, content, is_executed, execution_status, hasCategory, catVal, id]
+            [agenda_serial, cleanedUpdatedContent, is_executed, execution_status, hasCategory, catVal, id]
         );
 
         if (result.rows.length === 0) {

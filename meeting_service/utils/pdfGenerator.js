@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const storageService = require('./storageService');
 const meetingFileSystem = require('./meetingFileSystem');
-const { toBanglaDigits } = require('./agendaSerial');
+const { toBanglaDigits, getSerialWidth } = require('./agendaSerial');
 
 const getFontBase64 = () => {
     const sonarPath = path.join(__dirname, 'fonts', 'SonarBangla.ttf');
@@ -489,10 +489,14 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 : !isResolution
                     ? agendas.filter(ag => !ag.is_suppli)
                     : agendas.filter(ag => {
-                        // In resolution PDF: exclude Bibidha items entirely
                         if (!ag.is_suppli) {
                             const clean = (ag.content || '').replace(/<[^>]*>/g, '').trim();
-                            if (clean.startsWith('বিবিধ')) return false;
+                            if (clean.startsWith('বিবিধ')) {
+                                const hasResolution = ag.resolution && ag.resolution.replace(/<[^>]*>/g, '').trim().length > 0;
+                                const strippedText = clean.replace(/^\s*বিবিধ\s*[:.\-]?\s*([ঀ-৥ৰ-৿]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
+                                const hasContent = strippedText.length > 0;
+                                return hasResolution || hasContent;
+                            }
                         }
                         return true;
                     })
@@ -503,15 +507,18 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
                     return !clean.startsWith('বিবিধ');
                 }).length;
+                const serialWidth = getSerialWidth(agendas.length);
                 const agSerialStr = ag.is_suppli
-                    ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), 1)
-                    : toBanglaDigits(ag.agenda_serial, 1);
+                    ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), serialWidth)
+                    : toBanglaDigits(ag.agenda_serial, serialWidth);
 
                 const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
                 const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
-                const isOnlyBibidhaTitle = isBibidha && /^বিবিধ\s*:\s*[\d০-৯]+$/.test(cleanContent);
+                const strippedText = cleanContent.replace(/^\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
+                const isOnlyBibidhaTitle = isBibidha && !strippedText;
+                const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
                 const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
-                const titleStr = isBibidha ? `বিবিধ : ${fullSerial}` : `প্রস্তাবনা নং ${fullSerial}`;
+                const titleStr = isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
 
                 const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
                     .filter(an => !isResolution || !an.is_excluded_in_resolution)
@@ -524,6 +531,12 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     : null;
 
                 let contentHtml = isOnlyBibidhaTitle ? '' : (ag.content || '');
+                if (isBibidha) {
+                    contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                } else if (contentHtml) {
+                    contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*প্রস্তাব(?:না)?\s*নং\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]+\s*)*[০-৯\d\s\/\-]*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                    contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
+                }
                 if (annexureTags) {
                     const tagString = ` <b>(${annexureTags})</b>`;
                     if (contentHtml.trim().endsWith('</p>')) {

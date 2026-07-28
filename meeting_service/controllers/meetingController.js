@@ -8,7 +8,7 @@ const meetingFileSystem = require('../utils/meetingFileSystem');
 const { sendMail } = require('../utils/mailer');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
-const { extractAgendaPrefix } = require('../utils/agendaSerial');
+const { extractAgendaPrefix, parseAgendumBody } = require('../utils/agendaSerial');
 const { loadMeeting, calculateMeetingAccess } = require('../middlewares/meetingWorkflowMiddleware');
 
 // A viewer whose account is scoped to a specific member_type (academic/syndicate)
@@ -259,9 +259,9 @@ const createMeeting = async (req, res, next) => {
         const newMeeting = result.rows[0];
         meetingFileSystem.createMeetingDir(newMeeting);
 
-        // Insert default main agenda "বিবিধ : ১"
+        // Insert default main agenda "বিবিধ :"
         await db.query(
-            `INSERT INTO agenda (meeting_id, agenda_serial, content, is_suppli) VALUES ($1, 1, 'বিবিধ : ১', false)`,
+            `INSERT INTO agenda (meeting_id, agenda_serial, content, is_suppli) VALUES ($1, 1, 'বিবিধ :', false)`,
             [newMeeting.id]
         );
 
@@ -1619,22 +1619,30 @@ const bulkImportMeeting = async (req, res, next) => {
         if (hasAgendas) {
             for (const [index, a] of agendas.entries()) {
                 // Only the first agendum had its marker stripped (if any); the rest use their content as-is.
-                const content = index === 0 ? firstAgendaExtraction.content : a.content;
+                const rawContent = index === 0 ? firstAgendaExtraction.content : a.content;
+                const explicitSerial = (a.serial !== undefined && a.serial !== null) ? a.serial : ((a.agenda_serial !== undefined && a.agenda_serial !== null) ? a.agenda_serial : null);
+                const defaultSerial = explicitSerial !== null ? explicitSerial : index + 1;
+                const parsedBody = parseAgendumBody(rawContent, defaultSerial);
+
+                let finalSerial = (a.serial === 0 || a.agenda_serial === 0 || parsedBody.isBibidha)
+                    ? 0
+                    : (explicitSerial !== null ? explicitSerial : (parsedBody.serial !== null ? parsedBody.serial : defaultSerial));
+
                 const res = await client.query(
                     `INSERT INTO agenda
                     (content, resolution, agenda_serial, meeting_id)
                     VALUES ($1, $2, $3, $4) RETURNING id`,
                     [
-                        content,
+                        parsedBody.content,
                         a.resolution,
-                        a.agenda_serial,
+                        finalSerial,
                         meetingId
                     ]
                 );
                 const agendaId = res.rows[0].id;
 
-                if (content) {
-                    indexAgendaContent(agendaId, content).catch(() => {});
+                if (rawContent) {
+                    indexAgendaContent(agendaId, rawContent).catch(() => {});
                 }
                 if (a.resolution) {
                     indexResolutionContent(agendaId, a.resolution).catch(() => {});

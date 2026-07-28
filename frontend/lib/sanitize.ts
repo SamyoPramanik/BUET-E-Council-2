@@ -36,6 +36,17 @@ export function convertMarkdownTablesToHtml(content: string): string {
 
 export function sanitizeHtml(html: string | null | undefined): string {
   if (!html) return "";
-  const converted = convertMarkdownTablesToHtml(html);
-  return DOMPurify.sanitize(converted, { ADD_TAGS: ["table", "thead", "tbody", "tr", "th", "td"], ADD_ATTR: ["class", "border", "cellpadding", "cellspacing", "style"] });
+  // Decode escaped HTML entities (e.g. &lt;br&gt; -> <br>)
+  const unescaped = html
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+
+  const converted = convertMarkdownTablesToHtml(unescaped);
+  return DOMPurify.sanitize(converted, {
+    ADD_TAGS: ["table", "thead", "tbody", "tr", "th", "td", "br", "p", "strong", "em", "b", "i", "u", "span"],
+    ADD_ATTR: ["class", "border", "cellpadding", "cellspacing", "style"]
+  });
 }

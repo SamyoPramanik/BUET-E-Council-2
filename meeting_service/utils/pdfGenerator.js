@@ -27,6 +27,36 @@ const getFontBase64 = () => {
 // Read and encode the Bangla font once at startup, then reuse for every request.
 const FONT_BASE64 = getFontBase64();
 
+function convertMarkdownTablesToHtml(content) {
+    if (!content || typeof content !== 'string') return content || '';
+    if (!content.includes('|')) return content;
+
+    return content.replace(/(?:<p[^>]*>)?\s*([^|\n<]+(?:\|[^|\n<]+)+)\s*\|?\s*[:\-]{2,}[:\-\s|]*\|?\s*([^<]+?)(?:<\/p>|$)/gi, (match, headerRow, bodyRows) => {
+        const headers = headerRow.split('|').map(s => s.replace(/<[^>]*>/g, '').trim()).filter(s => s && !/^[-:]+$/.test(s));
+        if (headers.length === 0) return match;
+
+        let html = '<table class="meeting-table" border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;margin:12px 0;border:1px solid #000;"><thead><tr>';
+        headers.forEach(h => {
+            html += `<th style="border:1px solid #000;padding:6px;background-color:rgba(0,0,0,0.05);font-weight:600;text-align:left;">${h}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        const rowTokens = bodyRows.split(/(?:\|?\s*\||\n+)/).map(r => r.trim()).filter(Boolean);
+        rowTokens.forEach(rowStr => {
+            const cells = rowStr.split('|').map(s => s.replace(/<[^>]*>/g, '').trim()).filter(s => s.length > 0 && !/^[-:]+$/.test(s));
+            if (cells.length > 0) {
+                html += '<tr>';
+                cells.forEach(c => {
+                    html += `<td style="border:1px solid #000;padding:6px;">${c}</td>`;
+                });
+                html += '</tr>';
+            }
+        });
+        html += '</tbody></table>';
+        return html;
+    });
+}
+
 // Reuse a single Chromium instance across requests instead of launching one per PDF.
 let browserPromise = null;
 
@@ -530,7 +560,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                       }).join(', ')
                     : null;
 
-                let contentHtml = isOnlyBibidhaTitle ? '' : (ag.content || '');
+                let contentHtml = isOnlyBibidhaTitle ? '' : convertMarkdownTablesToHtml(ag.content || '');
                 if (isBibidha) {
                     contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
                 } else if (contentHtml) {
@@ -555,7 +585,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     ${contentHtml ? `<div class="agenda-content">${contentHtml}</div>` : ''}
                     ${isResolution ? `
                     <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
-                    <div class="agenda-resolution">${ag.resolution || ''}</div>
+                    <div class="agenda-resolution">${convertMarkdownTablesToHtml(ag.resolution || '')}</div>
                     ` : ''}
                 </div>
                 `;

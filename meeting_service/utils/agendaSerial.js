@@ -92,4 +92,15 @@ function getSerialWidth(totalCount) {
     return String(totalCount).length;
 }
 
-module.exports = { extractAgendaPrefix, toBanglaDigits, parseAgendumBody, parseBanglaNumber, getSerialWidth, stripProposalPrefix };
+function stripResolutionPrefix(content) {
+    if (!content) return '';
+    let str = String(content).normalize('NFC').replace(/&nbsp;/g, ' ').replace(/\u00a0/g, ' ').trim();
+    str = str.replace(/^(?:\s*<p[^>]*>\s*(?:<br\s*\/?>)?\s*<\/p>|\s*<br\s*\/?>)*/i, '');
+    str = str.replace(/^(?:\s*<p[^>]*>)?\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*/i, (match) => {
+        return match.includes('<p') ? '<p>' : '';
+    });
+    str = str.replace(/(<p[^>]*>)\s*(?:<(?<tag>strong|b|span|em)[^>]*>\s*<\/\k<tag>>\s*)+/gi, '$1');
+    return str;
+}
+
+module.exports = { extractAgendaPrefix, toBanglaDigits, parseAgendumBody, parseBanglaNumber, getSerialWidth, stripProposalPrefix, stripResolutionPrefix };

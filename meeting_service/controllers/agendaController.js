@@ -4,7 +4,7 @@ const storageService = require('../utils/storageService');
 const meetingFileSystem = require('../utils/meetingFileSystem');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
-const { toBanglaDigits, stripProposalPrefix } = require('../utils/agendaSerial');
+const { toBanglaDigits, stripProposalPrefix, stripResolutionPrefix } = require('../utils/agendaSerial');
 
 const setAgendaTags = async (agendaId, tagIds) => {
     if (!Array.isArray(tagIds)) return;
@@ -425,11 +425,13 @@ const createResolution = async (req, res, next) => {
 
         if (!resolution) return next(new CustomError('Resolution text is required', 400));
 
+        const cleanedResolution = stripResolutionPrefix(resolution);
+
         await snapshotResolutionRevision(agendamId, req.user?.id);
 
         const result = await db.query(
             'UPDATE agenda SET resolution = $1 WHERE id = $2 RETURNING *',
-            [resolution, agendamId]
+            [cleanedResolution, agendamId]
         );
 
         if (result.rows.length === 0) return next(new CustomError('Agendam not found', 404));
@@ -438,7 +440,7 @@ const createResolution = async (req, res, next) => {
 
         res.status(201).json({ success: true, message: 'Resolution created', data: result.rows[0] });
 
-        indexResolutionContent(agendamId, resolution).catch(() => {});
+        indexResolutionContent(agendamId, cleanedResolution).catch(() => {});
     } catch (error) {
         next(error);
     }
@@ -452,11 +454,13 @@ const updateResolution = async (req, res, next) => {
 
         if (!resolution) return next(new CustomError('Resolution text is required', 400));
 
+        const cleanedResolution = stripResolutionPrefix(resolution);
+
         await snapshotResolutionRevision(agendamId, req.user?.id);
 
         const result = await db.query(
             'UPDATE agenda SET resolution = $1 WHERE id = $2 RETURNING *',
-            [resolution, agendamId]
+            [cleanedResolution, agendamId]
         );
 
         if (result.rows.length === 0) return next(new CustomError('Resolution/Agendam not found', 404));

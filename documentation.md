@@ -38,6 +38,11 @@ This document serves as the comprehensive technical specification and developer 
   - [4.4 Storage API (`/storage`)](#44-storage-api-storage)
   - [4.5 Embedding Service API (`http://embedding_service:8002`)](#45-embedding-service-api-httpembeddingservice8002)
 - [5. Frontend Architecture & Design System](#5-frontend-architecture--design-system)
+  - [5.1 Email Tab — Meeting Notification & Document System](#51-email-tab--meeting-notification--document-system)
+  - [5.2 Notice PDF Generation — On-the-Fly Document Engine](#52-notice-pdf-generation--on-the-fly-document-engine)
+  - [5.3 Attendance Sheet — Section-Separated PDF Generation](#53-attendance-sheet--section-separated-pdf-generation)
+  - [5.4 Take Attendance — Search & Filter](#54-take-attendance--search--filter)
+  - [5.5 Resolution PDF — Dynamic Column Layout](#55-resolution-pdf--dynamic-column-layout)
 - [6. Development, Maintenance & Troubleshooting](#6-development-maintenance--troubleshooting)
   - [6.1 Running via Docker Compose](#61-running-via-docker-compose)
   - [6.2 Local Microservice Development Setup](#62-local-microservice-development-setup)
@@ -150,6 +155,18 @@ CREATE TYPE account_status AS ENUM ('active', 'inactive');
 3. **`agenda`**: Agenda and resolution content. Automatically maintains generated `content_tsv` and `resolution_tsv` tsvector columns using PostgreSQL's `simple` text search dictionary.
 4. **`agenda_chunks` & `resolution_chunks`**: Stores text chunks and their 1024-dimensional float vector embeddings output by `BAAI/bge-m3`.
 5. **`invitees`**: Unified entity managing both meeting invitees and attendance presentee records (`is_present BOOLEAN DEFAULT false`). Automatically mirrors seniority serial from linked `members` (`member_id`) via database trigger `trg_sync_invitee_serial`. Note that the legacy `presentees` table has been removed.
+
+6. **`notices`**: Stores notice metadata for generated PDFs. Used for notice number tracking and history (not currently persisted — PDFs are generated on-the-fly from form data).
+
+7. **`system_settings`**: Key-value store for system-wide configuration. Stores signature text for academic and syndicate notices:
+   ```sql
+  CREATE TABLE IF NOT EXISTS system_settings (
+       key VARCHAR(255) PRIMARY KEY,
+       value TEXT NOT NULL,
+       updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+   );
+   -- Signature keys: 'academic_signature_str', 'syndicate_signature_str'
+   ```
 
 ---
 
@@ -432,6 +449,22 @@ Implementation: [`meeting_service/utils/pdfGenerator.js`](file:///media/samyo-pr
 - **Embedded Bangla Typography**: Loads `SonarBangla.ttf` or `Kalpurush.ttf` from disk at startup, encodes it into a `data:font/ttf;base64` string, and injects `@font-face` directly into HTML before rendering.
 - **SSRF Protection**: Request interception blocks external network calls inside Puppeteer, only permitting navigation requests and local `data:` URIs.
 
+#### PDF Generation Functions
+
+| Function | Purpose | Output |
+|---|---|---|
+| `generateMeetingPdf(id, isResolution, sectionFilter)` | Generate attendance/agenda/resolution PDF | PDF buffer |
+| `generateNoticePdf(notice, presentees)` | Generate notice PDF (academic/syndicate) | PDF buffer |
+| `generateNoticePdfFromPayload(payload)` | Generate PDF from form data (no DB lookup) | PDF buffer |
+
+#### Notice PDF Features
+
+- **Dynamic body generation**: Auto-generates notice body based on type (invitation/agenda/resolution) and meeting status
+- **Bangla date formatting**: Uses Bengali month names and Bangla numeral conversion
+- **Members list rendering**: Auto-appends member list after signature for syndicate notices
+- **Null name handling**: Splits office_name by comma when name is null
+- **Resolution presentee columns**: Dynamic 1/2 column layout based on presentee count (>15 → 2 columns at 9px; ≤15 → 1 column at 12px)
+
 ---
 
 ### 3.5 MinIO S3 Object Storage & Authenticated Stream Proxy
@@ -576,6 +609,14 @@ export const DEPARTMENT_MERGE_RULES = [
 | `GET` | `/api/audit-logs` | Retrieve system audit logs |
 | `GET` | `/api/audit-logs/archives` | Retrieve audit log archive downloads (Admin only) |
 
+#### Notice API (`/api/notices`)
+
+| Method | Endpoint | Access Level | Description |
+|---|---|---|---|
+| `GET` | `/api/notices/settings/signatures` | Admin/Superadmin/Moderator | Retrieve academic and syndicate signature text |
+| `PUT` | `/api/notices/settings/signatures` | Admin/Superadmin/Moderator | Update signature text for academic or syndicate notices |
+| `POST` | `/api/notices/generate-pdf` | Admin/Superadmin/Moderator | Generate notice PDF on-the-fly from payload (no persistence) |
+
 ---
 
 ### 4.3 Search API (`/api/search`)
@@ -632,20 +673,27 @@ frontend/app/
   - `lib/meetingAccess.ts`: Mirror calculation helper providing boolean flags (`canEditAgenda`, `canSendBackAgenda`, `canLockAgenda`, etc.) consumed by UI components.
   - `components/meetings/MeetingWorkflowBar.tsx`: Dynamic action toolbar rendering Handover, Send-Back, Lock, and Unlock buttons based on permissions.
 
-### 5.1 Email Tab — Meeting Notification System
+### 5.1 Email Tab — Meeting Notification & Document System
 
-Implementation: [`frontend/components/meetings/EmailTabView.tsx`](frontend/components/meetings/EmailTabView.tsx), [`frontend/components/meetings/SendAgendaModal.tsx`](frontend/components/meetings/SendAgendaModal.tsx), [`meeting_service/controllers/meetingController.js`](meeting_service/controllers/meetingController.js)
+Implementation: [`frontend/components/meetings/EmailTabView.tsx`](frontend/components/meetings/EmailTabView.tsx), [`frontend/components/meetings/SendAgendaModal.tsx`](frontend/components/meetings/SendAgendaModal.tsx), [`frontend/components/meetings/NoticeView.tsx`](frontend/components/meetings/NoticeView.tsx), [`meeting_service/controllers/meetingController.js`](meeting_service/controllers/meetingController.js)
 
-The Email tab provides a centralized interface for sending meeting-related emails (notice, agenda, resolution) to invitees with email addresses. It enforces role-based access and meeting-status-driven enable/disable rules.
+The Email tab provides a centralized interface for both sending meeting-related emails and generating notice documents. It is organized into two sub-tabs:
+
+#### Sub-Tab Structure
+
+| Sub-Tab | Content | Access |
+|---|---|---|
+| **Email** | Email sending UI (notice, agenda, resolution emails) | All users with Email tab access |
+| **Email Document** | Notice PDF generation form (academic/syndicate) | Admin/Superadmin/Moderator only |
 
 #### Roles & Permissions
 
-| Role | Can Send Emails |
-|---|---|
-| `admin` | Yes |
-| `superadmin` | Yes |
-| `moderator` | Yes |
-| `editor` / `viewer` / `file_initiator` | No |
+| Role | Can Send Emails | Can Generate Documents |
+|---|---|---|
+| `admin` | Yes | Yes |
+| `superadmin` | Yes | Yes |
+| `moderator` | Yes | Yes |
+| `editor` / `viewer` / `file_initiator` | No | No |
 
 The backend enforces this via `requireEmailSender` (for notice/agenda) and `requireCompletedMeetingEmailSender` (for resolution) middlewares in [`meetingWorkflowMiddleware.js`](meeting_service/middlewares/meetingWorkflowMiddleware.js).
 
@@ -694,7 +742,65 @@ The backend sets the corresponding flag to `true` after all recipients in a batc
 
 ---
 
-### 5.2 Attendance Sheet — Section-Separated PDF Generation
+### 5.2 Notice PDF Generation — On-the-Fly Document Engine
+
+Implementation: [`frontend/components/meetings/NoticeView.tsx`](frontend/components/meetings/NoticeView.tsx), [`meeting_service/controllers/noticeController.js`](meeting_service/controllers/noticeController.js), [`meeting_service/utils/pdfGenerator.js`](meeting_service/utils/pdfGenerator.js)
+
+The Notice Document sub-tab provides a form-based interface for generating notice PDFs on-the-fly. PDFs are not persisted to the database — they are generated from form data each time.
+
+#### Notice Types
+
+| Type | Academic | Syndicate |
+|---|---|---|
+| **Invitation** | `academic-invitation` | `syndicate-invitation` |
+| **Agenda** | `academic-agenda` | `syndicate-agenda` |
+| **Resolution** | `academic-resolution` | `syndicate-resolution` |
+| **Immediate** | `academic-immediate` | N/A (syndicate never immediate) |
+
+#### Key Features
+
+1. **Auto-Prefill**: Notice body is automatically generated based on meeting type, notice type, and meeting date. Serial numbers are displayed in Bangla digits with "নং" suffix (e.g., `১ নং সভা`).
+
+2. **Signature Management**: Signatures are stored permanently in `system_settings` table and auto-reflected in the UI when updated via the signature settings modal.
+
+3. **Members List**: For syndicate notices, a members list is automatically appended after the signature:
+   - Single column layout when members < 16
+   - Two-column layout when members ≥ 16
+   - উপাচার্য (Vice Chancellor) displayed as সভাপতি (President)
+   - All others displayed as সদস্য (Member)
+
+4. **Null Name Handling**: When an invitee's name is null, the system splits `office_name` by comma — first part becomes the name, remaining parts become the office detail.
+
+5. **PDF Layout**:
+   - Reduced signature section margins (30px top, 40px height) to keep members on same page
+   - Members list flows immediately after letter body
+   - Dynamic column layout for resolution presentees (>15 → 2 columns at 9px; ≤15 → 1 column at 12px)
+
+#### Backend API
+
+```javascript
+// Generate PDF on-the-fly (no persistence)
+POST /api/notices/generate-pdf
+Body: {
+  meeting_id: "uuid",
+  notice_number: "123",
+  notice_date: "2026-07-30T10:00:00Z",
+  notice_type: "academic-agenda",  // or "syndicate-resolution", etc.
+  body: "<p>HTML body content</p>",
+  signature_text: "(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)\nরেজিস্ট্রার (অ. দা.)"
+}
+Response: PDF binary stream (Content-Type: application/pdf)
+```
+
+#### Font Requirements
+
+- **Primary**: `Kalpurush.ttf` (Bangla typesetting)
+- **Secondary**: `SonarBangla.ttf` (alternative font, must be placed in `meeting_service/utils/fonts/`)
+- Font files are loaded at Puppeteer startup and embedded as base64 data URIs
+
+---
+
+### 5.3 Attendance Sheet — Section-Separated PDF Generation
 
 Implementation: [`meeting_service/utils/pdfGenerator.js`](meeting_service/utils/pdfGenerator.js)
 
@@ -769,7 +875,7 @@ The section filter is applied at the data level before rendering — `buildSingl
 
 ---
 
-### 5.3 Take Attendance — Search & Filter
+### 5.4 Take Attendance — Search & Filter
 
 Implementation: [`frontend/components/meetings/TakeAttendanceView.tsx`](frontend/components/meetings/TakeAttendanceView.tsx)
 
@@ -784,6 +890,24 @@ The search bar is embedded inline within the attendance summary bar (alongside t
 
 ---
 
+### 5.5 Resolution PDF — Dynamic Column Layout
+
+Implementation: [`meeting_service/utils/pdfGenerator.js`](meeting_service/utils/pdfGenerator.js)
+
+The resolution PDF generator dynamically adjusts the layout of the presentees (attendees) section based on the number of presentees:
+
+| Presentee Count | Column Layout | Font Size |
+|---|---|---|
+| ≤ 15 presentees | Single column | 12px |
+| > 15 presentees | Two columns | 9px |
+
+This optimization ensures:
+- **Small meetings**: Readable single-column layout with larger font
+- **Large meetings**: Compact two-column layout to fit all names on fewer pages
+
+The layout is applied in the `generatePdf()` function when rendering the presentees list in the resolution PDF.
+
+---
 
 
 ## 6. Development, Maintenance & Troubleshooting
@@ -863,4 +987,4 @@ docker compose down
 - **MinIO Storage Presigned URL Failures**: Ensure `R3_ENDPOINT` and `R3_BUCKET_NAME` match between `.env` and `docker-compose.yml`.
 
 ---
-*BUET E-Council Developer Specification — Version 2.0*
+*BUET E-Council Developer Specification — Version 2.1*

@@ -14,7 +14,6 @@ import DescriptionView from "../../../../components/meetings/DescriptionView";
 import MaterialsView from "../../../../components/meetings/MaterialsView";
 import HistoryView from "../../../../components/meetings/HistoryView";
 import EmailTabView from "../../../../components/meetings/EmailTabView";
-import NoticeView from "../../../../components/meetings/NoticeView";
 
 import { useAuth } from "../../../../hooks/useAuth";
 
@@ -65,8 +64,6 @@ export default function MeetingWorkspace() {
       return <MaterialsView meeting={meeting} />;
     case 'email':
       return <EmailTabView meeting={meeting} mutate={mutate} />;
-    case 'notice':
-      return <NoticeView meeting={meeting} mutate={mutate} />;
     case 'history':
       return <HistoryView meeting={meeting} />;
     default:

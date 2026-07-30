@@ -62,7 +62,7 @@ function generatePrefillBody(
   const dateStr = formatNoticeDate(meetingDate);
   const dateShort = formatNoticeDateShort(meetingDate);
   const dayName = getDayName(meetingDate);
-  const serialNo = toBanglaDigits(serialNumber) || "Untitled";
+  const serialNo = (toBanglaDigits(serialNumber) || "Untitled") + " নং";
   const meetingUrl = `${typeof window !== 'undefined' ? window.location.origin : 'http://localhost:9001'}/meetings/${meetingId}`;
 
   if (isSyndicate) {
@@ -254,7 +254,7 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
         : 'font-size: 12px; margin-top: 10px;';
 
       membersHtml = `
-        <div style="margin-top: 40px; page-break-inside: avoid;">
+        <div style="margin-top: 20px;">
           <div style="text-decoration: underline; font-weight: bold; margin-bottom: 8px;">বিতরণ : (জ্যেষ্ঠতার ভিত্তিতে নয়)</div>
           <div style="${containerStyle}">
             ${memberRows}
@@ -273,10 +273,10 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
         ${addressHtml}
         <p>মহোদয়,</p>
         <div style="margin-left: 20px; margin-top: 15px;">${form.body || '<p style="color: #999; font-style: italic;">Body content will appear here...</p>'}</div>
-        <div style="margin-top: 50px; display: flex; justify-content: flex-end;">
+        <div style="margin-top: 30px; display: flex; justify-content: flex-end;">
           <div style="text-align: right;">
             <div>আপনার বিশ্বস্ত,</div>
-            <div style="height: 60px;"></div>
+            <div style="height: 40px;"></div>
             <div style="white-space: pre-line; font-size: 13px;">${(form.signature_text || '').replace(/\n/g, '<br/>')}</div>
             <div style="margin-top: 10px; font-size: 13px;">এবং<br/>${secretaryLabel}</div>
           </div>

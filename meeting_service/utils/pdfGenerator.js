@@ -1046,14 +1046,14 @@ const generateNoticePdf = async (notice, presentees) => {
             }
             .signature-section {
                 text-align: right;
-                margin-top: 50px;
-                margin-bottom: 20px;
+                margin-top: 30px;
+                margin-bottom: 10px;
             }
             .signature-label {
                 margin-bottom: 5px;
             }
             .signature-space {
-                height: 60px;
+                height: 40px;
             }
             .signature-text {
                 font-size: 13px;
@@ -1065,9 +1065,8 @@ const generateNoticePdf = async (notice, presentees) => {
                 font-size: 13px;
             }
             .distribution {
-                margin-top: 40px;
+                margin-top: 20px;
                 font-size: 13px;
-                page-break-inside: avoid;
             }
             .distribution-title {
                 text-decoration: underline;

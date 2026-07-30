@@ -553,10 +553,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 .description { font-size: 14px; text-align: justify; margin-bottom: 30px; }
                 .presentees-header { font-size: 14px; text-decoration: underline; margin-bottom: 15px; }
                 .columns-container {
-                    column-count: 2;
-                    column-gap: 40px;
+                    ${presentees.length > 15 ? 'column-count: 2; column-gap: 40px; font-size: 9px;' : 'column-count: 1; font-size: 12px;'}
                     column-fill: auto;
-                    font-size: 12px;
                     margin-bottom: 30px;
                 }
                 .presentee-section {
@@ -939,8 +937,303 @@ const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
     }
 };
 
+// ---------------------------------------------------------------------------
+// Notice PDF generation
+// ---------------------------------------------------------------------------
+
+const BANGLA_DAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
+
+const formatNoticeDate = (dateStr) => {
+    const d = new Date(dateStr);
+    const day = d.getDate();
+    const month = d.getMonth();
+    const year = d.getFullYear();
+    const months = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
+    return `${toBanglaDigits(day)} ${months[month]} ${toBanglaDigits(year)}`;
+};
+
+const formatNoticeDateShort = (dateStr) => {
+    const d = new Date(dateStr);
+    const day = d.getDate();
+    const month = d.getMonth() + 1;
+    const year = d.getFullYear();
+    return `${toBanglaDigits(day)}-${toBanglaDigits(String(month).padStart(2, '0'))}-${toBanglaDigits(year)}`;
+};
+
+const getNoticeDayName = (dateStr) => {
+    const d = new Date(dateStr);
+    return BANGLA_DAYS[d.getDay()];
+};
+
+const generateNoticePdf = async (notice, presentees) => {
+    const meetingType = (notice.meeting_type || '').toLowerCase();
+    const isSyndicate = meetingType === 'syndicate';
+    const isRegular = notice.is_regular !== false;
+    const noticeType = notice.notice_type;
+    const meetingStatus = notice.meeting_status || 'draft';
+    const isImmediate = !isRegular;
+
+    const serialNo = (notice.meeting_title || '').includes('সভা')
+        ? toBanglaDigits(notice.meeting_title)
+        : toBanglaDigits(notice.meeting_title || notice.meeting_title || 'Untitled');
+
+    const meetingDate = notice.meeting_date;
+    const dateStr = formatNoticeDate(meetingDate);
+    const dateShort = formatNoticeDateShort(meetingDate);
+    const dayName = getNoticeDayName(meetingDate);
+
+    const meetingUrl = `${process.env.PRODUCTION_DOMAIN || 'http://localhost:9001'}/meetings/${notice.meeting_id}`;
+
+    // Build body based on type
+    let bodyHtml = '';
+    if (notice.body) {
+        bodyHtml = notice.body;
+    } else {
+        bodyHtml = generateDefaultBody(noticeType, isSyndicate, isImmediate, dateStr, dateShort, dayName, serialNo, meetingUrl, notice);
+    }
+
+    // Signature
+    const signatureText = notice.signature_text || '';
+
+    // Members list for syndicate
+    let membersHtml = '';
+    if (isSyndicate && presentees && presentees.length > 0) {
+        membersHtml = renderNoticeMembers(presentees);
+    }
+
+    // Salutation address based on type
+    const addressHtml = isSyndicate
+        ? `<p>সিন্ডিকেটের সম্মানিত সদস্য<br/>বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়<br/>ঢাকা-১০০০ ।</p>`
+        : `<p>একাডেমিক কাউন্সিলের সম্মানিত সদস্য<br/>বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়<br/>ঢাকা-১০০০ ।</p>`;
+
+    // Secretary label based on type
+    const secretaryLabel = isSyndicate ? 'সিন্ডিকেটের সচিব।' : 'একাডেমিক কাউন্সিলের সচিব।';
+
+    const fontBase64 = FONT_BASE64;
+    const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); }` : '';
+
+    let html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            ${fontFace}
+            body {
+                font-family: 'PrimaryFont', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+                margin: 0;
+                padding: 40px 50px;
+            }
+            .header-title {
+                font-size: 21px;
+                font-weight: bold;
+                text-align: center;
+                margin-bottom: 30px;
+            }
+            .notice-meta {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 30px;
+                font-size: 14px;
+            }
+            .notice-body {
+                margin-left: 20px;
+            }
+            .notice-body p {
+                margin: 0 0 12px 0;
+                text-align: justify;
+            }
+            .signature-section {
+                text-align: right;
+                margin-top: 50px;
+                margin-bottom: 20px;
+            }
+            .signature-label {
+                margin-bottom: 5px;
+            }
+            .signature-space {
+                height: 60px;
+            }
+            .signature-text {
+                font-size: 13px;
+                line-height: 1.4;
+                white-space: pre-line;
+            }
+            .secretary-label {
+                margin-top: 10px;
+                font-size: 13px;
+            }
+            .distribution {
+                margin-top: 40px;
+                font-size: 13px;
+                page-break-inside: avoid;
+            }
+            .distribution-title {
+                text-decoration: underline;
+                font-weight: bold;
+                margin-bottom: 8px;
+            }
+            .members-container {
+                ${presentees && presentees.length > 15 ? 'column-count: 2; column-gap: 30px;' : ''}
+                font-size: 12px;
+                margin-top: 10px;
+            }
+            .member-item {
+                break-inside: avoid;
+                margin-bottom: 8px;
+                display: flex;
+                justify-content: space-between;
+            }
+            .member-name {
+                width: 75%;
+            }
+            .member-role {
+                width: 25%;
+                text-align: right;
+            }
+            .web-link {
+                font-weight: bold;
+                margin-top: 10px;
+            }
+            .zoom-section {
+                margin-top: 10px;
+            }
+            p { margin: 0 0 10px 0; }
+        </style>
+    </head>
+    <body>
+        <div class="header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+
+        <div class="notice-meta">
+            <span>নম্বর: ${notice.notice_number || ''}</span>
+            <span>তারিখ: ${dateStr}</span>
+        </div>
+
+        ${addressHtml}
+
+        <p>মহোদয়,</p>
+
+        <div class="notice-body">
+            ${bodyHtml}
+        </div>
+
+        <div class="signature-section">
+            <div class="signature-label">আপনার বিশ্বস্ত,</div>
+            <div class="signature-space"></div>
+            <div class="signature-text">${signatureText.replace(/\n/g, '<br/>')}</div>
+            <div class="secretary-label">এবং<br/>${secretaryLabel}</div>
+        </div>
+
+        ${membersHtml}
+    </body>
+    </html>
+    `;
+
+    return await renderPdf(html);
+};
+
+function generateDefaultBody(noticeType, isSyndicate, isImmediate, dateStr, dateShort, dayName, serialNo, meetingUrl, notice) {
+    const meetingUrlLabel = isSyndicate ? 'Web link for Agenda and Annexure:' : 'Web link for Agenda and Annexure:';
+    const resolutionUrlLabel = 'Web link for Resolution:';
+
+    if (isSyndicate) {
+        switch (noticeType) {
+            case 'invitation':
+                return `<p>আগামী ${dateStr} তারিখ ${dayName} বিকাল ৩:০০ ঘটিকায় সিন্ডিকেটের ${serialNo} সভা উপাচার্য মহোদয়ের অফিস কক্ষে অনুষ্ঠিত হবে। উক্ত সিন্ডিকেট সভায় অংশগ্রহণ করার জন্য বিনীতভাবে অনুরোধ করা হলো। সরাসরি উক্ত সিন্ডিকেট সভায় যোগদান করা সম্ভব না হলে ভার্চুয়াল প্ল্যাটফর্মে অংশগ্রহণ করা যাবে।</p>
+                <p>এতদসংক্রান্ত আলোচ্যসূচী ও প্রয়োজনীয় তথ্যাদি (সভার আলোচ্যসূচীর ওয়েব লিংক, Zoom Meeting এর ওয়েব লিংক, ID ও Password) শীঘ্রই e-mail এর মাধ্যমে প্রেরণ করা হবে।</p>`;
+            case 'agenda':
+                return `<p>আগামী ${dateStr} তারিখ ${dayName} বিকাল ৩:০০ ঘটিকায় সিন্ডিকেটের ${serialNo} সভা সরাসরি মাননীয় উপাচার্য মহোদয়ের অফিসে ও ভার্চুয়াল (Hybrid) প্ল্যাটফর্মে অনুষ্ঠিত হবে। উক্ত সভার আলোচ্যসূচীর ওয়েব লিংক, Zoom Meeting এর ওয়েব লিংক, ID ও Password নিম্নে প্রেরণ করা হলো।</p>
+                <p class="web-link">• ${meetingUrlLabel}</p>
+                <p>${meetingUrl}</p>
+                <div class="zoom-section">
+                    <p>• Web link for Zoom Meeting :</p>
+                    <p>${notice.online_meeting_link || ''}</p>
+                    <p>Meeting ID : ${notice.zoom_meeting_id || ''}</p>
+                    <p>Password : ${notice.zoom_password || ''}</p>
+                </div>`;
+            case 'resolution':
+                return `<p>গত ${dateShort} তারিখে সরাসরি ও ভার্চুয়াল (Hybrid) প্ল্যাটফর্মে অনুষ্ঠিত সিন্ডিকেটের ${serialNo} সভার কার্যবিবরণী নিম্নোক্ত ওয়েব লিংক-এর মাধ্যমে প্রেরণ করা হলো।</p>
+                <p class="web-link">• ${resolutionUrlLabel}</p>
+                <p>${meetingUrl}</p>`;
+            default:
+                return '';
+        }
+    } else {
+        // Academic
+        if (isImmediate) {
+            switch (noticeType) {
+                case 'agenda':
+                    return `<p>${dateShort} তারিখে কাউন্সিল ভবনে অনুষ্ঠিত একাডেমিক কাউন্সিলের ${serialNo} জরুরী (Immediate) সভার আলোচ্যসূচী ই-মেইলের মাধ্যমে প্রেরণ করা হলো।</p>`;
+                case 'resolution':
+                    return `<p>${dateShort} তারিখে কাউন্সিল ভবনে অনুষ্ঠিত একাডেমিক কাউন্সিলের ${serialNo} জরুরী (Immediate) সভার কার্যবিবরণী ই-মেইলের মাধ্যমে প্রেরণ করা হলো।</p>`;
+                default:
+                    return '';
+            }
+        } else {
+            switch (noticeType) {
+                case 'invitation':
+                    return `<p>আগামী ${dateStr} তারিখ ${dayName} একাডেমিক কাউন্সিলের ${serialNo} সভা কাউন্সিল ভবনে অনুষ্ঠিত হবে। উক্ত সভায় অংশগ্রহণ করার জন্য বিনীতভাবে অনুরোধ করা হলো।</p>`;
+                case 'agenda':
+                    return `<p>আগামী ${dateStr} তারিখ ${dayName} একাডেমিক কাউন্সিলের ${serialNo} সভা কাউন্সিল ভবনে অনুষ্ঠিত হবে। উক্ত সভার আলোচ্যসূচীর ওয়েব লিংক নিম্নে প্রেরণ করা হলো।</p>
+                    <p class="web-link">• ${meetingUrlLabel}</p>
+                    <p>${meetingUrl}</p>`;
+                case 'resolution':
+                    return `<p>গত ${dateShort} তারিখে কাউন্সিল ভবনে অনুষ্ঠিত একাডেমিক কাউন্সিলের ${serialNo} সভার কার্যবিবরণী নিম্নোক্ত ওয়েব লিংক-এর মাধ্যমে প্রেরণ করা হলো:</p>
+                    <p class="web-link">• Web link for Resolution and Annexure:</p>
+                    <p>${meetingUrl}</p>`;
+                default:
+                    return '';
+            }
+        }
+    }
+}
+
+function renderNoticeMembers(presentees) {
+    if (!presentees || presentees.length === 0) return '';
+
+    const sorted = [...presentees].sort((a, b) => (a.serial ?? Infinity) - (b.serial ?? Infinity));
+
+    const getSuffix = (item) => {
+        const office = (item.office_name || '').normalize('NFC').trim();
+        if (office.includes('উপাচার্য') && !office.includes('উপ-উপাচার্য') && !office.includes('উপউপাচার্য')) {
+            return 'সভাপতি';
+        }
+        return 'সদস্য';
+    };
+
+    let membersHtml = `<div class="distribution">
+        <div class="distribution-title">বিতরণ : (জ্যেষ্ঠতার ভিত্তিতে নয়)</div>
+        <div class="members-container">`;
+
+    sorted.forEach((m, idx) => {
+        let displayName = m.name || '';
+        let officeDetail = m.office_name || '';
+        if (!displayName && officeDetail) {
+            const parts = officeDetail.split(',');
+            displayName = parts[0].trim();
+            officeDetail = parts.slice(1).join(',').trim();
+        }
+        if (!displayName) displayName = 'Unknown';
+        const details = [];
+        if (m.designation) details.push(m.designation);
+        if (m.department_name) details.push(m.department_name);
+        if (officeDetail) details.push(officeDetail);
+        const detailStr = details.length > 0 ? `<br/>${details.join(', ')}` : '';
+
+        membersHtml += `<div class="member-item">
+            <div class="member-name">${toBanglaDigits(idx + 1)}. ${displayName}${detailStr}</div>
+            <div class="member-role">${getSuffix(m)}</div>
+        </div>`;
+    });
+
+    membersHtml += `</div></div>`;
+    return membersHtml;
+}
+
 module.exports = {
     generatePdf,
     generateAttendanceSheet,
+    generateNoticePdf,
     warmUp
 };

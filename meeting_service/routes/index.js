@@ -13,6 +13,7 @@ const searchRoutes = require('./searchRoutes');
 const storageRoutes = require('./storageRoutes');
 const auditLogRoutes = require('./auditLogRoutes');
 const categoryRoutes = require('./categoryRoutes');
+const noticesRoutes = require('./noticesRoutes');
 
 router.use('/meetings', meetingRoutes);
 router.use('/faculties', facultiesRoutes);
@@ -26,5 +27,6 @@ router.use('/search', searchRoutes);
 router.use('/storage', storageRoutes);
 router.use('/audit-logs', auditLogRoutes);
 router.use('/categories', categoryRoutes);
+router.use('/notices', noticesRoutes);
 
 module.exports = router;

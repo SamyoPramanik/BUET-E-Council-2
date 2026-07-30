@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useParams } from "next/navigation";
-import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers, History, Mail, ShieldCheck } from "lucide-react";
+import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers, History, Mail, ShieldCheck, Bell } from "lucide-react";
 import useSWR from "swr";
 import { fetcher } from "../../../../lib/api";
 import SidebarToggleButton from "../../../../components/SidebarToggleButton";
@@ -21,6 +21,7 @@ const navigation = [
   { name: 'Conclusion', view: 'conclusion', icon: FileText },
   { name: 'Materials', view: 'materials', icon: FileBarChart },
   { name: 'Email', view: 'email', icon: Mail },
+  { name: 'Notice', view: 'notice', icon: Bell },
 ];
 
 export default function MeetingWorkspaceLayout({
@@ -40,6 +41,7 @@ export default function MeetingWorkspaceLayout({
 
   const { isAdmin, user } = useAuth();
   const isViewer = user?.role === 'viewer';
+  const isNoticeAdmin = user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'moderator';
   const isPast = meeting?.status === 'past' || meeting?.is_completed === true;
 
   const isDeputyOrAbove = (() => {
@@ -57,6 +59,9 @@ export default function MeetingWorkspaceLayout({
   let navItems = navigation;
   if (!isDeputyOrAbove) {
     navItems = navigation.filter(item => item.view !== 'permissions');
+  }
+  if (!isNoticeAdmin) {
+    navItems = navItems.filter(item => item.view !== 'notice');
   }
 
   if (isViewer) {

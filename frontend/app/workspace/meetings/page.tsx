@@ -29,7 +29,7 @@ export default function ManageMeetingsPage() {
     meeting_title: "",
     meeting_date: "",
     type: "syndicate",
-    criteria: "regular"
+    is_regular: true
   });
 
   const typeOptions = [
@@ -38,8 +38,8 @@ export default function ManageMeetingsPage() {
   ];
 
   const criteriaOptions = [
-    { value: "regular", label: "Regular" },
-    { value: "emergency", label: "Immediate" }
+    { value: "true", label: "Regular" },
+    { value: "false", label: "Immediate" }
   ];
 
   const columns = [
@@ -75,20 +75,15 @@ export default function ManageMeetingsPage() {
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { criteria, ...meetingFields } = newMeeting;
       const payload = {
-        ...meetingFields,
+        ...newMeeting,
         meeting_date: new Date(newMeeting.meeting_date).toISOString()
       };
 
       const res = await api.post('/meetings', payload);
 
-      if (criteria === 'emergency' && res.data?.data?.id) {
-        window.localStorage.setItem(`meeting_criteria_${res.data.data.id}`, 'emergency');
-      }
-
       setIsModalOpen(false);
-      setNewMeeting({ title: "", meeting_title: "", meeting_date: "", type: "syndicate", criteria: "regular" });
+      setNewMeeting({ title: "", meeting_title: "", meeting_date: "", type: "syndicate", is_regular: true });
       mutate();
       toast.success('Meeting created successfully');
     } catch (err: any) {
@@ -158,7 +153,7 @@ export default function ManageMeetingsPage() {
           </div>
         }
         onAdd={canCreateMeeting ? () => {
-          setNewMeeting({ title: "", meeting_title: "", meeting_date: "", type: "syndicate", criteria: "regular" });
+          setNewMeeting({ title: "", meeting_title: "", meeting_date: "", type: "syndicate", is_regular: true });
           setIsModalOpen(true);
         } : undefined}
         onEdit={handleEdit}
@@ -216,16 +211,20 @@ export default function ManageMeetingsPage() {
                 <SearchableSelect
                   options={typeOptions}
                   value={newMeeting.type}
-                  onChange={(val) => setNewMeeting({ ...newMeeting, type: val })}
+                  onChange={(val) => setNewMeeting({
+                    ...newMeeting,
+                    type: val,
+                    is_regular: val === "syndicate" ? true : newMeeting.is_regular
+                  })}
                 />
               </div>
 
               <div className="space-y-1">
                 <label className="text-xs font-medium">Meeting Criteria</label>
                 <SearchableSelect
-                  options={criteriaOptions}
-                  value={newMeeting.criteria}
-                  onChange={(val) => setNewMeeting({ ...newMeeting, criteria: val })}
+                  options={newMeeting.type === "syndicate" ? [{ value: "true", label: "Regular" }] : criteriaOptions}
+                  value={String(newMeeting.is_regular)}
+                  onChange={(val) => setNewMeeting({ ...newMeeting, is_regular: val === "true" })}
                 />
               </div>
 

@@ -51,11 +51,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     return !isSuppliView && (a.agenda_serial === 0 || clean.startsWith('বিবিধ'));
   });
 
-  const isEmergencyMeeting = Boolean(
-    (meeting.title || '').match(/immediate|emergency|জরুরী|জরুরি/i) ||
-    (meeting.meeting_title || '').match(/immediate|emergency|জরুরী|জরুরি/i) ||
-    (typeof window !== 'undefined' && window.localStorage.getItem(`meeting_criteria_${meeting.id}`) === 'emergency')
-  );
+  const isEmergencyMeeting = meeting.is_regular === false;
   const emergencyLimitReached = !isSuppliView && isEmergencyMeeting && regularAgendas.length >= 1;
 
   const { data: tagsResponse, mutate: mutateTags } = useSWR('/tags', fetcher, { fallbackData: { data: [] } });

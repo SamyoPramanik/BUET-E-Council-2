@@ -169,66 +169,48 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     });
   };
 
-  // Build grouped Category blocks for the right panel while preserving agenda list order
-  const groupedCategoryBlocks = (() => {
-    const groups: { categoryId: string | null; categoryName: string; agendas: any[] }[] = [];
-    const map = new Map<string, typeof groups[0]>();
+  // Build sequence items for the right panel: contiguous category blocks or standalone uncategorized agendas
+  const reorderSequence = (() => {
+    const sequence: (
+      | { type: 'category'; key: string; categoryId: string; categoryName: string; agendas: any[] }
+      | { type: 'agenda'; key: string; agenda: any }
+    )[] = [];
 
-    regularAgendas.forEach((agenda: any) => {
+    regularAgendas.forEach((agenda: any, idx: number) => {
       const clean = (agenda.content || '').replace(/<[^>]*>/g, '').trim();
       const isBibidha = !isSuppliView && (agenda.agenda_serial === 0 || clean.startsWith('বিবিধ'));
       if (isBibidha) return;
 
       const catId = agenda.category_id || null;
-      const catName = agenda.category_name || '(Uncategorized)';
-      const key = catId || 'uncategorized';
+      const catName = agenda.category_name ? String(agenda.category_name).trim() : '';
+      const isUncategorized = !catId || !catName || /^(uncategorized|un-categorized|অশ্রেণীভুক্ত|অশ্রেণিভুক্ত)$/i.test(catName);
 
-      if (!map.has(key)) {
-        const newGroup = { categoryId: catId, categoryName: catName, agendas: [] };
-        map.set(key, newGroup);
-        groups.push(newGroup);
+      if (isUncategorized) {
+        sequence.push({
+          type: 'agenda',
+          key: `agenda-${agenda.id}`,
+          agenda
+        });
+      } else {
+        const lastItem = sequence[sequence.length - 1];
+        if (lastItem && lastItem.type === 'category' && lastItem.categoryId === catId) {
+          lastItem.agendas.push(agenda);
+        } else {
+          sequence.push({
+            type: 'category',
+            key: `cat-${catId}-${idx}`,
+            categoryId: catId,
+            categoryName: catName,
+            agendas: [agenda]
+          });
+        }
       }
-      map.get(key)!.agendas.push(agenda);
     });
 
-    return groups;
+    return sequence;
   })();
 
-  // Agenda Drag & Drop inside Right Panel
-  const handleAgendaDragStart = (e: React.DragEvent, agendaId: string, categoryId: string | null) => {
-    e.stopPropagation();
-    e.dataTransfer.setData("type", "agenda");
-    e.dataTransfer.setData("agenda_id", agendaId);
-    e.dataTransfer.setData("category_id", categoryId || "uncategorized");
-  };
-
-  const handleAgendaDrop = async (e: React.DragEvent, targetAgendaId: string, targetCategoryId: string | null) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const dragType = e.dataTransfer.getData("type");
-    if (dragType !== "agenda") return;
-
-    const sourceAgendaId = e.dataTransfer.getData("agenda_id");
-    const sourceCategoryId = e.dataTransfer.getData("category_id");
-    const normTargetCategoryId = targetCategoryId || "uncategorized";
-
-    if (sourceCategoryId !== normTargetCategoryId) {
-      toast.error("Agendas of different categories cannot be mixed");
-      return;
-    }
-
-    if (sourceAgendaId === targetAgendaId) return;
-
-    const sourceIndex = regularAgendas.findIndex((a: any) => a.id === sourceAgendaId);
-    const targetIndex = regularAgendas.findIndex((a: any) => a.id === targetAgendaId);
-
-    if (sourceIndex < 0 || targetIndex < 0) return;
-
-    const newAgendas = [...regularAgendas];
-    const [moved] = newAgendas.splice(sourceIndex, 1);
-    newAgendas.splice(targetIndex, 0, moved);
-
+  const applyReorderedAgendas = async (newAgendas: any[]) => {
     const updatedAgendas = newAgendas.map((a: any, idx: number) => ({
       ...a,
       agenda_serial: idx + 1
@@ -243,60 +225,115 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
         )
       );
       mutate();
-      toast.success("Agendas reordered");
+      toast.success("Sequence reordered");
     } catch (err) {
-      toast.error("Failed to reorder agendas");
+      toast.error("Failed to reorder sequence");
       mutate();
     }
   };
 
-  // Category Block Drag & Drop
-  const handleCategoryDragStart = (e: React.DragEvent, categoryKey: string) => {
-    e.dataTransfer.setData("type", "category");
-    e.dataTransfer.setData("category_key", categoryKey);
+  // Agenda Drag & Drop inside Right Panel
+  const handleAgendaDragStart = (e: React.DragEvent, agendaId: string) => {
+    e.stopPropagation();
+    e.dataTransfer.setData("type", "agenda");
+    e.dataTransfer.setData("agenda_id", agendaId);
   };
 
-  const handleCategoryDrop = async (e: React.DragEvent, targetCategoryKey: string) => {
+  const handleAgendaDrop = async (e: React.DragEvent, targetAgendaId: string) => {
     e.preventDefault();
+    e.stopPropagation();
+
     const dragType = e.dataTransfer.getData("type");
-    if (dragType !== "category") return;
+    if (dragType === "category") {
+      const sourceSeqKey = e.dataTransfer.getData("seq_key");
+      handleSequenceBlockDrop(sourceSeqKey, targetAgendaId);
+      return;
+    }
 
-    const sourceCategoryKey = e.dataTransfer.getData("category_key");
-    if (sourceCategoryKey === targetCategoryKey) return;
+    if (dragType !== "agenda") return;
 
-    const groupKeys = groupedCategoryBlocks.map(g => g.categoryId || 'uncategorized');
-    const sourceIndex = groupKeys.indexOf(sourceCategoryKey);
-    const targetIndex = groupKeys.indexOf(targetCategoryKey);
+    const sourceAgendaId = e.dataTransfer.getData("agenda_id");
+    if (sourceAgendaId === targetAgendaId) return;
+
+    const sourceAg = regularAgendas.find((a: any) => a.id === sourceAgendaId);
+    const targetAg = regularAgendas.find((a: any) => a.id === targetAgendaId);
+    if (!sourceAg || !targetAg) return;
+
+    const getNormCat = (ag: any) => {
+      const cId = ag.category_id || null;
+      const cName = ag.category_name ? String(ag.category_name).trim() : '';
+      if (!cId || !cName || /^(uncategorized|un-categorized|অশ্রেণীভুক্ত|অশ্রেণিভুক্ত)$/i.test(cName)) {
+        return null;
+      }
+      return cId;
+    };
+
+    const sourceCatId = getNormCat(sourceAg);
+    const targetCatId = getNormCat(targetAg);
+
+    // Enforce category boundary rule: Agendas belonging to different categories cannot be mixed
+    if (sourceCatId !== null && targetCatId !== null && sourceCatId !== targetCatId) {
+      toast.error("Agendas of different categories cannot be mixed");
+      return;
+    }
+
+    const sourceIndex = regularAgendas.findIndex((a: any) => a.id === sourceAgendaId);
+    const targetIndex = regularAgendas.findIndex((a: any) => a.id === targetAgendaId);
 
     if (sourceIndex < 0 || targetIndex < 0) return;
 
-    const newGroups = [...groupedCategoryBlocks];
-    const [movedGroup] = newGroups.splice(sourceIndex, 1);
-    newGroups.splice(targetIndex, 0, movedGroup);
+    const newAgendas = [...regularAgendas];
+    const [moved] = newAgendas.splice(sourceIndex, 1);
+    newAgendas.splice(targetIndex, 0, moved);
 
-    const reorderedAgendas: any[] = [];
-    newGroups.forEach(g => {
-      reorderedAgendas.push(...g.agendas);
-    });
+    await applyReorderedAgendas(newAgendas);
+  };
 
-    const updatedAgendas = reorderedAgendas.map((a: any, idx: number) => ({
-      ...a,
-      agenda_serial: idx + 1
-    }));
+  // Category Block Drag & Drop
+  const handleCategoryDragStart = (e: React.DragEvent, seqKey: string) => {
+    e.dataTransfer.setData("type", "category");
+    e.dataTransfer.setData("seq_key", seqKey);
+  };
 
-    mutate({ ...response, data: updatedAgendas }, false);
+  const handleSequenceBlockDrop = async (sourceSeqKey: string, targetAgendaId: string) => {
+    const sourceBlock = reorderSequence.find(item => item.key === sourceSeqKey);
+    if (!sourceBlock || sourceBlock.type !== 'category') return;
 
-    try {
-      await Promise.all(
-        updatedAgendas.map((a: any) =>
-          api.put(`/agendas/${a.id}`, { agenda_serial: a.agenda_serial })
-        )
-      );
-      mutate();
-      toast.success("Category blocks reordered");
-    } catch (err) {
-      toast.error("Failed to reorder categories");
-      mutate();
+    const sourceAgendaIds = sourceBlock.agendas.map((a: any) => a.id);
+    if (sourceAgendaIds.includes(targetAgendaId)) return;
+
+    const sourceAgendas = regularAgendas.filter((a: any) => sourceAgendaIds.includes(a.id));
+    const remainingAgendas = regularAgendas.filter((a: any) => !sourceAgendaIds.includes(a.id));
+
+    let insertIdx = remainingAgendas.findIndex((a: any) => a.id === targetAgendaId);
+    if (insertIdx < 0) insertIdx = remainingAgendas.length;
+
+    remainingAgendas.splice(insertIdx, 0, ...sourceAgendas);
+
+    await applyReorderedAgendas(remainingAgendas);
+  };
+
+  const handleSequenceDropOnBlock = async (e: React.DragEvent, targetSeqKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const dragType = e.dataTransfer.getData("type");
+    if (dragType === "category") {
+      const sourceSeqKey = e.dataTransfer.getData("seq_key");
+      if (sourceSeqKey === targetSeqKey) return;
+      const targetBlock = reorderSequence.find(item => item.key === targetSeqKey);
+      if (!targetBlock) return;
+      const targetFirstAgendaId = targetBlock.type === 'category' ? targetBlock.agendas[0]?.id : targetBlock.agenda.id;
+      if (targetFirstAgendaId) {
+        handleSequenceBlockDrop(sourceSeqKey, targetFirstAgendaId);
+      }
+    } else if (dragType === "agenda") {
+      const targetBlock = reorderSequence.find(item => item.key === targetSeqKey);
+      if (!targetBlock) return;
+      const targetFirstAgendaId = targetBlock.type === 'category' ? targetBlock.agendas[0]?.id : targetBlock.agenda.id;
+      if (targetFirstAgendaId) {
+        handleAgendaDrop(e, targetFirstAgendaId);
+      }
     }
   };
 
@@ -361,6 +398,61 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
     return !(!isSuppliView && (a.agenda_serial === 0 || clean.startsWith('বিবিধ')));
   });
+
+  const BANGLA_GROUP_LETTERS = ['ক', 'খ', 'গ', 'ঘ', 'ঙ', 'চ', 'ছ', 'জ', 'ঝ', 'ঞ', 'ট', 'ঠ', 'ড', 'ঢ', 'ণ', 'ত', 'থ', 'দ', 'ধ', 'ন', 'প', 'ফ', 'ব', 'ভ', 'ম', 'য', 'র', 'ল', 'শ', 'ষ', 'স', 'হ'];
+  const categoryHeaderMap = new Map<string, string>();
+  {
+    let currentCatId: string | null = null;
+    let groupAgendas: any[] = [];
+    let groupCount = 0;
+
+    const processGroup = () => {
+      if (groupAgendas.length > 0 && currentCatId) {
+        const letter = BANGLA_GROUP_LETTERS[groupCount % BANGLA_GROUP_LETTERS.length];
+        const catName = groupAgendas[0].category_name;
+        const firstAg = groupAgendas[0];
+        const lastAg = groupAgendas[groupAgendas.length - 1];
+
+        const firstAgSerialStr = isSuppliView
+          ? toBanglaDigits(mainAgendaCount + (firstAg.agenda_serial || 1), serialWidth)
+          : toBanglaDigits(firstAg.agenda_serial, serialWidth);
+        const lastAgSerialStr = isSuppliView
+          ? toBanglaDigits(mainAgendaCount + (lastAg.agenda_serial || 1), serialWidth)
+          : toBanglaDigits(lastAg.agenda_serial, serialWidth);
+
+        const firstFull = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + firstAgSerialStr;
+        const lastFull = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + lastAgSerialStr;
+
+        const rangeText = firstFull === lastFull
+          ? `${firstFull}`
+          : `${firstFull} হতে ${lastFull}`;
+
+        const headerStr = `'${letter}' গ্রুপ (প্রস্তাবনা নং ${rangeText}): ${catName}`;
+        categoryHeaderMap.set(firstAg.id, headerStr);
+        groupCount++;
+      }
+      groupAgendas = [];
+    };
+
+    (regularAgendas || []).forEach((ag: any) => {
+      const cleanText = ag.content ? ag.content.replace(/<[^>]*>/g, '').trim() : '';
+      const isBibidha = !isSuppliView && (ag.agenda_serial === 0 || cleanText.startsWith('বিবিধ'));
+      const catName = ag.category_name ? String(ag.category_name).trim() : '';
+      const isUncategorized = !catName || /^(uncategorized|un-categorized|অশ্রেণীভুক্ত|অশ্রেণিভুক্ত)$/i.test(catName);
+
+      if (isBibidha || !ag.category_id || isUncategorized) {
+        processGroup();
+        currentCatId = null;
+      } else {
+        if (ag.category_id !== currentCatId) {
+          processGroup();
+          currentCatId = ag.category_id;
+        }
+        groupAgendas.push(ag);
+      }
+    });
+    processGroup();
+  }
 
   return (
     <div className="flex items-start gap-8 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -464,9 +556,15 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
               const strippedText = displayContent.replace(/<[^>]*>/g, '').trim();
               const isOnlyBibidhaTitle = isBibidha && !strippedText;
+              const catHeader = categoryHeaderMap.get(agenda.id);
 
               return (
                 <div key={agenda.id}>
+                  {catHeader && (
+                    <div className="text-lg font-bold text-primary mb-4 mt-8 pt-4 border-t border-border/50">
+                      {catHeader}
+                    </div>
+                  )}
                   {/* Agenda Card */}
                   <div className={`bg-card border ${isBibidha ? 'border-border/80 bg-muted/20' : 'border-border'} p-6 rounded-lg relative group shadow-sm hover:shadow-md transition-shadow`}>
                     <div className="flex justify-between items-start mb-3">
@@ -572,45 +670,45 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                     )}
 
                     {!isBibidha && (
-                      <AnnexureList contentId={agenda.id} type="agenda" readOnly={!canManageAnnexures} />
+                      <AnnexureList contentId={agenda.id} type="agenda" isSuppli={agenda.is_suppli || isSuppliView} readOnly={!canManageAnnexures} />
                     )}
                   </div>
 
-                {createAtIndex === index + 1 && renderCreateForm()}
+                  {createAtIndex === index + 1 && renderCreateForm()}
 
-                {createAtIndex === null && !readOnly && !emergencyLimitReached && (
-                  <div className="h-8 my-2 relative group flex items-center justify-center cursor-pointer opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-dashed border-secondary"></div>
+                  {createAtIndex === null && !readOnly && !emergencyLimitReached && (
+                    <div className="h-8 my-2 relative group flex items-center justify-center cursor-pointer opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-dashed border-secondary"></div>
+                      </div>
+                      <div className="relative flex gap-2">
+                        <button
+                          onClick={() => handleStartCreate(index + 1)}
+                          className="bg-secondary text-secondary-foreground border border-secondary/50 shadow-sm py-1 px-3 text-xs font-semibold rounded-full flex items-center gap-1.5 hover:bg-secondary/80 hover:shadow-md transition-all hover:scale-105"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Create Agendum Here
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleStartCreate(index + 1);
+                            setIsDrawerOpen(true);
+                          }}
+                          className="bg-secondary text-secondary-foreground border border-secondary/50 shadow-sm py-1 px-3 text-xs font-semibold rounded-full flex items-center gap-1.5 hover:bg-secondary/80 hover:shadow-md transition-all hover:scale-105"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> From Template
+                        </button>
+                      </div>
                     </div>
-                    <div className="relative flex gap-2">
-                      <button
-                        onClick={() => handleStartCreate(index + 1)}
-                        className="bg-secondary text-secondary-foreground border border-secondary/50 shadow-sm py-1 px-3 text-xs font-semibold rounded-full flex items-center gap-1.5 hover:bg-secondary/80 hover:shadow-md transition-all hover:scale-105"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Create Agendum Here
-                      </button>
-                      <button
-                        onClick={() => {
-                          handleStartCreate(index + 1);
-                          setIsDrawerOpen(true);
-                        }}
-                        className="bg-secondary text-secondary-foreground border border-secondary/50 shadow-sm py-1 px-3 text-xs font-semibold rounded-full flex items-center gap-1.5 hover:bg-secondary/80 hover:shadow-md transition-all hover:scale-105"
-                      >
-                        <FileText className="w-3.5 h-3.5" /> From Template
-                      </button>
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                {createAtIndex === null && !readOnly && emergencyLimitReached && (
-                  <div className="my-2 flex items-center justify-center gap-2 text-xs text-sky-600 dark:text-sky-400 bg-sky-500/10 rounded-full py-1.5 px-4 w-fit mx-auto">
-                    Emergency meeting — limited to 1 agendum.
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  {createAtIndex === null && !readOnly && emergencyLimitReached && (
+                    <div className="my-2 flex items-center justify-center gap-2 text-xs text-sky-600 dark:text-sky-400 bg-sky-500/10 rounded-full py-1.5 px-4 w-fit mx-auto">
+                      Emergency meeting — limited to 1 agendum.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {!isSuppliView && !hasBibidhaInAgendas && (
               <div className="bg-muted/40 border border-border/80 p-6 rounded-lg shadow-sm opacity-80 select-none">
                 <h3 className="font-semibold text-lg text-muted-foreground">
@@ -629,54 +727,80 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground mb-4">Reorder Sequence</h3>
 
             <div className="space-y-4">
-              {groupedCategoryBlocks.map((group) => {
-                const groupKey = group.categoryId || 'uncategorized';
-                return (
-                  <div
-                    key={groupKey}
-                    draggable={!readOnly}
-                    onDragStart={(e) => handleCategoryDragStart(e, groupKey)}
-                    onDragOver={handleDragOver}
-                    onDrop={(e) => handleCategoryDrop(e, groupKey)}
-                    className="border border-border/80 rounded-lg p-3 bg-background/60 shadow-xs space-y-2 group/category"
-                  >
-                    {/* Category Header */}
-                    <div className="flex items-center gap-2 pb-1 border-b border-border/50 cursor-grab active:cursor-grabbing">
-                      <GripVertical className="w-4 h-4 text-muted-foreground group-hover/category:text-primary transition-colors shrink-0" />
-                      <span className="font-semibold text-xs text-primary truncate flex-1" title={group.categoryName}>
-                        {group.categoryName}
+              {reorderSequence.map((item) => {
+                if (item.type === 'category') {
+                  return (
+                    <div
+                      key={item.key}
+                      draggable={!readOnly}
+                      onDragStart={(e) => handleCategoryDragStart(e, item.key)}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleSequenceDropOnBlock(e, item.key)}
+                      className="border border-border/80 rounded-lg p-3 bg-background/60 shadow-xs space-y-2 group/category"
+                    >
+                      {/* Category Header */}
+                      <div className="flex items-center gap-2 pb-1 border-b border-border/50 cursor-grab active:cursor-grabbing">
+                        <GripVertical className="w-4 h-4 text-muted-foreground group-hover/category:text-primary transition-colors shrink-0" />
+                        <span className="font-semibold text-xs text-primary truncate flex-1" title={item.categoryName}>
+                          {item.categoryName}
+                        </span>
+                      </div>
+
+                      {/* Agendas within this Category Block */}
+                      <div className="space-y-1.5">
+                        {item.agendas.map((agenda: any) => {
+                          const globalIdx = regularAgendas.findIndex((a: any) => a.id === agenda.id);
+                          const isAgendaBibidha = !isSuppliView && (agenda.agenda_serial === 0 || (agenda.content && agenda.content.replace(/<[^>]*>/g, '').trim().startsWith('বিবিধ')));
+                          return (
+                            <div
+                              key={agenda.id}
+                              draggable={!readOnly}
+                              onDragStart={(e) => handleAgendaDragStart(e, agenda.id)}
+                              onDragOver={handleDragOver}
+                              onDrop={(e) => handleAgendaDrop(e, agenda.id)}
+                              className={`bg-card border border-border p-2.5 rounded-md flex items-center gap-2.5 transition-colors group shadow-2xs ${!readOnly ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
+                            >
+                              <GripVertical className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                              <span className="font-medium text-xs shrink-0">
+                                {isAgendaBibidha
+                                  ? `বিবিধ : ${bibidhaSerial}`
+                                  : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1, serialWidth))}`}
+                              </span>
+                              <span className="text-xs text-muted-foreground truncate flex-1 opacity-70">
+                                {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                } else {
+                  // Standalone uncategorized agenda item
+                  const agenda = item.agenda;
+                  const globalIdx = regularAgendas.findIndex((a: any) => a.id === agenda.id);
+                  const isAgendaBibidha = !isSuppliView && (agenda.agenda_serial === 0 || (agenda.content && agenda.content.replace(/<[^>]*>/g, '').trim().startsWith('বিবিধ')));
+                  return (
+                    <div
+                      key={item.key}
+                      draggable={!readOnly}
+                      onDragStart={(e) => handleAgendaDragStart(e, agenda.id)}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleAgendaDrop(e, agenda.id)}
+                      className={`bg-card border border-border p-3 rounded-lg flex items-center gap-2.5 transition-colors group shadow-2xs ${!readOnly ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
+                    >
+                      <GripVertical className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                      <span className="font-medium text-xs shrink-0 text-foreground">
+                        {isAgendaBibidha
+                          ? `বিবিধ : ${bibidhaSerial}`
+                          : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1, serialWidth))}`}
+                      </span>
+                      <span className="text-xs text-muted-foreground truncate flex-1 opacity-80">
+                        {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...
                       </span>
                     </div>
-
-                    {/* Agendas within this Category Block */}
-                    <div className="space-y-1.5">
-                      {group.agendas.map((agenda: any) => {
-                        const globalIdx = regularAgendas.findIndex((a: any) => a.id === agenda.id);
-                        const isAgendaBibidha = !isSuppliView && (agenda.agenda_serial === 0 || (agenda.content && agenda.content.replace(/<[^>]*>/g, '').trim().startsWith('বিবিধ')));
-                        return (
-                          <div
-                            key={agenda.id}
-                            draggable={!readOnly}
-                            onDragStart={(e) => handleAgendaDragStart(e, agenda.id, group.categoryId)}
-                            onDragOver={handleDragOver}
-                            onDrop={(e) => handleAgendaDrop(e, agenda.id, group.categoryId)}
-                            className={`bg-card border border-border p-2.5 rounded-md flex items-center gap-2.5 transition-colors group shadow-2xs ${!readOnly ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
-                          >
-                            <GripVertical className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                            <span className="font-medium text-xs shrink-0">
-                              {isAgendaBibidha
-                                ? `বিবিধ : ${bibidhaSerial}`
-                                : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1, serialWidth))}`}
-                            </span>
-                            <span className="text-xs text-muted-foreground truncate flex-1 opacity-70">
-                              {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
+                  );
+                }
               })}
 
               {!isSuppliView && (
@@ -689,7 +813,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             </div>
 
             <p className="text-xs text-muted-foreground mt-6 text-center italic">
-              Drag agendas within a category to reorder, or drag category headers to shuffle entire blocks.
+              Drag agendas within a category to reorder, or drag uncategorized agendas/category blocks to adjust the sequence.
             </p>
           </div>
         </div>

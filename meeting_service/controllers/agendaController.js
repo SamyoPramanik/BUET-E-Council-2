@@ -61,14 +61,16 @@ const getAgendams = async (req, res, next) => {
     try {
         const meeting_id = req.query.meeting_id;
         const is_suppli = req.query.is_suppli;
+        const isOperator = req.user?.role === 'admin' || req.user?.role === 'editor';
+        let meeting = null;
 
         if (meeting_id) {
             await ensureBibidhaAgenda(meeting_id);
             const meetingRes = await db.query('SELECT status, type, is_suppli_visible_to_viewers FROM meetings WHERE id = $1', [meeting_id]);
             if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
-            const meeting = meetingRes.rows[0];
+            meeting = meetingRes.rows[0];
 
-            if (req.user?.role === 'viewer') {
+            if (!isOperator) {
                 if (meeting.status === 'draft') {
                     return next(new CustomError('Meeting not found', 404));
                 }
@@ -99,6 +101,8 @@ const getAgendams = async (req, res, next) => {
             if (is_suppli !== undefined) {
                 query += ' AND a.is_suppli = $2';
                 params.push(is_suppli === 'true');
+            } else if (!isOperator && !meeting.is_suppli_visible_to_viewers) {
+                query += ' AND a.is_suppli = false';
             }
 
             query += ' ORDER BY a.is_suppli ASC, a.agenda_serial ASC';
@@ -168,7 +172,7 @@ const createAgendam = async (req, res, next) => {
 
         res.status(201).json({ success: true, message: 'Agendam created', data: agendam });
 
-        if (cleanedContent) indexAgendaContent(agendam.id, cleanedContent).catch(() => {});
+        if (cleanedContent) indexAgendaContent(agendam.id, cleanedContent).catch(() => { });
     } catch (error) {
         next(error);
     }
@@ -218,7 +222,7 @@ const updateAgendam = async (req, res, next) => {
 
         res.status(200).json({ success: true, message: 'Agendam updated', data: agendam });
 
-        if (content !== undefined) indexAgendaContent(id, content).catch(() => {});
+        if (content !== undefined) indexAgendaContent(id, content).catch(() => { });
     } catch (error) {
         next(error);
     }
@@ -305,9 +309,9 @@ const restoreRevision = async (req, res, next) => {
         res.status(200).json({ success: true, message: 'Revision restored', data: result.rows[0] });
 
         if (content_type === 'agendaItem') {
-            indexAgendaContent(id, restoredText).catch(() => {});
+            indexAgendaContent(id, restoredText).catch(() => { });
         } else {
-            indexResolutionContent(id, restoredText).catch(() => {});
+            indexResolutionContent(id, restoredText).catch(() => { });
         }
     } catch (error) {
         next(error);
@@ -318,11 +322,11 @@ const deleteAgendam = async (req, res, next) => {
     try {
         const { id } = req.params;
         const findAgenda = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [id]);
-        
+
         if (findAgenda.rows.length === 0) {
             return next(new CustomError('Agendam not found', 404));
         }
-        
+
         const meeting_id = findAgenda.rows[0].meeting_id;
 
         const annexuresRes = await db.query('SELECT file_path FROM annexures WHERE content_id = $1', [id]);
@@ -336,7 +340,7 @@ const deleteAgendam = async (req, res, next) => {
         for (let i = 0; i < mainAgendas.rows.length; i++) {
             await db.query('UPDATE agenda SET agenda_serial = $1 WHERE id = $2', [i + 1, mainAgendas.rows[i].id]);
         }
-        
+
         const suppliAgendas = await db.query('SELECT id FROM agenda WHERE meeting_id = $1 AND is_suppli = true ORDER BY agenda_serial ASC, created_at ASC', [meeting_id]);
         let nextSerial = mainAgendas.rows.length + 1;
         for (let i = 0; i < suppliAgendas.rows.length; i++) {
@@ -366,7 +370,7 @@ const deleteAgendam = async (req, res, next) => {
 const getResolutions = async (req, res, next) => {
     try {
         const meeting_id = req.query.meeting_id;
-        
+
         if (meeting_id) {
             const meetingRes = await db.query('SELECT status, type FROM meetings WHERE id = $1', [meeting_id]);
             if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
@@ -385,7 +389,7 @@ const getResolutions = async (req, res, next) => {
 
         let query = 'SELECT a.id, a.meeting_id, a.agenda_serial, a.resolution, a.is_executed, a.execution_status FROM agenda a WHERE a.resolution IS NOT NULL';
         let params = [];
-        
+
         if (meeting_id) {
             query += ' AND a.meeting_id = $1 ORDER BY a.agenda_serial ASC';
             params.push(meeting_id);
@@ -440,7 +444,7 @@ const createResolution = async (req, res, next) => {
 
         res.status(201).json({ success: true, message: 'Resolution created', data: result.rows[0] });
 
-        indexResolutionContent(agendamId, cleanedResolution).catch(() => {});
+        indexResolutionContent(agendamId, cleanedResolution).catch(() => { });
     } catch (error) {
         next(error);
     }
@@ -469,7 +473,7 @@ const updateResolution = async (req, res, next) => {
 
         res.status(200).json({ success: true, message: 'Resolution updated', data: result.rows[0] });
 
-        indexResolutionContent(agendamId, resolution).catch(() => {});
+        indexResolutionContent(agendamId, resolution).catch(() => { });
     } catch (error) {
         next(error);
     }
@@ -537,11 +541,14 @@ const getAnnexures = async (req, res, next) => {
                 return next(new CustomError('Meeting not found', 404));
             }
         }
-        
+
         const isResolutionType = req.query.type === 'resolution' || type === 'resolution';
         const resolutionFilter = isResolutionType
             ? ' AND prev_an.is_excluded_in_resolution = false'
             : " AND (prev_an.annexure_type IS NULL OR prev_an.annexure_type != 'resolution')";
+        const isSuppliFilter = isResolutionType
+            ? ''
+            : ' AND prev_a.is_suppli = a.is_suppli';
 
         if (type === 'agenda') type = 'agendaItem';
 
@@ -551,11 +558,11 @@ const getAnnexures = async (req, res, next) => {
                                FROM annexures prev_an
                                JOIN agenda prev_a ON prev_a.id = prev_an.content_id
                                WHERE prev_a.meeting_id = a.meeting_id
-                                 AND prev_a.is_suppli = a.is_suppli
+                                 ${isSuppliFilter}
                                  ${resolutionFilter}
                                  AND (
-                                   (prev_a.agenda_serial, prev_an.annexure_serial) <
-                                   (a.agenda_serial, an.annexure_serial)
+                                   (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
+                                   (a.is_suppli, a.agenda_serial, an.annexure_serial)
                                  )
                              ) + 1 AS global_serial
                       FROM annexures an
@@ -567,7 +574,7 @@ const getAnnexures = async (req, res, next) => {
         query += ' ORDER BY an.annexure_serial ASC';
 
         const result = await db.query(query, [id]);
-        
+
         // Generate presigned URLs for each file
         const annexures = await Promise.all(result.rows.map(async (annexure) => {
             if (annexure.file_path) {
@@ -691,7 +698,7 @@ const deleteAnnexure = async (req, res, next) => {
         }
 
         const result = await db.query('DELETE FROM annexures WHERE id = $1 RETURNING *', [annexureId]);
-        
+
         if (result.rows.length === 0) return next(new CustomError('Annexure not found', 404));
 
         const deletedAnnexure = result.rows[0];
@@ -769,7 +776,7 @@ const toggleAnnexureExclusion = async (req, res, next) => {
 const reorderAnnexures = async (req, res, next) => {
     try {
         const { items } = req.body; // array of { id, annexure_serial }
-        
+
         if (!items || !Array.isArray(items)) {
             return next(new CustomError('Invalid input', 400));
         }

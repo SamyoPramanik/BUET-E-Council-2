@@ -11,7 +11,7 @@ import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
 import { canAuthorMeeting, canUnlockItem, canSendBack } from "../../lib/meetingAccess";
 import MeetingWorkflowBar from "./MeetingWorkflowBar";
-import { Trash2, Video, Lock, Unlock, ArrowRightLeft, CheckCircle2, ShieldAlert, CornerDownLeft, Clock, Users, UserCheck, FileText, Layers, KeyRound, ShieldCheck } from "lucide-react";
+import { Trash2, Video, Lock, Unlock, ArrowRightLeft, CheckCircle2, ShieldAlert, CornerDownLeft, Clock, Users, UserCheck, FileText, Layers, KeyRound, ShieldCheck, Mail } from "lucide-react";
 
 const typeOptions = [
   { value: "syndicate", label: "Syndicate" },
@@ -624,6 +624,46 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                       </button>
                     )}
 
+                    {/* 1.5 Lock / Unlock Permissions */}
+                    {meeting.permissions_locked_level !== null ? (
+                      <button
+                        onClick={() => handleControlAction('unlock-permissions', 'Meeting Permissions unlocked.')}
+                        disabled={!canUnlockItem(user, meeting.permissions_locked_level) || actionLoading === 'unlock-permissions'}
+                        className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Permissions</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.permissions_locked_level, meeting.permissions_locked_by_username, meeting.permissions_locked_by_role)}</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleControlAction('lock-permissions', 'Meeting Permissions locked for lower levels.')}
+                        disabled={!access.canLockPermissions || actionLoading === 'lock-permissions'}
+                        className="w-full text-left px-3 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-amber-500" /> Lock Permissions</span>
+                      </button>
+                    )}
+
+                    {/* 1.7 Lock / Unlock Description */}
+                    {meeting.description_locked_level !== null ? (
+                      <button
+                        onClick={() => handleControlAction('unlock-description', 'Description unlocked.')}
+                        disabled={!canUnlockItem(user, meeting.description_locked_level) || actionLoading === 'unlock-description'}
+                        className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Description</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.description_locked_level, meeting.description_locked_by_username, meeting.description_locked_by_role)}</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleControlAction('lock-description', 'Description locked for lower levels.')}
+                        disabled={!access.canLockDescription || actionLoading === 'lock-description'}
+                        className="w-full text-left px-3 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5 text-blue-500" /> Lock Description</span>
+                      </button>
+                    )}
+
                     {/* 2. Lock / Unlock Main Agenda */}
                     {meeting.agenda_locked_level !== null ? (
                       <button
@@ -765,6 +805,26 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                         className="w-full text-left px-3 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
                       >
                         <span className="flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Lock Conclusion</span>
+                      </button>
+                    )}
+
+                    {/* 9. Lock / Unlock Email */}
+                    {meeting.email_locked_level !== null ? (
+                      <button
+                        onClick={() => handleControlAction('unlock-email', 'Email functionality unlocked.')}
+                        disabled={!canUnlockItem(user, meeting.email_locked_level) || actionLoading === 'unlock-email'}
+                        className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Email</span>
+                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.email_locked_level, meeting.email_locked_by_username, meeting.email_locked_by_role)}</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleControlAction('lock-email', 'Email functionality locked for lower levels.')}
+                        disabled={!access.canLockEmail || actionLoading === 'lock-email'}
+                        className="w-full text-left px-3 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-purple-500" /> Lock Email</span>
                       </button>
                     )}
                   </div>

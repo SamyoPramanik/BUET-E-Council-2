@@ -6,7 +6,7 @@ import api, { fetcher } from "../../lib/api";
 import CustomSelect from "../CustomSelect";
 import { toast } from "sonner";
 import { useAuth } from "../../hooks/useAuth";
-import { canAuthorMeeting } from "../../lib/meetingAccess";
+import { canEditPermissions } from "../../lib/meetingAccess";
 import MeetingWorkflowBar from "./MeetingWorkflowBar";
 import { ShieldCheck, FileText, Layers, Loader2 } from "lucide-react";
 
@@ -32,7 +32,7 @@ export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermi
   const { data: rolesRes } = useSWR('/roles', fetcher);
   const allRoles = rolesRes?.data || [];
 
-  const canEdit = canAuthorMeeting(user, meeting);
+  const canEdit = canEditPermissions(user, meeting);
   const readOnly = !canEdit;
 
   const [formData, setFormData] = useState({

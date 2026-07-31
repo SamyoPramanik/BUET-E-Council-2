@@ -34,14 +34,14 @@ export default function MeetingWorkspace() {
   const isPast = meeting?.status === 'past' || meeting?.is_completed === true;
 
   if (isViewer) {
-    if (isPast) {
+    const effectiveView = searchParams.get('view') || (isPast ? 'resolution' : 'agenda');
+    if (effectiveView === 'resolution' && isPast) {
       return <ResolutionView meeting={meeting} />;
-    } else {
-      if (view === 'suppli-agenda' && meeting?.is_suppli_visible_to_viewers) {
-        return <AgendaView meeting={meeting} type="suppli-agenda" />;
-      }
-      return <AgendaView meeting={meeting} type="agenda" />;
     }
+    if (effectiveView === 'suppli-agenda' && meeting?.is_suppli_visible_to_viewers) {
+      return <AgendaView meeting={meeting} type="suppli-agenda" />;
+    }
+    return <AgendaView meeting={meeting} type="agenda" />;
   }
 
   // Render the appropriate view

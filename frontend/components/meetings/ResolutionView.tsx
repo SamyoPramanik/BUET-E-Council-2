@@ -143,6 +143,64 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
     }
   };
 
+  const BANGLA_GROUP_LETTERS = ['ক', 'খ', 'গ', 'ঘ', 'ঙ', 'চ', 'ছ', 'জ', 'ঝ', 'ঞ', 'ট', 'ঠ', 'ড', 'ঢ', 'ণ', 'ত', 'থ', 'দ', 'ধ', 'ন', 'প', 'ফ', 'ব', 'ভ', 'ম', 'য', 'র', 'ল', 'শ', 'ষ', 'স', 'হ'];
+  const totalAgendasCount = (agendas || []).length;
+  const serialWidth = getSerialWidth(totalAgendasCount);
+
+  const categoryHeaderMap = new Map<string, string>();
+  {
+    let currentCatId: string | null = null;
+    let groupAgendas: any[] = [];
+    let groupCount = 0;
+
+    const processGroup = () => {
+      if (groupAgendas.length > 0 && currentCatId) {
+        const letter = BANGLA_GROUP_LETTERS[groupCount % BANGLA_GROUP_LETTERS.length];
+        const catName = groupAgendas[0].category_name;
+        const firstAg = groupAgendas[0];
+        const lastAg = groupAgendas[groupAgendas.length - 1];
+
+        const firstAgSerialStr = firstAg.is_suppli
+          ? toBanglaDigits((mainAgendaCount || 0) + (firstAg.agenda_serial || 1), serialWidth)
+          : toBanglaDigits(firstAg.agenda_serial, serialWidth);
+        const lastAgSerialStr = lastAg.is_suppli
+          ? toBanglaDigits((mainAgendaCount || 0) + (lastAg.agenda_serial || 1), serialWidth)
+          : toBanglaDigits(lastAg.agenda_serial, serialWidth);
+
+        const firstFull = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + firstAgSerialStr;
+        const lastFull = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + lastAgSerialStr;
+
+        const rangeText = firstFull === lastFull
+          ? `${firstFull}`
+          : `${firstFull} হতে ${lastFull}`;
+
+        const headerStr = `'${letter}' গ্রুপ (প্রস্তাবনা নং ${rangeText}): ${catName}`;
+        categoryHeaderMap.set(firstAg.id, headerStr);
+        groupCount++;
+      }
+      groupAgendas = [];
+    };
+
+    (agendas || []).forEach((ag: any) => {
+      const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+      const isBibidha = !ag.is_suppli && (ag.agenda_serial === 0 || cleanContent.startsWith('বিবিধ'));
+      const catName = ag.category_name ? String(ag.category_name).trim() : '';
+      const isUncategorized = !catName || /^(uncategorized|un-categorized|অশ্রেণীভুক্ত|অশ্রেণিভুক্ত)$/i.test(catName);
+
+      if (isBibidha || !ag.category_id || isUncategorized) {
+        processGroup();
+        currentCatId = null;
+      } else {
+        if (ag.category_id !== currentCatId) {
+          processGroup();
+          currentCatId = ag.category_id;
+        }
+        groupAgendas.push(ag);
+      }
+    });
+    processGroup();
+  }
+
   return (
     <div className="max-w-4xl pb-32 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <ConfirmModal />
@@ -175,15 +233,21 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
           if (isBibidha && isOnlyBibidhaTitle && !agenda.resolution) {
             return null;
           }
-          const totalAgendasCount = (agendas || []).length;
-          const serialWidth = getSerialWidth(totalAgendasCount);
           const bibidhaSerial = (meeting.agenda_prefix || '') + toBanglaDigits((mainAgendaCount || 0) + 1, serialWidth);
           const displaySerial = agenda.is_suppli
             ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), serialWidth)
             : toBanglaDigits(agenda.agenda_serial || index + 1, serialWidth);
 
+          const catHeader = categoryHeaderMap.get(agenda.id);
+
           return (
-            <div key={agenda.id} className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm group">
+            <div key={agenda.id}>
+              {catHeader && (
+                <div className="text-lg font-bold text-primary mb-4 mt-8 pt-4 border-t border-border/50">
+                  {catHeader}
+                </div>
+              )}
+              <div className="bg-card border border-border rounded-lg p-6 mb-8 shadow-sm group">
 
                 {/* Top Section (Read-Only Agenda) */}
                 <div className="mb-6">
@@ -255,7 +319,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                   <RichTextEditor
                     content={editContent}
                     onChange={setEditContent}
-                    className="p-4 min-h-[150px]"
+                    className="p-4 min-h-[150px] font-bold"
                   />
                   <div className="bg-muted p-2 flex justify-between items-center border-t border-border">
                     <button
@@ -274,7 +338,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                 </div>
               ) : agenda.resolution ? (
                 <div
-                  className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-background border border-border p-5 rounded-md shadow-inner"
+                  className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-background border border-border p-5 rounded-md shadow-inner font-bold"
                   dangerouslySetInnerHTML={{
                     __html: sanitizeHtml(
                       stripLeadingResolutionPrefix(agenda.resolution)
@@ -370,9 +434,10 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
               </div>
             )}
           </div>
-        );
-      })
-      )}
+        </div>
+      );
+    })
+  )}
 
       <TemplateDrawer
         isOpen={isDrawerOpen}

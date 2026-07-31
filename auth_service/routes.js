@@ -947,13 +947,8 @@ router.get('/roles', requireAuth, async (req, res) => {
     }
 });
 
-router.post('/roles', requireAuth, async (req, res) => {
+router.post('/roles', requireAuth, requireAdmin, async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
-        if (!isAdmin && req.user.role_level === null) {
-            return res.status(403).json({ success: false, message: 'Forbidden. Admin or editor level access required.' });
-        }
-
         const { level, level_title } = req.body;
         if (level === undefined || level === null || !level_title) {
             return res.status(400).json({ success: false, message: 'level and level_title are required' });
@@ -962,10 +957,6 @@ router.post('/roles', requireAuth, async (req, res) => {
         const lvlInt = parseInt(level, 10);
         if (Number.isNaN(lvlInt)) {
             return res.status(400).json({ success: false, message: 'level must be a valid integer' });
-        }
-
-        if (!isAdmin && lvlInt >= req.user.role_level) {
-            return res.status(403).json({ success: false, message: 'Upper level users can only create lower levels.' });
         }
 
         const result = await db.query(
@@ -982,15 +973,8 @@ router.post('/roles', requireAuth, async (req, res) => {
     }
 });
 
-router.put('/roles/reorder', requireAuth, async (req, res) => {
+router.put('/roles/reorder', requireAuth, requireAdmin, async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
-        const userLevel = req.user.role_level;
-
-        if (!isAdmin && userLevel === null) {
-            return res.status(403).json({ success: false, message: 'Forbidden' });
-        }
-
         const { items } = req.body;
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ success: false, message: 'items array is required' });
@@ -999,26 +983,6 @@ router.put('/roles/reorder', requireAuth, async (req, res) => {
         const currentRolesRes = await db.query('SELECT id, level FROM roles');
         const roleMap = new Map(currentRolesRes.rows.map(r => [r.id, parseInt(r.level, 10)]));
         const sortedLevels = Array.from(roleMap.values()).sort((a, b) => b - a);
-
-        if (!isAdmin) {
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                const originalLevel = roleMap.get(item.id);
-
-                if (originalLevel !== undefined && originalLevel >= userLevel) {
-                    const targetLevel = item.level !== undefined && item.level !== null
-                        ? parseInt(item.level, 10)
-                        : (sortedLevels[i] !== undefined ? sortedLevels[i] : (items.length - i));
-
-                    if (targetLevel !== originalLevel) {
-                        return res.status(403).json({
-                            success: false,
-                            message: 'You cannot change the order of your own level or higher levels.'
-                        });
-                    }
-                }
-            }
-        }
 
         await db.query('BEGIN');
 
@@ -1042,23 +1006,14 @@ router.put('/roles/reorder', requireAuth, async (req, res) => {
     }
 });
 
-router.put('/roles/:id', requireAuth, async (req, res) => {
+router.put('/roles/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
-        if (!isAdmin && req.user.role_level === null) {
-            return res.status(403).json({ success: false, message: 'Forbidden' });
-        }
-
         const { id } = req.params;
         const { level, level_title } = req.body;
 
         const roleRes = await db.query('SELECT level FROM roles WHERE id = $1', [id]);
         if (roleRes.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Role not found' });
-        }
-        const currentLvl = parseInt(roleRes.rows[0].level, 10);
-        if (!isAdmin && currentLvl >= req.user.role_level) {
-            return res.status(403).json({ success: false, message: 'Upper level users can only modify lower levels.' });
         }
 
         let updates = [];
@@ -1067,9 +1022,6 @@ router.put('/roles/:id', requireAuth, async (req, res) => {
 
         if (level !== undefined && level !== null) {
             const lvlInt = parseInt(level, 10);
-            if (!isAdmin && lvlInt >= req.user.role_level) {
-                return res.status(403).json({ success: false, message: 'Cannot assign a level equal to or above your own level.' });
-            }
             updates.push(`level = $${pIndex++}`);
             params.push(lvlInt);
         }
@@ -1097,21 +1049,12 @@ router.put('/roles/:id', requireAuth, async (req, res) => {
     }
 });
 
-router.delete('/roles/:id', requireAuth, async (req, res) => {
+router.delete('/roles/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
-        if (!isAdmin && req.user.role_level === null) {
-            return res.status(403).json({ success: false, message: 'Forbidden' });
-        }
-
         const { id } = req.params;
         const roleRes = await db.query('SELECT level FROM roles WHERE id = $1', [id]);
         if (roleRes.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Role not found' });
-        }
-        const currentLvl = parseInt(roleRes.rows[0].level, 10);
-        if (!isAdmin && currentLvl >= req.user.role_level) {
-            return res.status(403).json({ success: false, message: 'Upper level users can only delete lower levels.' });
         }
 
         await db.query('DELETE FROM roles WHERE id = $1', [id]);

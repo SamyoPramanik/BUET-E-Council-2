@@ -68,6 +68,12 @@ export default function RoleAndUserManagementPage() {
   const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
+    if (!isAdmin && activeTab !== 'users') {
+      setActiveTab('users');
+    }
+  }, [isAdmin, activeTab]);
+
+  useEffect(() => {
     if (!authLoading && isViewer) {
       router.replace('/workspace');
     }
@@ -351,14 +357,16 @@ export default function RoleAndUserManagementPage() {
           >
             <Users className="w-4 h-4" /> Users
           </button>
-          <button
-            onClick={() => setActiveTab('roles')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-              activeTab === 'roles' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Shield className="w-4 h-4" /> Role Levels
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('roles')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                activeTab === 'roles' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Shield className="w-4 h-4" /> Role Levels
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={() => setActiveTab('settings')}

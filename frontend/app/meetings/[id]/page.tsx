@@ -11,8 +11,8 @@ import Header from "../../../components/Header";
 
 // Component to render a single agenda and its annexures
 function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highlightType, mainAgendaCount = 0 }: { agenda: any, agendaPrefix: string | null, meetingStatus: string, highlightId: string | null, highlightType: string | null, mainAgendaCount?: number }) {
-  // Only fetch resolution annexures on the public meeting page
-  const { data: annexuresRes } = useSWR(`/agendas/${agenda.id}/annexures?type=resolution`, fetcher);
+  // Fetch annexures for the public meeting page
+  const { data: annexuresRes } = useSWR(`/agendas/${agenda.id}/annexures`, fetcher);
   const annexures = annexuresRes?.data || [];
 
   const isAgendaHighlight = highlightId === agenda.id && highlightType !== 'resolution';
@@ -40,6 +40,11 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
 
   const strippedText = displayContent.replace(/<[^>]*>/g, '').trim();
   const isOnlyBibidhaTitle = isBibidha && !strippedText;
+  const hasResolution = agenda.resolution && agenda.resolution.replace(/<[^>]*>/g, '').trim().length > 0;
+
+  if (isBibidha && isOnlyBibidhaTitle && !hasResolution) {
+    return null;
+  }
 
   const serialWidth = getSerialWidth(mainAgendaCount + (agenda.agenda_serial || 1));
   const bibidhaSerial = (agendaPrefix || '') + toBanglaDigits((mainAgendaCount || 0) + 1, serialWidth);
@@ -74,33 +79,33 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
             className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground"
             dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.resolution) }}
           />
+        </div>
+      )}
 
-          {annexures.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-border/50">
-              <h5 className="font-semibold mb-2 text-foreground text-xs uppercase tracking-wider">সংযোজনী:</h5>
-              <ul className="space-y-2">
-                {annexures.map((annexure: any) => {
-                  const num = annexure.global_serial || annexure.annexure_serial;
-                  const banglaNum = toBanglaDigits(num);
-                  const label = `${annexure.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${banglaNum}`;
+      {annexures.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-border/50">
+          <h5 className="font-semibold mb-2 text-foreground text-xs uppercase tracking-wider">সংযোজনী:</h5>
+          <ul className="space-y-2">
+            {annexures.map((annexure: any) => {
+              const num = annexure.global_serial || annexure.annexure_serial;
+              const banglaNum = toBanglaDigits(num);
+              const label = `পরিশিষ্ট-${banglaNum}`;
 
-                  return (
-                    <li key={annexure.id}>
-                      <a
-                        href={annexure.url || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline flex items-center gap-2 font-medium"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
-                        {label}
-                      </a>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
+              return (
+                <li key={annexure.id}>
+                  <a
+                    href={annexure.url || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-primary hover:underline flex items-center gap-2 font-medium"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"></path><path d="M10 14L21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg>
+                    {label}
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
     </div>
@@ -113,12 +118,25 @@ export default function PublicMeetingView() {
   const highlightId = searchParams.get('highlight');
   const highlightType = searchParams.get('type');
   const [presenteesExpanded, setPresenteesExpanded] = useState(false);
+  const [activeAgendaTab, setActiveAgendaTab] = useState<'main' | 'suppli'>('main');
 
   // Fetch the meeting details
   const { data: meetingRes, error: meetingError } = useSWR(`/meetings/${params.id}`, fetcher);
 
-  // Fetch agendas
-  const { data: agendasRes } = useSWR(meetingRes ? `/agendas?meeting_id=${params.id}` : null, fetcher);
+  const meeting = meetingRes.data;
+  const isPast = meeting?.status === 'past';
+
+  // Fetch agendas for current active tab (or merged for past meeting)
+  const { data: agendasRes } = useSWR(
+    meetingRes ? (isPast ? `/agendas?meeting_id=${params.id}` : `/agendas?meeting_id=${params.id}&is_suppli=${activeAgendaTab === 'suppli'}`) : null,
+    fetcher
+  );
+
+  // Fetch main agendas for supplementary counting if needed
+  const { data: mainAgendasRes } = useSWR(
+    meetingRes && (isPast || activeAgendaTab === 'suppli') ? `/agendas?meeting_id=${params.id}&is_suppli=false` : null,
+    fetcher
+  );
 
   // Fetch presentees if meeting is past
   const { data: presenteesRes } = useSWR(meetingRes?.data?.status === 'past' ? `/meetings/${params.id}/presentees` : null, fetcher);
@@ -141,7 +159,6 @@ export default function PublicMeetingView() {
     </div>
   );
 
-  const meeting = meetingRes.data;
   const agendas = agendasRes?.data || [];
 
   let rawPresentees = presenteesRes?.data || [];
@@ -179,7 +196,7 @@ export default function PublicMeetingView() {
 
       if (isVC) {
         p.department_name = 'সভাপতি';
-        p.office_name = 'উপাচার্য, বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা';
+        p.office_name = 'উপাচার্য, বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়';
         adminGroup.unshift(p);
       } else if (isProVC) {
         adminGroup.push(p);
@@ -332,21 +349,68 @@ export default function PublicMeetingView() {
               </>
             )}
 
-            {agendas.length > 0 && (
-              <section>
-                <div className="space-y-6">
-                  {(() => {
-                    const mainAgendaCount = (agendas || []).filter((a: any) => {
-                      const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
-                      return !a.is_suppli && !clean.startsWith('বিবিধ');
-                    }).length;
-                    return agendas.map((agenda: any) => (
-                      <AgendaItem key={agenda.id} agenda={agenda} agendaPrefix={meeting.agenda_prefix} meetingStatus={meeting.status} highlightId={highlightId} highlightType={highlightType} mainAgendaCount={mainAgendaCount} />
-                    ));
-                  })()}
+            <section>
+              {!isPast && meeting.is_suppli_visible_to_viewers && (
+                <div className="flex gap-2 border-b border-border pb-3 mb-6">
+                  <button
+                    type="button"
+                    onClick={() => setActiveAgendaTab('main')}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeAgendaTab === 'main'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                  >
+                    Agenda (এজেন্ডা)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveAgendaTab('suppli')}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${activeAgendaTab === 'suppli'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                  >
+                    Supplementary Agenda (সাপ্লিমেন্টারি এজেন্ডা)
+                  </button>
                 </div>
-              </section>
-            )}
+              )}
+
+              {(() => {
+                const visibleAgendas = agendas.filter((ag: any) => {
+                  const clean = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+                  const isBibidha = !ag.is_suppli && (ag.agenda_serial === 0 || clean.startsWith('বিবিধ'));
+                  if (isBibidha) {
+                    const displayContent = (ag.content || '').replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                    const strippedText = displayContent.replace(/<[^>]*>/g, '').trim();
+                    const hasRes = ag.resolution && ag.resolution.replace(/<[^>]*>/g, '').trim().length > 0;
+                    if (!strippedText && !hasRes) return false;
+                  }
+                  return true;
+                });
+
+                if (visibleAgendas.length === 0) {
+                  return (
+                    <p className="text-sm text-muted-foreground py-4 text-center">
+                      {activeAgendaTab === 'suppli' ? 'কোনো সাপ্লিমেন্টারি এজেন্ডা নেই।' : 'কোনো এজেন্ডা নেই।'}
+                    </p>
+                  );
+                }
+
+                const mainList = isPast ? (mainAgendasRes?.data || agendas) : (activeAgendaTab === 'suppli' ? (mainAgendasRes?.data || []) : agendas);
+                const mainAgendaCount = mainList.filter((a: any) => {
+                  const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
+                  return !a.is_suppli && !clean.startsWith('বিবিধ');
+                }).length;
+
+                return (
+                  <div className="space-y-6">
+                    {visibleAgendas.map((agenda: any) => (
+                      <AgendaItem key={agenda.id} agenda={agenda} agendaPrefix={meeting.agenda_prefix} meetingStatus={meeting.status} highlightId={highlightId} highlightType={highlightType} mainAgendaCount={mainAgendaCount} />
+                    ))}
+                  </div>
+                );
+              })()}
+            </section>
 
             {meeting.conclusion && (
               <section>

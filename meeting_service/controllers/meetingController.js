@@ -1431,6 +1431,9 @@ const generatePdf = async (req, res, next) => {
             ? `attendance-${sanitize(group)}-${id}.pdf`
             : `attendance-${id}.pdf`;
 
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
         res.send(pdfBuffer);
@@ -2404,6 +2407,94 @@ const lockInvitees = async (req, res, next) => {
     }
 };
 
+const lockPermissions = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockPermissions) {
+            return next(new CustomError('You do not have permission to lock permissions.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET permissions_locked_level = $1, permissions_locked_by_username = $2, permissions_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
+        res.status(200).json({ success: true, message: 'Meeting permissions locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockPermissions = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockPermissions) {
+            return next(new CustomError('Lower levels cannot unlock permissions locked by a higher level.', 403));
+        }
+
+        await db.query(
+            'UPDATE meetings SET permissions_locked_level = NULL, permissions_locked_by_username = NULL, permissions_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
+        res.status(200).json({ success: true, message: 'Meeting permissions unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const lockDescription = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockDescription) {
+            return next(new CustomError('You do not have permission to lock description.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET description_locked_level = $1, description_locked_by_username = $2, description_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
+        res.status(200).json({ success: true, message: 'Meeting description locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockDescription = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockDescription) {
+            return next(new CustomError('Lower levels cannot unlock description locked by a higher level.', 403));
+        }
+
+        await db.query(
+            'UPDATE meetings SET description_locked_level = NULL, description_locked_by_username = NULL, description_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
+        res.status(200).json({ success: true, message: 'Meeting description unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
 const unlockInvitees = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -2508,6 +2599,50 @@ const unlockConclusion = async (req, res, next) => {
             [id]
         );
         res.status(200).json({ success: true, message: 'Conclusion unlocked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const lockEmail = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canLockEmail) {
+            return next(new CustomError('You do not have permission to lock email functionality.', 403));
+        }
+
+        const levelToSet = (req.user.role === 'admin' || req.user.role === 'superadmin') ? 999999 : req.user.role_level;
+        const { roleTitle, username } = getUserLockInfo(req.user);
+        await db.query(
+            'UPDATE meetings SET email_locked_level = $1, email_locked_by_username = $2, email_locked_by_role = $3 WHERE id = $4',
+            [levelToSet, username, roleTitle, id]
+        );
+        res.status(200).json({ success: true, message: 'Email functionality locked successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+const unlockEmail = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canUnlockEmail) {
+            return next(new CustomError('Lower levels cannot unlock email functionality locked by a higher level.', 403));
+        }
+
+        await db.query(
+            'UPDATE meetings SET email_locked_level = NULL, email_locked_by_username = NULL, email_locked_by_role = NULL WHERE id = $1',
+            [id]
+        );
+        res.status(200).json({ success: true, message: 'Email functionality unlocked successfully.' });
     } catch (err) {
         next(err);
     }
@@ -2740,12 +2875,18 @@ module.exports = {
     unlockResolutionStatus,
     lockMeeting,
     unlockMeeting,
+    lockPermissions,
+    unlockPermissions,
+    lockDescription,
+    unlockDescription,
     lockInvitees,
     unlockInvitees,
     lockPresentees,
     unlockPresentees,
     lockConclusion,
     unlockConclusion,
+    lockEmail,
+    unlockEmail,
     sendBackAgenda,
     sendBackSuppliAgenda,
     sendBackResolution,

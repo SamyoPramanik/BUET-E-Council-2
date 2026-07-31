@@ -215,15 +215,9 @@ const syncMeetingAnnexures = async (meetingId) => {
         // Write annexure files and extract zip folders with their updated global serial number
         for (const an of annexRes.rows) {
             const serial = an.global_serial || an.annexure_serial || 1;
-            const isSuppli = !!an.is_suppli;
             const isResolutionAnnexure = an.annexure_type === 'resolution';
 
-            let prefix = 'annexure';
-            if (isResolutionAnnexure) {
-                prefix = 'resolution_annexture';
-            } else if (isSuppli) {
-                prefix = 'supple_annexture';
-            }
+            let prefix = isResolutionAnnexure ? 'resolution_annexture' : 'annexure';
             const ext = path.extname(an.file_name || '') || '.pdf';
             let cleanBaseName = path.basename(an.file_name || '', ext).replace(/[\/\\?%*:|"<>]/g, '_').trim();
             if (cleanBaseName.toLowerCase().endsWith('.zip')) {

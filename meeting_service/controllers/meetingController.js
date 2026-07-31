@@ -2853,6 +2853,27 @@ const sendBackSuppliAgenda = async (req, res, next) => {
     }
 };
 
+const updateMeetingSignatures = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { president_signature, secretary_signature } = req.body;
+
+        const meetingResult = await db.query('SELECT id FROM meetings WHERE id = $1', [id]);
+        if (meetingResult.rows.length === 0) {
+            return next(new CustomError('Meeting not found', 404));
+        }
+
+        await db.query(
+            `UPDATE meetings SET president_signature = $1, secretary_signature = $2 WHERE id = $3`,
+            [president_signature ?? '', secretary_signature ?? '', id]
+        );
+
+        res.status(200).json({ success: true, message: 'Meeting signatures updated' });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getMeetings,
     getMeetingById,
@@ -2912,5 +2933,6 @@ module.exports = {
     sendAgendaEmail,
     sendNoticeEmail,
     sendAgendaEmailBulk,
-    sendResolutionEmail
+    sendResolutionEmail,
+    updateMeetingSignatures
 };

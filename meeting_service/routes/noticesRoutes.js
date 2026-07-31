@@ -14,6 +14,9 @@ const noticeAdmins = requireRole('admin', 'superadmin', 'moderator');
 router.get('/settings/signatures', noticeAdmins, noticeController.getSignatures);
 router.put('/settings/signatures', noticeAdmins, noticeController.updateSignatures);
 
+router.get('/settings/signed-persona', noticeAdmins, noticeController.getSignedPersona);
+router.put('/settings/signed-persona', noticeAdmins, noticeController.updateSignedPersona);
+
 router.post('/generate-pdf', noticeAdmins, noticeController.generateNoticePdfFromPayload);
 
 module.exports = router;

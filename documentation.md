@@ -43,6 +43,7 @@ This document serves as the comprehensive technical specification and developer 
   - [5.3 Attendance Sheet — Section-Separated PDF Generation](#53-attendance-sheet--section-separated-pdf-generation)
   - [5.4 Take Attendance — Search & Filter](#54-take-attendance--search--filter)
   - [5.5 Resolution PDF — Dynamic Column Layout](#55-resolution-pdf--dynamic-column-layout)
+  - [5.6 Signed Persona — Resolution Signature Configuration](#56-signed-persona--resolution-signature-configuration)
 - [6. Development, Maintenance & Troubleshooting](#6-development-maintenance--troubleshooting)
   - [6.1 Running via Docker Compose](#61-running-via-docker-compose)
   - [6.2 Local Microservice Development Setup](#62-local-microservice-development-setup)
@@ -152,20 +153,23 @@ CREATE TYPE account_status AS ENUM ('active', 'inactive');
 2. **`meetings`**: Stores meeting metadata along with workflow level tracking columns:
    - Handover fields: `agenda_handover_level`, `suppli_agenda_handover_level`, `resolution_handover_level`, `resolution_status_handover_level`
    - Lock fields: `agenda_locked_level`, `suppli_agenda_locked_level`, `resolution_locked_level`, `resolution_status_locked_level`, `meeting_locked_level`, `invitees_locked_level`, `presentees_locked_level`, `conclusion_locked_level`
+   - Signature fields: `president_signature` (TEXT), `secretary_signature` (TEXT) — per-meeting signature overrides for resolution PDFs
 3. **`agenda`**: Agenda and resolution content. Automatically maintains generated `content_tsv` and `resolution_tsv` tsvector columns using PostgreSQL's `simple` text search dictionary.
 4. **`agenda_chunks` & `resolution_chunks`**: Stores text chunks and their 1024-dimensional float vector embeddings output by `BAAI/bge-m3`.
 5. **`invitees`**: Unified entity managing both meeting invitees and attendance presentee records (`is_present BOOLEAN DEFAULT false`). Automatically mirrors seniority serial from linked `members` (`member_id`) via database trigger `trg_sync_invitee_serial`. Note that the legacy `presentees` table has been removed.
 
 6. **`notices`**: Stores notice metadata for generated PDFs. Used for notice number tracking and history (not currently persisted — PDFs are generated on-the-fly from form data).
 
-7. **`system_settings`**: Key-value store for system-wide configuration. Stores signature text for academic and syndicate notices:
+7. **`system_settings`**: Key-value store for system-wide configuration. Stores signature text for academic and syndicate notices, plus signed persona defaults for resolution PDFs:
    ```sql
-  CREATE TABLE IF NOT EXISTS system_settings (
-       key VARCHAR(255) PRIMARY KEY,
-       value TEXT NOT NULL,
-       updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+   CREATE TABLE IF NOT EXISTS system_settings (
+        key VARCHAR(255) PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
    );
-   -- Signature keys: 'academic_signature_str', 'syndicate_signature_str'
+   -- Notice signature keys: 'academic_signature_str', 'syndicate_signature_str'
+   -- Signed persona keys: 'academic_president_signature', 'academic_secretary_signature',
+   --                       'syndicate_president_signature', 'syndicate_secretary_signature'
    ```
 
 ---
@@ -555,6 +559,7 @@ export const DEPARTMENT_MERGE_RULES = [
 | `GET` | `/api/meetings/:id` | Get detailed meeting information including access rights |
 | `GET` | `/api/meetings/:id/history` | View audit trail and history log for a specific meeting |
 | `PUT` | `/api/meetings/:id` | Update meeting title, date, or metadata |
+| `PUT` | `/api/meetings/:id/signatures` | Update per-meeting president & secretary signatures (blank values allowed) |
 | `PUT` | `/api/meetings/:id/online-link` | Update online video conference link |
 | `DELETE` | `/api/meetings/:id` | Delete meeting and associated agendas/annexures |
 | `POST` | `/api/meetings/:id/handover-agenda` | Hand over main agendas to higher level |
@@ -615,6 +620,8 @@ export const DEPARTMENT_MERGE_RULES = [
 |---|---|---|---|
 | `GET` | `/api/notices/settings/signatures` | Admin/Superadmin/Moderator | Retrieve academic and syndicate signature text |
 | `PUT` | `/api/notices/settings/signatures` | Admin/Superadmin/Moderator | Update signature text for academic or syndicate notices |
+| `GET` | `/api/notices/settings/signed-persona` | Admin/Superadmin/Moderator | Retrieve signed persona defaults (president & secretary) |
+| `PUT` | `/api/notices/settings/signed-persona` | Admin/Superadmin/Moderator | Update signed persona defaults (supports blank values) |
 | `POST` | `/api/notices/generate-pdf` | Admin/Superadmin/Moderator | Generate notice PDF on-the-fly from payload (no persistence) |
 
 ---
@@ -909,6 +916,65 @@ The layout is applied in the `generatePdf()` function when rendering the present
 
 ---
 
+### 5.6 Signed Persona — Resolution Signature Configuration
+
+Implementation: [`frontend/components/meetings/SignedPersonaView.tsx`](frontend/components/meetings/SignedPersonaView.tsx), [`meeting_service/controllers/meetingController.js`](meeting_service/controllers/meetingController.js), [`meeting_service/controllers/noticeController.js`](meeting_service/controllers/noticeController.js)
+
+The Signed Persona tab allows users to configure president and secretary signature text that appears at the bottom of resolution PDFs. It supports both per-meeting overrides and global defaults.
+
+#### Architecture
+
+| Level | Storage | Scope | Fallback |
+|---|---|---|---|
+| **Per-Meeting** | `meetings.president_signature`, `meetings.secretary_signature` | Single meeting | Falls back to global default |
+| **Global Default** | `system_settings` (4 keys) | All meetings of same type | Blank if not set |
+
+#### Database Keys (system_settings)
+
+| Key | Description |
+|---|---|
+| `academic_president_signature` | Default president signature for academic meetings |
+| `academic_secretary_signature` | Default secretary signature for academic meetings |
+| `syndicate_president_signature` | Default president signature for syndicate meetings |
+| `syndicate_secretary_signature` | Default secretary signature for syndicate meetings |
+
+#### Resolution PDF Signature Block
+
+The signature block renders at the bottom of resolution PDFs with:
+- Two-column layout (president left, secretary right)
+- 80px signature space (no border line)
+- Centered text below each signature space
+- Blank sections render with empty space when no signature text is provided
+
+#### Fallback Logic
+
+```javascript
+// In generatePdf():
+let presidentSignature = meeting.president_signature || '';
+let secretarySignature = meeting.secretary_signature || '';
+
+// If meeting-specific signatures are empty, fetch defaults
+if (!presidentSignature || !secretarySignature) {
+    const sigResult = await pool.query(
+        `SELECT key, value FROM system_settings WHERE key IN ($1, $2)`,
+        [presidentKey, secretaryKey]
+    );
+    // Only fill in empty values (preserve meeting-specific ones)
+}
+```
+
+#### RBAC
+
+Same as Notice — only `admin`, `superadmin`, `moderator` can access Signed Persona tab.
+
+#### API Endpoints
+
+| Method | Endpoint | Access Level | Description |
+|---|---|---|---|
+| `GET` | `/api/notices/settings/signed-persona` | Admin/Superadmin/Moderator | Fetch global default signatures |
+| `PUT` | `/api/notices/settings/signed-persona` | Admin/Superadmin/Moderator | Update global default signatures (blank values allowed) |
+| `PUT` | `/api/meetings/:id/signatures` | Non-Viewer | Update per-meeting signatures (blank values allowed) |
+
 
 ## 6. Development, Maintenance & Troubleshooting
 
@@ -987,4 +1053,4 @@ docker compose down
 - **MinIO Storage Presigned URL Failures**: Ensure `R3_ENDPOINT` and `R3_BUCKET_NAME` match between `.env` and `docker-compose.yml`.
 
 ---
-*BUET E-Council Developer Specification — Version 2.1*
+*BUET E-Council Developer Specification — Version 2.2*

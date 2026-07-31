@@ -274,7 +274,7 @@ const storeCachedPdf = async (cacheKey, pdfBuffer, fingerprint) => {
 
 const generatePdf = async (meetingId, isResolution, cacheVariant) => {
     try {
-        const meetingQuery = `SELECT title, meeting_date, description, agenda_prefix, type FROM meetings WHERE id = $1`;
+        const meetingQuery = `SELECT title, meeting_date, description, agenda_prefix, type, president_signature, secretary_signature FROM meetings WHERE id = $1`;
         const presenteesQuery = `
             SELECT p.id, p.name, p.designation, p.serial, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM invitees p
@@ -345,6 +345,30 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const presentees = presenteesResult.rows;
         const agendas = agendasResult.rows;
 
+        // Fetch signed persona values for resolution PDF
+        // Use meeting-specific signatures if available, otherwise fall back to defaults
+        const meetingType = (meeting.type || '').toLowerCase();
+        const isMeetingSyndicate = meetingType === 'syndicate' || meetingType.includes('syndicate');
+        const presidentKey = isMeetingSyndicate ? 'syndicate_president_signature' : 'academic_president_signature';
+        const secretaryKey = isMeetingSyndicate ? 'syndicate_secretary_signature' : 'academic_secretary_signature';
+
+        let presidentSignature = meeting.president_signature || '';
+        let secretarySignature = meeting.secretary_signature || '';
+
+        if (isResolution) {
+            // If meeting-specific signatures are empty, fetch defaults
+            if (!presidentSignature || !secretarySignature) {
+                const sigResult = await pool.query(
+                    `SELECT key, value FROM system_settings WHERE key IN ($1, $2)`,
+                    [presidentKey, secretaryKey]
+                );
+                sigResult.rows.forEach(row => {
+                    if (row.key === presidentKey && !presidentSignature) presidentSignature = row.value || '';
+                    if (row.key === secretaryKey && !secretarySignature) secretarySignature = row.value || '';
+                });
+            }
+        }
+
         // Serve a cached PDF when the underlying data is unchanged.
         const cacheType = cacheVariant || (isResolution ? 'resolution' : 'agenda');
         const cacheKey = pdfCacheKey(meetingId, cacheType);
@@ -352,7 +376,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             type: cacheType,
             meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, agenda_prefix: meeting.agenda_prefix },
             presentees: stableRows(presentees),
-            agendas: stableRows(agendas)
+            agendas: stableRows(agendas),
+            signatures: { presidentSignature, secretarySignature }
         });
         const cached = await getCachedPdf(cacheKey, fingerprint);
         if (cached) return cached;
@@ -625,6 +650,26 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 table, th, td { border: 1px solid black; }
                 th, td { padding: 4px; text-align: left; }
                 p { margin: 0 0 10px 0; }
+
+                .signature-block {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-top: 60px;
+                    page-break-inside: avoid;
+                }
+                .signature-column {
+                    width: 45%;
+                    text-align: center;
+                }
+                .signature-space {
+                    height: 80px;
+                    margin-bottom: 10px;
+                }
+                .signature-text {
+                    font-size: 13px;
+                    line-height: 1.5;
+                    white-space: pre-line;
+                }
             </style>
         </head>
         <body>
@@ -790,6 +835,19 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     `;
                 }).join('');
             })()}
+
+            ${isResolution ? `
+            <div class="signature-block">
+                <div class="signature-column">
+                    <div class="signature-space"></div>
+                    <div class="signature-text">${presidentSignature.replace(/\n/g, '<br/>')}</div>
+                </div>
+                <div class="signature-column">
+                    <div class="signature-space"></div>
+                    <div class="signature-text">${secretarySignature.replace(/\n/g, '<br/>')}</div>
+                </div>
+            </div>
+            ` : ''}
         </body>
         </html>
         `;

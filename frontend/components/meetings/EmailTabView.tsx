@@ -9,8 +9,10 @@ import {
   Bell,
   FileText,
   CheckCircle2,
+  Lock,
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
+import { canEditEmail } from "../../lib/meetingAccess";
 import SendAgendaModal, { type EmailMode } from "./SendAgendaModal";
 import NoticeView from "./NoticeView";
 
@@ -22,7 +24,8 @@ interface EmailTabViewProps {
 export default function EmailTabView({ meeting, mutate }: EmailTabViewProps) {
   const params = useParams();
   const { user } = useAuth();
-  const canSendEmail = user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'moderator';
+  const isEmailEditable = canEditEmail(user, meeting);
+  const canSendEmail = (user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'moderator') && isEmailEditable;
   const isPast = meeting.status === "past";
   const isOngoing = meeting.status === "ongoing";
   const isDraft = meeting.status === "draft";
@@ -77,6 +80,15 @@ export default function EmailTabView({ meeting, mutate }: EmailTabViewProps) {
           <h2 className="text-2xl font-bold">Email</h2>
         </div>
       </div>
+
+      {!isEmailEditable && (
+        <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-900 dark:text-amber-200 text-sm flex items-center gap-3">
+          <Lock className="w-5 h-5 shrink-0 text-amber-600" />
+          <div>
+            <span className="font-semibold">Email functionality is locked.</span> Your role level is lower than the lock level set for this meeting. Email sending actions are disabled.
+          </div>
+        </div>
+      )}
 
       {/* Sub-tabs */}
       <div className="flex gap-2 mb-6 border-b border-border pb-2">

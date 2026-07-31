@@ -55,8 +55,8 @@ const loadMeeting = async (req) => {
     const result = await db.query(
         `SELECT id, title, created_by,
                 agenda_handover_level, suppli_agenda_handover_level, resolution_handover_level, resolution_status_handover_level,
-                agenda_locked_level, suppli_agenda_locked_level, resolution_locked_level, resolution_status_locked_level, meeting_locked_level,
-                invitees_locked_level, presentees_locked_level, conclusion_locked_level,
+                agenda_locked_level, suppli_agenda_locked_level, resolution_locked_level, resolution_status_locked_level, meeting_locked_level, permissions_locked_level, description_locked_level,
+                invitees_locked_level, presentees_locked_level, conclusion_locked_level, email_locked_level,
                 is_completed, completed_at, completed_by, max_annexure_size_mb,
                 (SELECT value FROM system_settings WHERE key = 'min_completed_level') as min_completed_level,
                 (SELECT MAX(level) FROM roles) as max_role_level
@@ -70,6 +70,8 @@ const loadMeeting = async (req) => {
 const calculateMeetingAccess = (meeting, user) => {
     const emptyAccess = {
         canEditMeeting: false,
+        canEditPermissions: false,
+        canEditDescription: false,
         canEditAgenda: false,
         canEditSuppliAgenda: false,
         canEditResolution: false,
@@ -77,6 +79,7 @@ const calculateMeetingAccess = (meeting, user) => {
         canEditInvitees: false,
         canEditPresentees: false,
         canEditConclusion: false,
+        canEditEmail: false,
         canMarkCompleted: false,
         canHandoverAgenda: false,
         canHandoverSuppliAgenda: false,
@@ -91,17 +94,23 @@ const calculateMeetingAccess = (meeting, user) => {
         canLockResolution: false,
         canLockResolutionStatus: false,
         canLockMeeting: false,
+        canLockPermissions: false,
+        canLockDescription: false,
         canLockInvitees: false,
         canLockPresentees: false,
         canLockConclusion: false,
+        canLockEmail: false,
         canUnlockAgenda: false,
         canUnlockSuppliAgenda: false,
         canUnlockResolution: false,
         canUnlockResolutionStatus: false,
         canUnlockMeeting: false,
+        canUnlockPermissions: false,
+        canUnlockDescription: false,
         canUnlockInvitees: false,
         canUnlockPresentees: false,
-        canUnlockConclusion: false
+        canUnlockConclusion: false,
+        canUnlockEmail: false
     };
 
     if (!user) return emptyAccess;
@@ -110,6 +119,8 @@ const calculateMeetingAccess = (meeting, user) => {
     if (isAdmin) {
         return {
             canEditMeeting: true,
+            canEditPermissions: true,
+            canEditDescription: true,
             canEditAgenda: true,
             canEditSuppliAgenda: true,
             canEditResolution: true,
@@ -117,6 +128,7 @@ const calculateMeetingAccess = (meeting, user) => {
             canEditInvitees: true,
             canEditPresentees: true,
             canEditConclusion: true,
+            canEditEmail: true,
             canMarkCompleted: true,
             canHandoverAgenda: true,
             canHandoverSuppliAgenda: true,
@@ -131,17 +143,23 @@ const calculateMeetingAccess = (meeting, user) => {
             canLockResolution: true,
             canLockResolutionStatus: true,
             canLockMeeting: true,
+            canLockPermissions: true,
+            canLockDescription: true,
             canLockInvitees: true,
             canLockPresentees: true,
             canLockConclusion: true,
+            canLockEmail: true,
             canUnlockAgenda: true,
             canUnlockSuppliAgenda: true,
             canUnlockResolution: true,
             canUnlockResolutionStatus: true,
             canUnlockMeeting: true,
+            canUnlockPermissions: true,
+            canUnlockDescription: true,
             canUnlockInvitees: true,
             canUnlockPresentees: true,
-            canUnlockConclusion: true
+            canUnlockConclusion: true,
+            canUnlockEmail: true
         };
     }
 
@@ -162,6 +180,16 @@ const calculateMeetingAccess = (meeting, user) => {
     const meetingLock = getLock(meeting.meeting_locked_level);
     const canEditMeeting = meetingLock === null || userLevel >= meetingLock;
     const canUnlockMeeting = meetingLock === null || userLevel >= meetingLock;
+
+    // Permissions editing check
+    const permissionsLock = getLock(meeting.permissions_locked_level);
+    const canEditPermissions = permissionsLock === null || userLevel >= permissionsLock;
+    const canUnlockPermissions = permissionsLock === null || userLevel >= permissionsLock;
+
+    // Description editing check
+    const descriptionLock = getLock(meeting.description_locked_level);
+    const canEditDescription = descriptionLock === null || userLevel >= descriptionLock;
+    const canUnlockDescription = descriptionLock === null || userLevel >= descriptionLock;
 
     // Agenda editing check (Handover: <= L loses access; Lock: < L loses access)
     const agendaHandover = getHandover(meeting.agenda_handover_level);
@@ -210,6 +238,11 @@ const calculateMeetingAccess = (meeting, user) => {
     const canEditConclusion = conclusionLock === null || userLevel >= conclusionLock;
     const canUnlockConclusion = conclusionLock === null || userLevel >= conclusionLock;
 
+    // Email editing check
+    const emailLock = getLock(meeting.email_locked_level);
+    const canEditEmail = emailLock === null || userLevel >= emailLock;
+    const canUnlockEmail = emailLock === null || userLevel >= emailLock;
+
     // Send Back checks: Only strictly higher levels (> handoverLevel) or admin can send back a handed-over item.
     const canSendBackAgenda = agendaHandover !== null && (user.role === 'admin' || userLevel > agendaHandover);
     const canSendBackSuppliAgenda = suppliHandover !== null && (user.role === 'admin' || userLevel > suppliHandover);
@@ -224,6 +257,8 @@ const calculateMeetingAccess = (meeting, user) => {
 
     return {
         canEditMeeting,
+        canEditPermissions,
+        canEditDescription,
         canEditAgenda,
         canEditSuppliAgenda,
         canEditResolution,
@@ -231,6 +266,7 @@ const calculateMeetingAccess = (meeting, user) => {
         canEditInvitees,
         canEditPresentees,
         canEditConclusion,
+        canEditEmail,
         canMarkCompleted,
         canHandoverAgenda: canEditAgenda,
         canHandoverSuppliAgenda: canEditSuppliAgenda,
@@ -245,17 +281,23 @@ const calculateMeetingAccess = (meeting, user) => {
         canLockResolution: resHandover === null || userLevel > resHandover,
         canLockResolutionStatus: resStatusHandover === null || userLevel > resStatusHandover,
         canLockMeeting: true,
+        canLockPermissions: true,
+        canLockDescription: true,
         canLockInvitees: true,
         canLockPresentees: true,
         canLockConclusion: true,
+        canLockEmail: true,
         canUnlockAgenda,
         canUnlockSuppliAgenda,
         canUnlockResolution,
         canUnlockResolutionStatus,
         canUnlockMeeting,
+        canUnlockPermissions,
+        canUnlockDescription,
         canUnlockInvitees,
         canUnlockPresentees,
-        canUnlockConclusion
+        canUnlockConclusion,
+        canUnlockEmail
     };
 };
 
@@ -352,6 +394,11 @@ const requireEmailSender = async (req, res, next) => {
             return next(new CustomError('Only admin, superadmin, or moderator can send emails.', 403));
         }
 
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canEditEmail) {
+            return next(new CustomError('Access denied. Email functionality is locked for your level.', 403));
+        }
+
         // Cannot send emails for completed meetings
         if (meeting.is_completed === true) {
             return next(new CustomError('Cannot send emails for completed meetings.', 403));
@@ -375,6 +422,11 @@ const requireCompletedMeetingEmailSender = async (req, res, next) => {
         const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
         if (!isAdmin && req.user.role !== 'moderator') {
             return next(new CustomError('Only admin, superadmin, or moderator can send emails.', 403));
+        }
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        if (!access.canEditEmail) {
+            return next(new CustomError('Access denied. Email functionality is locked for your level.', 403));
         }
 
         // Resolution emails can only be sent for completed meetings

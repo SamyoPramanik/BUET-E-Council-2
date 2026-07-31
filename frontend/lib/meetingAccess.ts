@@ -20,14 +20,21 @@ export interface WorkflowMeeting {
   resolution_locked_level?: number | null;
   resolution_status_locked_level?: number | null;
   meeting_locked_level?: number | null;
+  permissions_locked_level?: number | null;
+  description_locked_level?: number | null;
   invitees_locked_level?: number | null;
   presentees_locked_level?: number | null;
   conclusion_locked_level?: number | null;
+  email_locked_level?: number | null;
+  email_locked_by_username?: string | null;
+  email_locked_by_role?: string | null;
   is_completed?: boolean;
   completed_at?: string | null;
   completed_by?: string | null;
   access?: {
     canEditMeeting: boolean;
+    canEditPermissions?: boolean;
+    canEditDescription?: boolean;
     canEditAgenda: boolean;
     canEditSuppliAgenda: boolean;
     canEditResolution: boolean;
@@ -35,6 +42,7 @@ export interface WorkflowMeeting {
     canEditInvitees: boolean;
     canEditPresentees: boolean;
     canEditConclusion: boolean;
+    canEditEmail?: boolean;
     canMarkCompleted: boolean;
     canHandoverAgenda: boolean;
     canHandoverSuppliAgenda: boolean;
@@ -45,17 +53,23 @@ export interface WorkflowMeeting {
     canLockResolution: boolean;
     canLockResolutionStatus: boolean;
     canLockMeeting: boolean;
+    canLockPermissions?: boolean;
+    canLockDescription?: boolean;
     canLockInvitees: boolean;
     canLockPresentees: boolean;
     canLockConclusion: boolean;
+    canLockEmail?: boolean;
     canUnlockAgenda: boolean;
     canUnlockSuppliAgenda: boolean;
     canUnlockResolution: boolean;
     canUnlockResolutionStatus: boolean;
     canUnlockMeeting: boolean;
+    canUnlockPermissions?: boolean;
+    canUnlockDescription?: boolean;
     canUnlockInvitees: boolean;
     canUnlockPresentees: boolean;
     canUnlockConclusion: boolean;
+    canUnlockEmail?: boolean;
   };
 }
 
@@ -97,6 +111,34 @@ export const canEditMeeting = (user?: WorkflowUser | null, meeting?: WorkflowMee
 
 export const canAuthorMeeting = canEditMeeting;
 export const canOperateMeeting = canEditMeeting;
+
+export const canEditPermissions = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
+  if (!user || !meeting) return false;
+  if (meeting.access && typeof meeting.access.canEditPermissions === 'boolean') return meeting.access.canEditPermissions;
+  if (isAdminRole(user)) return true;
+  if (user.role === 'viewer') return false;
+  if (user.role_level === null || user.role_level === undefined) return false;
+
+  const userLevel = Number(user.role_level);
+  if (meeting.permissions_locked_level !== null && meeting.permissions_locked_level !== undefined) {
+    return userLevel >= Number(meeting.permissions_locked_level);
+  }
+  return true;
+};
+
+export const canEditDescription = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
+  if (!user || !meeting) return false;
+  if (meeting.access && typeof meeting.access.canEditDescription === 'boolean') return meeting.access.canEditDescription;
+  if (isAdminRole(user)) return true;
+  if (user.role === 'viewer') return false;
+  if (user.role_level === null || user.role_level === undefined) return false;
+
+  const userLevel = Number(user.role_level);
+  if (meeting.description_locked_level !== null && meeting.description_locked_level !== undefined) {
+    return userLevel >= Number(meeting.description_locked_level);
+  }
+  return true;
+};
 
 export const canEditAgenda = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
   if (!user || !meeting) return false;
@@ -204,6 +246,20 @@ export const canEditConclusion = (user?: WorkflowUser | null, meeting?: Workflow
   const userLevel = Number(user.role_level);
   if (meeting.conclusion_locked_level !== null && meeting.conclusion_locked_level !== undefined) {
     return userLevel >= Number(meeting.conclusion_locked_level);
+  }
+  return true;
+};
+
+export const canEditEmail = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
+  if (!user || !meeting) return false;
+  if (meeting.access && typeof meeting.access.canEditEmail === 'boolean') return meeting.access.canEditEmail;
+  if (isAdminRole(user)) return true;
+  if (user.role === 'viewer') return false;
+  if (user.role_level === null || user.role_level === undefined) return false;
+
+  const userLevel = Number(user.role_level);
+  if (meeting.email_locked_level !== null && meeting.email_locked_level !== undefined) {
+    return userLevel >= Number(meeting.email_locked_level);
   }
   return true;
 };

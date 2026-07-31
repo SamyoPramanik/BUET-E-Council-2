@@ -95,14 +95,23 @@ function getSerialWidth(totalCount) {
 function stripResolutionPrefix(content) {
     if (!content) return '';
     let str = String(content).normalize('NFC').replace(/&nbsp;/g, ' ').replace(/\u00a0/g, ' ').trim();
+
+    const pattern = '(?:সিদ্ধান্ত|িসদ্ধ\\s*ান্ত|সদ্ধান্ত)\\s*[:.\\-\\u0983\\uFF1A]?';
+
     // Strip standalone paragraph(s) containing only 'সিদ্ধান্ত'
-    str = str.replace(/^(?:\s*<p[^>]*>\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*<\/p>\s*)+/gi, '');
+    const standaloneRegex = new RegExp(`^(?:\\s*<p[^>]*>\\s*(?:<[^>]+>)*\\s*${pattern}\\s*(?:<\\/[^>]+>)*\\s*<\\/p>\\s*)+`, 'gi');
+    str = str.replace(standaloneRegex, '');
+
     // Strip inline leading 'সিদ্ধান্ত' prefix
-    str = str.replace(/^(?:\s*<p[^>]*>)?\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*/gi, (match) => {
+    const leadingRegex = new RegExp(`^(?:\\s*<p[^>]*>)?\\s*(?:<[^>]+>)*\\s*${pattern}\\s*(?:<\\/[^>]+>)*\\s*`, 'gi');
+    str = str.replace(leadingRegex, (match) => {
         return match.includes('<p') ? '<p>' : '';
     });
+
     // Strip trailing standalone paragraph(s) containing only 'সিদ্ধান্ত'
-    str = str.replace(/(?:\s*<p[^>]*>\s*(?:<[^>]+>)*\s*সিদ্ধান্ত\s*[:.\-\u0983\uFF1A]?\s*(?:<\/[^>]+>)*\s*<\/p>\s*)+$/gi, '');
+    const trailingRegex = new RegExp(`(?:\\s*<p[^>]*>\\s*(?:<[^>]+>)*\\s*${pattern}\\s*(?:<\\/[^>]+>)*\\s*<\\/p>\\s*)+$`, 'gi');
+    str = str.replace(trailingRegex, '');
+
     // Clean up empty strong/b/span tags
     str = str.replace(/(<p[^>]*>)\s*(?:<(strong|b|span|em)[^>]*>\s*<\/\2>\s*)+/gi, '$1');
     return str.trim();

@@ -27,10 +27,11 @@ interface Annexure {
 interface AnnexureListProps {
   contentId: string;
   type: 'agenda' | 'resolution';
+  isSuppli?: boolean;
   readOnly?: boolean;
 }
 
-export default function AnnexureList({ contentId, type, readOnly = false }: AnnexureListProps) {
+export default function AnnexureList({ contentId, type, isSuppli = false, readOnly = false }: AnnexureListProps) {
   const { mutate: globalMutate } = useSWRConfig();
   const { data: response, mutate } = useSWR(`/agendas/${contentId}/annexures?type=${type}`, fetcher, { fallbackData: { data: [] } });
   const annexures: Annexure[] = response?.data || [];
@@ -47,12 +48,15 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
   const validAnnexures = (type === 'resolution'
     ? visibleAnnexures.filter(an => !an.is_excluded_in_resolution)
     : visibleAnnexures
-  ).sort((a, b) => (a.annexure_serial || 0) - (b.annexure_serial || 0));
+  ).sort((a, b) => (a.global_serial || a.annexure_serial || 0) - (b.global_serial || b.annexure_serial || 0));
+
+  const isSuppliItem = (an: Annexure) => (an.is_suppli ?? isSuppli);
 
   const banglaAnnexureTags = validAnnexures.length > 0
     ? validAnnexures.map((an) => {
       const num = an.global_serial || an.annexure_serial;
-      return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(num)}`;
+      const prefix = (type !== 'resolution' && isSuppliItem(an)) ? 'সাপ্লি: পরিশিষ্ট-' : 'পরিশিষ্ট-';
+      return `${prefix}${toBanglaDigits(num)}`;
     }).join(', ')
     : null;
 
@@ -68,7 +72,7 @@ export default function AnnexureList({ contentId, type, readOnly = false }: Anne
       return `${name}${addedTag}`;
     }
     const num = annexure.global_serial || annexure.annexure_serial;
-    const prefix = annexure.is_suppli ? `Supple. Annexure-${num}` : `Annexure-${num}`;
+    const prefix = (type !== 'resolution' && isSuppliItem(annexure)) ? `Supple. Annexure-${num}` : `Annexure-${num}`;
     return `${prefix}. ${name}${isZip ? ' (Folder)' : ''}${addedTag}`;
   };
 

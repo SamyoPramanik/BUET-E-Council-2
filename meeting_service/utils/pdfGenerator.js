@@ -235,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v24';
+const PDF_TEMPLATE_VERSION = 'v36';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -286,6 +286,9 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const resFilter = isResolution
             ? ' AND prev_an.is_excluded_in_resolution = false'
             : " AND (prev_an.annexure_type IS NULL OR prev_an.annexure_type != 'resolution')";
+        const isSuppliFilter = isResolution
+            ? ''
+            : ' AND prev_a.is_suppli = a.is_suppli';
         const agendasQuery = `
             SELECT 
                 a.id,
@@ -293,6 +296,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 a.content, 
                 a.resolution, 
                 a.is_suppli,
+                a.category_id,
+                c.name AS category_name,
                 COALESCE(
                     (
                         SELECT json_agg(
@@ -307,11 +312,11 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                                     FROM annexures prev_an
                                     JOIN agenda prev_a ON prev_a.id = prev_an.content_id
                                     WHERE prev_a.meeting_id = a.meeting_id
-                                      AND prev_a.is_suppli = a.is_suppli
+                                      ${isSuppliFilter}
                                       ${resFilter}
                                       AND (
-                                        (prev_a.agenda_serial, prev_an.annexure_serial) <
-                                        (a.agenda_serial, an.annexure_serial)
+                                        (prev_a.is_suppli, prev_a.agenda_serial, prev_an.annexure_serial) <
+                                        (a.is_suppli, a.agenda_serial, an.annexure_serial)
                                       )
                                 ) + 1
                             ) ORDER BY an.annexure_serial ASC
@@ -323,6 +328,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     '[]'
                 ) AS annexures
             FROM agenda a
+            LEFT JOIN categories c ON c.id = a.category_id
             WHERE a.meeting_id = $1
             ORDER BY a.is_suppli ASC, a.agenda_serial ASC
         `;
@@ -351,7 +357,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const cached = await getCachedPdf(cacheKey, fingerprint);
         if (cached) return cached;
 
-        const admins = [];
+        const topLeadership = [];
         const deans = [];
         const heads = [];
         const depts = {};
@@ -375,6 +381,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         presentees.forEach(p => {
             let extractedName = p.name;
             let officeStr = normalize(p.office_name || '');
+            let desStr = normalize(p.designation || '');
             if (!extractedName && officeStr.includes(',')) {
                 const parts = officeStr.split(',');
                 extractedName = parts[0].trim();
@@ -385,80 +392,99 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             const departmentName = normalize(p.department_name || '');
             const pObj = { name: extractedName, office: officeStr, designation: p.designation, department: departmentName, serial: p.serial };
 
-            let classifiedOffice = null;
+            const combinedText = `${officeStr} ${desStr} ${normalize(p.name || '')}`;
 
-            if (officeStr.includes(normalize('উপাচার্য'))) {
-                admins.push(pObj);
-                classifiedOffice = officeStr;
-            } else if (officeStr.includes(normalize('ডিন')) || officeStr.includes(normalize('ডীন'))) {
-                // Dean rows also show their specific office (e.g. which faculty they're dean of).
-                deans.push({ ...pObj, extraLabel: officeStr || null });
-                classifiedOffice = officeStr;
-            } else if (officeStr.includes(normalize('বিভাগীয় প্রধান'))) {
-                // Head rows also show the specific department they head.
+            const isVc = (combinedText.includes(normalize('উপাচার্য')) || combinedText.toLowerCase().includes('vice chancellor') || combinedText.toLowerCase().includes('vc'))
+                && !combinedText.includes(normalize('উপ-উপাচার্য'))
+                && !combinedText.includes(normalize('উপউপাচার্য'))
+                && !combinedText.toLowerCase().includes('pro-vc')
+                && !combinedText.toLowerCase().includes('pro vc');
+
+            const isProVc = combinedText.includes(normalize('উপ-উপাচার্য'))
+                || combinedText.includes(normalize('উপউপাচার্য'))
+                || combinedText.toLowerCase().includes('pro-vc')
+                || combinedText.toLowerCase().includes('pro vc');
+
+            let classified = false;
+
+            if (isVc || isProVc) {
+                topLeadership.push({ ...pObj, isVc, isProVc });
+                classified = true;
+            } else if (officeStr.includes(normalize('ডিন')) || officeStr.includes(normalize('ডীন')) || desStr.includes(normalize('ডিন')) || desStr.includes(normalize('ডীন'))) {
+                deans.push({ ...pObj, extraLabel: officeStr || desStr || null });
+                classified = true;
+            } else if (officeStr.includes(normalize('বিভাগীয় প্রধান')) || desStr.includes(normalize('বিভাগীয় প্রধান'))) {
                 heads.push({ ...pObj, extraLabel: departmentName || null });
-                classifiedOffice = officeStr;
+                classified = true;
             }
 
-            // Dept-wise membership is independent of the classification above: a dean/head
-            // who also belongs to a department still shows up here, with their office noted.
-            if (p.department_name) {
-                if (!depts[p.department_name]) depts[p.department_name] = { serial: p.department_serial, members: [] };
-                depts[p.department_name].members.push({
-                    ...pObj,
-                    extraLabel: classifiedOffice ? getShortOfficeLabel(classifiedOffice) : null
-                });
-            } else if (!classifiedOffice) {
-                others.push(pObj);
+            if (!classified) {
+                if (p.department_name) {
+                    if (!depts[p.department_name]) depts[p.department_name] = { serial: p.department_serial, members: [] };
+                    depts[p.department_name].members.push(pObj);
+                } else {
+                    others.push(pObj);
+                }
             }
         });
 
         const bySerial = (a, b) => (a.serial ?? Infinity) - (b.serial ?? Infinity);
+        topLeadership.sort((a, b) => {
+            if (a.isVc && !b.isVc) return -1;
+            if (!a.isVc && b.isVc) return 1;
+            if (a.isProVc && !b.isProVc) return -1;
+            if (!a.isProVc && b.isProVc) return 1;
+            return bySerial(a, b);
+        });
         deans.sort(bySerial);
         heads.sort(bySerial);
         others.sort(bySerial);
         Object.values(depts).forEach(dept => dept.members.sort(bySerial));
 
-        admins.sort((a, b) => {
-            const aIsVc = a.office === 'উপাচার্য' || (a.office.includes('উপাচার্য') && !a.office.includes('উপ-উপাচার্য') && !a.office.includes('উপউপাচার্য'));
-            const bIsVc = b.office === 'উপাচার্য' || (b.office.includes('উপাচার্য') && !b.office.includes('উপ-উপাচার্য') && !b.office.includes('উপউপাচার্য'));
-            const aIsPro = a.office.includes('উপউপাচার্য') || a.office.includes('উপ-উপাচার্য');
-            const bIsPro = b.office.includes('উপউপাচার্য') || b.office.includes('উপ-উপাচার্য');
-            if (aIsVc) return -1;
-            if (bIsVc) return 1;
-            if (aIsPro) return -1;
-            if (bIsPro) return 1;
-            return bySerial(a, b);
-        });
-
         const fontBase64 = FONT_BASE64;
         const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); }` : '';
 
         const getSuffix = (item) => {
-            if (item.office === 'উপাচার্য' || (item.office.includes('উপাচার্য') && !item.office.includes('উপ-উপাচার্য') && !item.office.includes('উপউপাচার্য'))) {
+            const office = normalize(item.office || '');
+            const des = normalize(item.designation || '');
+            const isVc = item.isVc || office === 'উপাচার্য' || (office.includes('উপাচার্য') && !office.includes('উপ-উপাচার্য') && !office.includes('উপউপাচার্য')) || (des.includes('উপাচার্য') && !des.includes('উপ-উপাচার্য'));
+            if (isVc) {
                 return 'সভাপতি';
             }
             return 'সদস্য';
         };
 
-        // Builds the visible name text: appends "সহযোগী অধ্যাপক" when the designation is
-        // Associate Professor and the name doesn't already start with "অধ্যাপক" (i.e. Professor
-        // names already carry their own title, e.g. "অধ্যাপক ডঃ ..."), and appends an
-        // extraLabel when present (dean's specific office, head's specific department, or the
-        // short office label for a dean/head also shown within a dept section).
         const formatMeetingSerial = (rawTitle) => {
             if (!rawTitle) return '';
             let str = String(rawTitle).trim();
-            // Strip common English prefix/suffix like "Meeting", "th", "st", "nd", "rd" if present
             str = str.replace(/^(meeting\s*|councel\s*|council\s*)/i, '')
                 .replace(/^(\d+)(st|nd|rd|th)$/i, '$1')
                 .trim();
             return toBanglaDigits(str);
         };
 
-        const getDisplayName = (item, isOthers = false) => {
+        const getDisplayName = (item, isOthers = false, isLeadership = false) => {
             let displayName = item.name;
-            if (isOthers) {
+            if (isLeadership) {
+                let titleStr = item.office || item.designation || '';
+                if (item.isVc && !titleStr.includes('উপাচার্য')) titleStr = 'উপাচার্য';
+                if (item.isProVc && !titleStr.includes('উপ-উপাচার্য')) titleStr = 'উপ-উপাচার্য';
+                
+                const isVcOrProVc = item.isVc || item.isProVc || (titleStr && (titleStr.includes('উপাচার্য') || titleStr.includes('উপ-উপাচার্য') || titleStr.includes('উপউপাচার্য')));
+                
+                if (isVcOrProVc) {
+                    displayName = `${displayName},`;
+                    let titleClean = titleStr ? titleStr.replace(/,\s*ঢাকা$/i, '').trim() : '';
+                    if (titleClean && !titleClean.includes('বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়')) {
+                        titleClean += ', বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়';
+                    }
+                    if (titleClean && titleClean !== 'Unknown') {
+                        displayName += `<br/>${titleClean}`;
+                    }
+                } else if (titleStr && titleStr !== 'Unknown') {
+                    displayName = `${displayName}, <br/>${titleStr}`;
+                }
+            } else if (isOthers) {
                 const details = [];
                 if (item.designation) details.push(item.designation);
                 if (item.department && item.department !== 'Unknown') details.push(item.department);
@@ -471,18 +497,21 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     displayName = `${displayName}, <br/>সহযোগী অধ্যাপক`;
                 }
             }
-            if (item.extraLabel) {
+            if (item.extraLabel && !isLeadership) {
                 displayName = `${displayName} (${item.extraLabel})`;
             }
             return displayName;
         };
 
-        const renderSection = (title, items, isOthers = false) => {
+        const renderSection = (title, items, isOthers = false, isLeadership = false) => {
             if (!items || items.length === 0) return '';
-            let html = `<div class="presentee-section"><div class="section-title"><u>${title}</u></div>`;
+            let html = `<div class="presentee-section">`;
+            if (title) {
+                html += `<div class="section-title"><u>${title}</u></div>`;
+            }
             items.forEach(item => {
                 html += `<div class="presentee-row">
-                    <div class="p-name">${getDisplayName(item, isOthers)}</div>
+                    <div class="p-name">${getDisplayName(item, isOthers, isLeadership)}</div>
                     <div class="p-suffix">${getSuffix(item)}</div>
                 </div>`;
             });
@@ -528,7 +557,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 <div class="agenda-content">${ag.content || ''}</div>
                 ${isResolution ? `
                 <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
-                <div class="agenda-resolution">${(ag.resolution || '').replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*সিদ্ধান্ত\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1')}</div>
+                <div class="agenda-resolution">${stripResolutionPrefix(ag.resolution || '')}</div>
                 ` : ''}
             </div>
             `;
@@ -576,12 +605,21 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 .p-suffix { width: 25%; text-align: right; }
                 .disclaimer { text-align: center; margin-top: 20px; margin-bottom: 40px; font-size: 14px; }
 
+                .category-header {
+                    font-weight: bold;
+                    font-size: 15px;
+                    margin-top: 25px;
+                    margin-bottom: 15px;
+                    break-after: avoid;
+                    page-break-after: avoid;
+                }
                 .agenda-block {
                     page-break-inside: avoid;
                     margin-bottom: 30px;
                 }
                 .agenda-title { font-weight: bold; margin-bottom: 5px; font-size: 14px;}
                 .agenda-content, .agenda-resolution { margin-left: 30px; text-align: justify; font-size: 14px;}
+                .agenda-resolution { font-weight: bold; }
 
                 table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
                 table, th, td { border: 1px solid black; }
@@ -602,7 +640,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
 
                 <div class="presentees-header">উপস্থিত সদস্যবৃন্দ</div>
                 <div class="columns-container">
-                    ${renderSection('প্রশাসন', admins)}
+                    ${renderSection(null, topLeadership, false, true)}
                     ${renderSection('সকল ডিন', deans)}
                     ${renderSection('সকল বিভাগীয় প্রধান', heads)}
                     ${Object.entries(depts)
@@ -612,84 +650,146 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 </div>
             ` : ''}
 
-            ${(cacheVariant === 'suppli-agenda'
-                ? agendas.filter(ag => ag.is_suppli)
-                : !isResolution
-                    ? agendas.filter(ag => !ag.is_suppli)
-                    : agendas.filter(ag => {
-                        if (!ag.is_suppli) {
-                            const clean = (ag.content || '').replace(/<[^>]*>/g, '').trim();
-                            if (clean.startsWith('বিবিধ')) {
-                                const hasResolution = ag.resolution && ag.resolution.replace(/<[^>]*>/g, '').trim().length > 0;
-                                const strippedText = clean.replace(/^\s*বিবিধ\s*[:.\-]?\s*([ঀ-৥ৰ-৿]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
-                                const hasContent = strippedText.length > 0;
-                                return hasResolution || hasContent;
-                            }
+            ${(() => {
+                const BANGLA_GROUP_LETTERS = ['ক', 'খ', 'গ', 'ঘ', 'ঙ', 'চ', 'ছ', 'জ', 'ঝ', 'ঞ', 'ট', 'ঠ', 'ড', 'ঢ', 'ণ', 'ত', 'থ', 'দ', 'ধ', 'ন', 'প', 'ফ', 'ব', 'ভ', 'ম', 'য', 'র', 'ল', 'শ', 'ষ', 'স', 'হ'];
+
+                const filterOutEmptyBibidha = (ag) => {
+                    if (!ag.is_suppli) {
+                        const clean = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+                        const isBibidha = ag.agenda_serial === 0 || clean.startsWith('বিবিধ');
+                        if (isBibidha) {
+                            const hasResolution = ag.resolution && ag.resolution.replace(/<[^>]*>/g, '').trim().length > 0;
+                            const strippedText = clean.replace(/^\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
+                            const hasContent = strippedText.length > 0;
+                            return hasResolution || hasContent;
                         }
-                        return true;
-                    })
-            ).map(ag => {
-                // Exclude Bibidha from count so suppli serials sync with visual বিবিধ number
+                    }
+                    return true;
+                };
+
+                const targetAgendas = (cacheVariant === 'suppli-agenda'
+                    ? agendas.filter(ag => ag.is_suppli)
+                    : agendas.filter(ag => !ag.is_suppli && filterOutEmptyBibidha(ag))
+                );
+
                 const mainAgendaCount = agendas.filter(a => {
                     if (a.is_suppli) return false;
                     const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
                     return !clean.startsWith('বিবিধ');
                 }).length;
                 const serialWidth = getSerialWidth(agendas.length);
-                const agSerialStr = ag.is_suppli
-                    ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), serialWidth)
-                    : toBanglaDigits(ag.agenda_serial, serialWidth);
 
-                const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
-                const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
-                const strippedText = cleanContent.replace(/^\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
-                const isOnlyBibidhaTitle = isBibidha && !strippedText;
-                const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
-                const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
-                const titleStr = isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
+                // Precompute Category Header for grouped agendas
+                const categoryHeaderMap = new Map();
+                let currentCatId = null;
+                let groupAgendas = [];
+                let groupCount = 0;
 
-                const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
-                    .filter(an => isResolution ? !an.is_excluded_in_resolution : (an.annexure_type !== 'resolution'))
-                    .sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
-                const annexureTags = validAnnexures.length > 0
-                    ? validAnnexures.map((an) => {
-                        const num = an.global_serial || an.annexure_serial;
-                        return `${an.is_suppli ? 'সাপ্লি: ' : ''}পরিশিষ্ট-${toBanglaDigits(num)}`;
-                      }).join(', ')
-                    : null;
+                const processGroup = () => {
+                    if (groupAgendas.length > 0 && currentCatId) {
+                        const letter = BANGLA_GROUP_LETTERS[groupCount % BANGLA_GROUP_LETTERS.length];
+                        const catName = groupAgendas[0].category_name;
+                        const firstAg = groupAgendas[0];
+                        const lastAg = groupAgendas[groupAgendas.length - 1];
 
-                let contentHtml = isOnlyBibidhaTitle ? '' : convertMarkdownTablesToHtml(ag.content || '');
-                if (isBibidha) {
-                    contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
-                } else if (contentHtml) {
-                    contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*প্রস্তাব(?:না)?\s*নং\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]+\s*)*[০-৯\d\s\/\-]*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
-                    contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
-                }
-                if (annexureTags) {
-                    const tagString = ` <b>(${annexureTags})</b>`;
-                    if (contentHtml.trim().endsWith('</p>')) {
-                        const lastIndex = contentHtml.lastIndexOf('</p>');
-                        contentHtml = contentHtml.substring(0, lastIndex) + tagString + contentHtml.substring(lastIndex);
-                    } else if (contentHtml) {
-                        contentHtml += tagString;
-                    } else {
-                        contentHtml = `<p><b>(${annexureTags})</b></p>`;
+                        const firstAgSerialStr = firstAg.is_suppli
+                            ? toBanglaDigits(mainAgendaCount + (firstAg.agenda_serial || 1), serialWidth)
+                            : toBanglaDigits(firstAg.agenda_serial, serialWidth);
+                        const lastAgSerialStr = lastAg.is_suppli
+                            ? toBanglaDigits(mainAgendaCount + (lastAg.agenda_serial || 1), serialWidth)
+                            : toBanglaDigits(lastAg.agenda_serial, serialWidth);
+
+                        const firstFull = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + firstAgSerialStr;
+                        const lastFull = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + lastAgSerialStr;
+
+                        const rangeText = firstFull === lastFull
+                            ? `${firstFull}`
+                            : `${firstFull} হতে ${lastFull}`;
+
+                        const headerStr = `'${letter}' গ্রুপ (প্রস্তাবনা নং ${rangeText}): ${catName}`;
+                        categoryHeaderMap.set(firstAg.id, headerStr);
+                        groupCount++;
                     }
-                }
+                    groupAgendas = [];
+                };
 
-                const rawRes = convertMarkdownTablesToHtml(ag.resolution || '');
-                const cleanRes = stripResolutionPrefix(rawRes);
-                return `
-                <div class="agenda-block">
-                    <div class="agenda-title">${titleStr}</div>
-                    ${contentHtml ? `<div class="agenda-content">${contentHtml}</div>` : ''}
-                    ${isResolution ? `
-                    <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
-                    <div class="agenda-resolution">${cleanRes}</div>
-                    ` : ''}
-                </div>
-                `;
-            }).join('')}
+                targetAgendas.forEach((ag) => {
+                    const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+                    const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
+                    const catName = ag.category_name ? String(ag.category_name).trim() : '';
+                    const isUncategorized = !catName || /^(uncategorized|un-categorized|অশ্রেণীভুক্ত|অশ্রেণিভুক্ত)$/i.test(catName);
+
+                    if (isBibidha || !ag.category_id || isUncategorized) {
+                        processGroup();
+                        currentCatId = null;
+                    } else {
+                        if (ag.category_id !== currentCatId) {
+                            processGroup();
+                            currentCatId = ag.category_id;
+                        }
+                        groupAgendas.push(ag);
+                    }
+                });
+                processGroup();
+
+                return targetAgendas.map(ag => {
+                    const agSerialStr = ag.is_suppli
+                        ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), serialWidth)
+                        : toBanglaDigits(ag.agenda_serial, serialWidth);
+
+                    const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+                    const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
+                    const strippedText = cleanContent.replace(/^\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
+                    const isOnlyBibidhaTitle = isBibidha && !strippedText;
+                    const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
+                    const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
+                    const titleStr = isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
+
+                    const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
+                        .filter(an => isResolution ? !an.is_excluded_in_resolution : (an.annexure_type !== 'resolution'))
+                        .sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
+                    const annexureTags = validAnnexures.length > 0
+                        ? validAnnexures.map((an) => {
+                            const num = an.global_serial || an.annexure_serial;
+                            const prefix = (!isResolution && an.is_suppli) ? 'সাপ্লি: পরিশিষ্ট-' : 'পরিশিষ্ট-';
+                            return `${prefix}${toBanglaDigits(num)}`;
+                          }).join(', ')
+                        : null;
+
+                    let contentHtml = isOnlyBibidhaTitle ? '' : convertMarkdownTablesToHtml(ag.content || '');
+                    if (isBibidha) {
+                        contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                    } else if (contentHtml) {
+                        contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*প্রস্তাব(?:না)?\s*নং\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]+\s*)*[০-৯\d\s\/\-]*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                        contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
+                    }
+                    if (annexureTags) {
+                        const tagString = ` <b>(${annexureTags})</b>`;
+                        if (contentHtml.trim().endsWith('</p>')) {
+                            const lastIndex = contentHtml.lastIndexOf('</p>');
+                            contentHtml = contentHtml.substring(0, lastIndex) + tagString + contentHtml.substring(lastIndex);
+                        } else if (contentHtml) {
+                            contentHtml += tagString;
+                        } else {
+                            contentHtml = `<p><b>(${annexureTags})</b></p>`;
+                        }
+                    }
+
+                    const catHeader = categoryHeaderMap.get(ag.id);
+
+                    return `
+                    ${catHeader ? `<div class="category-header"><b>${catHeader}</b></div>` : ''}
+                    <div class="agenda-block">
+                        <div class="agenda-title">${titleStr}</div>
+                        ${contentHtml ? `<div class="agenda-content">${contentHtml}</div>` : ''}
+                        ${isResolution ? `
+                        <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
+                        <div class="agenda-resolution">${convertMarkdownTablesToHtml(ag.resolution || '')}</div>
+                        ` : ''}
+                    </div>
+                    `;
+                }).join('');
+            })()}
         </body>
         </html>
         `;

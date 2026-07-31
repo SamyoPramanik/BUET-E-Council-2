@@ -60,13 +60,12 @@ export default function MeetingWorkspaceLayout({
   }
 
   if (isViewer) {
+    navItems = [{ name: 'Agenda', view: 'agenda', icon: LayoutList }];
+    if (meeting?.is_suppli_visible_to_viewers) {
+      navItems.push({ name: 'Supplementary Agenda', view: 'suppli-agenda', icon: Layers });
+    }
     if (isPast) {
-      navItems = [{ name: 'Resolution', view: 'resolution', icon: FileCheck }];
-    } else {
-      navItems = [{ name: 'Agenda', view: 'agenda', icon: LayoutList }];
-      if (meeting?.is_suppli_visible_to_viewers) {
-        navItems.push({ name: 'Supplementary Agenda', view: 'suppli-agenda', icon: Layers });
-      }
+      navItems.push({ name: 'Resolution', view: 'resolution', icon: FileCheck });
     }
   } else if (isAdmin) {
     navItems = [...navItems, { name: 'History', view: 'history', icon: History }];

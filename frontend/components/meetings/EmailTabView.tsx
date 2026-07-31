@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import useSWR from "swr";
 import { fetcher } from "../../lib/api";
 import {
@@ -8,12 +9,10 @@ import {
   Bell,
   FileText,
   CheckCircle2,
-  Clock,
-  AlertCircle,
-  Loader2,
 } from "lucide-react";
 import { useAuth } from "../../hooks/useAuth";
 import SendAgendaModal, { type EmailMode } from "./SendAgendaModal";
+import NoticeView from "./NoticeView";
 
 interface EmailTabViewProps {
   meeting: any;
@@ -21,6 +20,7 @@ interface EmailTabViewProps {
 }
 
 export default function EmailTabView({ meeting, mutate }: EmailTabViewProps) {
+  const params = useParams();
   const { user } = useAuth();
   const canSendEmail = user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'moderator';
   const isPast = meeting.status === "past";
@@ -28,6 +28,7 @@ export default function EmailTabView({ meeting, mutate }: EmailTabViewProps) {
   const isDraft = meeting.status === "draft";
   const isCompleted = meeting.is_completed === true;
 
+  const [activeTab, setActiveTab] = useState<"email" | "document">("email");
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [emailModalMode, setEmailModalMode] = useState<EmailMode>("custom");
   const currentUserEmail = user?.email || "admin@buet.ac.bd";
@@ -69,156 +70,194 @@ export default function EmailTabView({ meeting, mutate }: EmailTabViewProps) {
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center gap-3 mb-6">
-        <Mail className="w-6 h-6 text-primary" />
-        <h2 className="text-2xl font-bold">Email</h2>
+      {/* Header */}
+      <div className="mb-6">
+        <div className="flex items-center gap-3">
+          <Mail className="w-6 h-6 text-primary" />
+          <h2 className="text-2xl font-bold">Email</h2>
+        </div>
       </div>
 
-      {isLoading ? (
-        <div className="text-center py-16">
-          <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
-          <p className="text-muted-foreground mt-2">Loading invitees...</p>
-        </div>
-      ) : inviteesWithEmail.length === 0 ? (
-        <div className="text-center py-16 bg-card border border-border rounded-lg shadow-sm">
-          <Mail className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-          <h3 className="text-lg font-medium text-foreground">No Invitees with Email</h3>
-          <p className="text-muted-foreground mt-1">
-            Add invitees with email addresses to send notifications.
-          </p>
-        </div>
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-6 border-b border-border pb-2">
+        <button
+          onClick={() => setActiveTab("email")}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+            activeTab === "email"
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Mail className="w-4 h-4 inline mr-2" />
+          Email
+        </button>
+        {canSendEmail && (
+          <button
+            onClick={() => setActiveTab("document")}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeTab === "document"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <FileText className="w-4 h-4 inline mr-2" />
+            Email Document
+          </button>
+        )}
+      </div>
+
+      {/* Tab content */}
+      {activeTab === "email" ? (
+        // Email Tab Content
+        isLoading ? (
+          <div className="text-center py-16">
+            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-muted-foreground mt-2">Loading invitees...</p>
+          </div>
+        ) : inviteesWithEmail.length === 0 ? (
+          <div className="text-center py-16 bg-card border border-border rounded-lg shadow-sm">
+            <Mail className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+            <h3 className="text-lg font-medium text-foreground">No Invitees with Email</h3>
+            <p className="text-muted-foreground mt-1">
+              Add invitees with email addresses to send notifications.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Send Meeting Notice Card — enabled only when draft */}
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-4">
+                    <div className="bg-primary/10 p-3 rounded-lg">
+                      <Bell className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground text-lg">Send Meeting Notice</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Notify participants about the upcoming meeting date and time.
+                      </p>
+                      <div className="flex items-center gap-4 mt-3">
+                        <span className="text-sm text-muted-foreground">
+                          {noticeSentCount} / {inviteesWithEmail.length} notified
+                        </span>
+                        {allNoticeSent && (
+                          <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+                            <CheckCircle2 className="w-4 h-4" /> All notified
+                          </span>
+                        )}
+                      </div>
+                      {!isDraft && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Notice can only be sent when meeting is in draft status.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={openNoticeModal}
+                    disabled={noticeDisabled}
+                    className="px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
+                  >
+                    <Bell className="w-4 h-4" />
+                    Send Notice
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Send Meeting Agenda Card — enabled only when ongoing */}
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-4">
+                    <div className="bg-primary/10 p-3 rounded-lg">
+                      <FileText className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground text-lg">Send Meeting Agenda</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Send the meeting agenda with PDF attached for participants to review.
+                      </p>
+                      <div className="flex items-center gap-4 mt-3">
+                        <span className="text-sm text-muted-foreground">
+                          {agendaSentCount} / {inviteesWithEmail.length} sent
+                        </span>
+                        {allAgendaSent && (
+                          <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+                            <CheckCircle2 className="w-4 h-4" /> All sent
+                          </span>
+                        )}
+                      </div>
+                      {!isOngoing && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Agenda can only be sent when meeting is ongoing.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={openAgendaModal}
+                    disabled={agendaDisabled}
+                    className="px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 bg-secondary text-secondary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Send Agenda
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Send Meeting Resolution Card — enabled only when completed */}
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-4">
+                    <div className="bg-primary/10 p-3 rounded-lg">
+                      <FileText className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground text-lg">Send Meeting Resolution</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Send the meeting resolution with PDF attached for participants to review.
+                      </p>
+                      <div className="flex items-center gap-4 mt-3">
+                        <span className="text-sm text-muted-foreground">
+                          {resolutionSentCount} / {inviteesWithEmail.length} sent
+                        </span>
+                        {allResolutionSent && (
+                          <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+                            <CheckCircle2 className="w-4 h-4" /> All sent
+                          </span>
+                        )}
+                      </div>
+                      {!(isPast || isCompleted) && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Resolution can only be sent when meeting is completed.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={openResolutionModal}
+                    disabled={resolutionDisabled}
+                    className="px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 bg-secondary text-secondary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Send Resolution
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
       ) : (
-        <div className="space-y-6">
-          {/* Send Meeting Notice Card — enabled only when draft */}
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-4">
-                  <div className="bg-primary/10 p-3 rounded-lg">
-                    <Bell className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground text-lg">Send Meeting Notice</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Notify participants about the upcoming meeting date and time.
-                    </p>
-                    <div className="flex items-center gap-4 mt-3">
-                      <span className="text-sm text-muted-foreground">
-                        {noticeSentCount} / {inviteesWithEmail.length} notified
-                      </span>
-                      {allNoticeSent && (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
-                          <CheckCircle2 className="w-4 h-4" /> All notified
-                        </span>
-                      )}
-                    </div>
-                    {!isDraft && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Notice can only be sent when meeting is in draft status.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={openNoticeModal}
-                  disabled={noticeDisabled}
-                  className="px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
-                >
-                  <Bell className="w-4 h-4" />
-                  Send Notice
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Send Meeting Agenda Card — enabled only when ongoing */}
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-4">
-                  <div className="bg-primary/10 p-3 rounded-lg">
-                    <FileText className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground text-lg">Send Meeting Agenda</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Send the meeting agenda with PDF attached for participants to review.
-                    </p>
-                    <div className="flex items-center gap-4 mt-3">
-                      <span className="text-sm text-muted-foreground">
-                        {agendaSentCount} / {inviteesWithEmail.length} sent
-                      </span>
-                      {allAgendaSent && (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
-                          <CheckCircle2 className="w-4 h-4" /> All sent
-                        </span>
-                      )}
-                    </div>
-                    {!isOngoing && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Agenda can only be sent when meeting is ongoing.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={openAgendaModal}
-                  disabled={agendaDisabled}
-                  className="px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 bg-secondary text-secondary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
-                >
-                  <FileText className="w-4 h-4" />
-                  Send Agenda
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Send Meeting Resolution Card — enabled only when completed */}
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-4">
-                  <div className="bg-primary/10 p-3 rounded-lg">
-                    <FileText className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground text-lg">Send Meeting Resolution</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Send the meeting resolution with PDF attached for participants to review.
-                    </p>
-                    <div className="flex items-center gap-4 mt-3">
-                      <span className="text-sm text-muted-foreground">
-                        {resolutionSentCount} / {inviteesWithEmail.length} sent
-                      </span>
-                      {allResolutionSent && (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-sm font-medium">
-                          <CheckCircle2 className="w-4 h-4" /> All sent
-                        </span>
-                      )}
-                    </div>
-                    {!(isPast || isCompleted) && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Resolution can only be sent when meeting is completed.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={openResolutionModal}
-                  disabled={resolutionDisabled}
-                  className="px-4 py-2 text-sm font-medium rounded-md flex items-center gap-2 bg-secondary text-secondary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
-                >
-                  <FileText className="w-4 h-4" />
-                  Send Resolution
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        // Email Document Tab Content
+        <NoticeView meeting={meeting} mutate={mutate} />
       )}
 
       {/* Info about invitees without email */}
-      {inviteesWithEmail.length === 0 && invitees.length > 0 && (
+      {activeTab === "email" && inviteesWithEmail.length === 0 && invitees.length > 0 && (
         <p className="text-xs text-muted-foreground mt-4 text-center">
           {invitees.length - inviteesWithEmail.length} invitee(s) have no email on file.
         </p>

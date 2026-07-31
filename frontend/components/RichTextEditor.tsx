@@ -224,12 +224,12 @@ export default function RichTextEditor({
     },
   });
 
-  // Only update content from props if we are not focused (prevents cursor jumping)
+  // Sync content from props into the editor when it changes externally (e.g. prefill)
   useEffect(() => {
-    if (editor && content !== editor.getHTML() && !editor.isFocused) {
-      editor.commands.setContent(content);
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content, { emitUpdate: false });
     }
-  }, [content, editor]);
+  }, [content]);
 
   return (
     <div className={`flex flex-col w-full h-full bg-background overflow-hidden ${!editable ? 'opacity-70 cursor-not-allowed' : ''}`}>

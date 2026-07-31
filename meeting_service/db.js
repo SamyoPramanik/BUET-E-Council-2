@@ -59,6 +59,31 @@ const ensureCategorySchema = `
 `;
 pool.query(ensureCategorySchema).catch((err) => console.error('ensureCategorySchema error:', err.message));
 
+const ensureNoticeSchema = `
+  CREATE TABLE IF NOT EXISTS notices (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    meeting_id UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    notice_number INTEGER NOT NULL,
+    notice_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    notice_type VARCHAR(50) NOT NULL CHECK (notice_type IN (
+      'academic-regular-invitation','academic-regular-agenda','academic-regular-resolution',
+      'academic-immediate-agenda','academic-immediate-resolution',
+      'syndicate-regular-invitation','syndicate-regular-agenda','syndicate-regular-resolution'
+    )),
+    body TEXT NOT NULL,
+    signature_text TEXT DEFAULT '(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)\\nরেজিস্ট্রার (অ. দা.)',
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  );
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS is_regular BOOLEAN DEFAULT true;
+  INSERT INTO system_settings (key, value) VALUES
+    ('academic_signature_str', '(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)\\nরেজিস্ট্রার (অ. দা.)'),
+    ('syndicate_signature_str', '(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)\\nরেজিস্ট্রার (অ. দা.)')
+  ON CONFLICT (key) DO NOTHING;
+`;
+pool.query(ensureNoticeSchema).catch((err) => console.error('ensureNoticeSchema error:', err.message));
+
 module.exports = {
     query: (text, params) => pool.query(text, params),
     pool

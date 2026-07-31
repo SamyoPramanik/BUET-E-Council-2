@@ -245,15 +245,18 @@ const getMeetingHistory = async (req, res, next) => {
 
 const createMeeting = async (req, res, next) => {
     try {
-        const { title, meeting_title, meeting_date, type, status } = req.body;
+        const { title, meeting_title, meeting_date, type, status, is_regular } = req.body;
         if (!title || !meeting_date || !type) {
             return next(new CustomError('Title (serial), date, and type are required', 400));
         }
 
+        // Syndicate meetings must always be regular (not emergency)
+        const effectiveIsRegular = type === 'syndicate' ? true : (is_regular !== undefined ? is_regular : true);
+
         const result = await db.query(
-            `INSERT INTO meetings (title, meeting_title, meeting_date, type, status, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-            [title, meeting_title || null, meeting_date, type, status || 'draft', req.user?.id || null]
+            `INSERT INTO meetings (title, meeting_title, meeting_date, type, status, is_regular, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [title, meeting_title || null, meeting_date, type, status || 'draft', effectiveIsRegular, req.user?.id || null]
         );
 
         const newMeeting = result.rows[0];
@@ -275,7 +278,7 @@ const updateMeeting = async (req, res, next) => {
     const client = await db.pool.connect();
     try {
         const { id } = req.params;
-        const { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, max_annexure_size_mb, is_suppli_visible_to_viewers } = req.body;
+        let { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, max_annexure_size_mb, is_suppli_visible_to_viewers, is_regular } = req.body;
 
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
@@ -296,6 +299,12 @@ const updateMeeting = async (req, res, next) => {
         }
 
         await client.query('BEGIN');
+
+        // Syndicate meetings must always be regular (not emergency)
+        const effectiveType = type || meeting.type;
+        if (effectiveType === 'syndicate') {
+            is_regular = true;
+        }
 
         if (is_suppli_visible_to_viewers !== undefined && is_suppli_visible_to_viewers !== null && !isUserDeputyOrAbove) {
             await client.query('ROLLBACK');
@@ -338,9 +347,10 @@ const updateMeeting = async (req, res, next) => {
                 transcript = COALESCE($11, transcript),
                 agenda_prefix = COALESCE($12, agenda_prefix),
                 max_annexure_size_mb = COALESCE($13, max_annexure_size_mb),
-                is_suppli_visible_to_viewers = COALESCE($14, is_suppli_visible_to_viewers)
-             WHERE id = $15 RETURNING *`,
-            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, validMaxAnnexureSize, is_suppli_visible_to_viewers !== undefined ? !!is_suppli_visible_to_viewers : null, id]
+                is_suppli_visible_to_viewers = COALESCE($14, is_suppli_visible_to_viewers),
+                is_regular = COALESCE($15, is_regular)
+             WHERE id = $16 RETURNING *`,
+            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, validMaxAnnexureSize, is_suppli_visible_to_viewers !== undefined ? !!is_suppli_visible_to_viewers : null, is_regular !== undefined ? !!is_regular : null, id]
         );
 
         await client.query('COMMIT');

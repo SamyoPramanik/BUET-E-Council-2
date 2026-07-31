@@ -177,6 +177,7 @@ CREATE TABLE meetings (
     completed_by UUID REFERENCES users (id) ON DELETE SET NULL,
     max_annexure_size_mb INTEGER DEFAULT 50,
     is_suppli_visible_to_viewers BOOLEAN DEFAULT FALSE,
+    is_regular BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -934,7 +935,33 @@ AFTER INSERT OR UPDATE OR DELETE ON agenda_tags
 FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
 
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS is_suppli_visible_to_viewers BOOLEAN DEFAULT FALSE;
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS is_regular BOOLEAN DEFAULT TRUE;
 ALTER TABLE agenda ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories (id) ON DELETE SET NULL;
+
+-- Notices table for storing notice drafts and generating notice PDFs
+CREATE TABLE IF NOT EXISTS notices (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    meeting_id UUID REFERENCES meetings (id) ON DELETE CASCADE,
+    notice_number VARCHAR(255) DEFAULT '',
+    notice_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    notice_type VARCHAR(50) NOT NULL CHECK (notice_type IN ('invitation', 'agenda', 'resolution')),
+    body TEXT DEFAULT '',
+    signature_text TEXT DEFAULT '',
+    created_by UUID REFERENCES users (id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Signature strings for notice generation (academic and syndicate)
+INSERT INTO system_settings (key, value) VALUES
+('academic_signature_str', '(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)
+রেজিস্ট্রার (অ. দা.)')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO system_settings (key, value) VALUES
+('syndicate_signature_str', '(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)
+রেজিস্ট্রার (অ. দা.)')
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO categories (serial, name) VALUES
 (1, '(উপাচার্য মহোদয় কর্তৃক গৃহীত ব্যবস্থা)'),
@@ -950,5 +977,103 @@ INSERT INTO categories (serial, name) VALUES
 (11, '(স্নাতক পর্যায়ের পরীক্ষা কমিটি সংক্রান্ত)'),
 (12, '(ইকুইভ্যালেন্স কমিটির সুপারিশ সংক্রান্ত)'),
 (13, '(শিক্ষার্থীদের শাস্তি মওকুফের আবেদন সংক্রান্ত)'),
-(14, '(অন্যান্য বিষয় সংক্রান্ত)')
+(14, '(অন্যান্য বিষয় সংক্রান্ত)')
 ON CONFLICT (name) DO NOTHING;
+
+-- -- ============================================================
+-- -- TEST DATA: Minimal syndicate meeting with invitees
+-- -- ============================================================
+
+-- -- New offices for test invitees
+-- INSERT INTO offices (serial, name_bangla, name_english) VALUES
+-- (28, 'মহাপরিচালক, মাধ্যমিক ও উচ্চ শিক্ষা অধিদপ্তর, গণপ্রজাতন্ত্রী বাংলাদেশ সরকার, ঢাকা।', 'Director General, Secondary & Higher Education Division, Bangladesh Secretariat, Dhaka'),
+-- (29, 'মহাপরিচালক, কারিগরী শিক্ষা অধিদপ্তর, গণপ্রজাতন্ত্রী বাংলাদেশ সরকার, ঢাকা। এফ-৪/বি, আগারগাঁও, ঢাকা-১২০৭।', 'Director General, Technical Education Division, Bangladesh Secretariat, Dhaka'),
+-- (30, 'সিনিয়র সচিব, মাধ্যমিক ও উচ্চ শিক্ষা বিভাগ, শিক্ষা মন্ত্রণালয়।', 'Senior Secretary, Secondary & Higher Education Division, Ministry of Education'),
+-- (31, 'বাসা নং: ৪২, রোড নম্বর: ৪এ, ধানমন্ডি আবাসিক এলাকা, ঢাকা-১২০৯।', 'House 42, Road 4A, Dhanmondi Residential Area, Dhaka-1209'),
+-- (32, 'ফ্ল্যাট:সি ৮, বাসা নং ২১, রোড নম্বর: ৭, ধানমন্ডি, ঢাকা-১২০৫।', 'Flat C8, House 21, Road 7, Dhanmondi, Dhaka-1205'),
+-- (33, 'সাউথ প্রশান্তি, বাসা: ২২, ফ্ল্যাট: এ-১১, রোড নং-৯এ, ধানমন্ডি, ঢাকা।', 'South Prashanti, House 22, Flat A-11, Road 9A, Dhanmondi, Dhaka'),
+-- (34, 'র‍্যাংগস্ ওয়াটারফ্রন্ট, এ্যাপার্টমেন্ট নং: বি ১০, বাসা নম্বর: ১, রোড নম্বর: ১৫, গুলশান-১, ঢাকা।', 'Rangs Waterfront, Apartment B10, House 1, Road 15, Gulshan-1, Dhaka'),
+-- (35, 'ফ্ল্যাট নং: জি/৮, বিল্ডিং নম্বর: ২, জয়নগর সরকারি অফিসার্স এ্যাপার্টমেন্ট কমপ্লেক্স, ব্লক-ডি, রোড নম্বর: ২, মিরপুর ১৫, থানা-কাফরুল, ঢাকা-১২১৬।', 'Flat G/8, Building 2, Joynagar Govt Officers Apartment Complex, Block D, Road 2, Mirpur 15, Dhaka-1216')
+-- ON CONFLICT (name_bangla) DO NOTHING;
+
+-- -- Test syndicate meeting
+-- INSERT INTO meetings (id, title, meeting_title, meeting_date, type, is_regular, status)
+-- VALUES (
+--     'a0000000-0000-0000-0000-000000000001',
+--     '1',
+--     'Test Syndicate Meeting',
+--     NOW(),
+--     'syndicate',
+--     true,
+--     'draft'
+-- )
+-- ON CONFLICT (id) DO NOTHING;
+
+-- -- Test invitees (syndicate members) for the test meeting
+-- DO $$
+-- DECLARE
+--     v_office_id UUID;
+--     v_meeting_id UUID := 'a0000000-0000-0000-0000-000000000001';
+-- BEGIN
+--     IF NOT EXISTS (SELECT 1 FROM invitees WHERE meeting_id = v_meeting_id) THEN
+--         -- 1. অধ্যাপক ড. এ.বি.এম. বদরুজ্জামান (উপাচার্য, office serial 26)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 26 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES ('অধ্যাপক ড. এ.বি.এম. বদরুজ্জামান', 'অধ্যাপক', v_office_id, 1, v_meeting_id, true);
+
+--         -- 2. অধ্যাপক ড. আব্দুল হাসিব চৌধুরী (উপ-উপাচার্য, office serial 27)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 27 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES ('অধ্যাপক ড. আব্দুল হাসিব চৌধুরী', 'অধ্যাপক', v_office_id, 2, v_meeting_id, true);
+
+--         -- 3. মহাপরিচালক, মাধ্যমিক ও উচ্চ শিক্ষা অধিদপ্তর (office serial 28)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 28 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES (NULL, NULL, v_office_id, 3, v_meeting_id, true);
+
+--         -- 4. মহাপরিচালক, কারিগরী শিক্ষা অধিদপ্তর (office serial 29)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 29 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES (NULL, NULL, v_office_id, 4, v_meeting_id, true);
+
+--         -- 5. ডিন, কেমিক্যাল ও ম্যাটেরিয়ালস কৌশল অনুষদ (office serial 7)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 7 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES (NULL, NULL, v_office_id, 5, v_meeting_id, true);
+
+--         -- 6. ডিন, পুরকৌশল অনুষদ (office serial 8)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 8 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES (NULL, NULL, v_office_id, 6, v_meeting_id, true);
+
+--         -- 7. জনাব সিদ্দিক জোবায়ের (office serial 30)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 30 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES ('জনাব সিদ্দিক জোবায়ের', NULL, v_office_id, 7, v_meeting_id, true);
+
+--         -- 8. অধ্যাপক ড. এম. ফিরোজ আহমেদ (office serial 31)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 31 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES ('অধ্যাপক ড. এম. ফিরোজ আহমেদ', 'অধ্যাপক', v_office_id, 8, v_meeting_id, true);
+
+--         -- 9. অধ্যাপক ড. এম.আর. কবির (office serial 32)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 32 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES ('অধ্যাপক ড. এম.আর. কবির', 'অধ্যাপক', v_office_id, 9, v_meeting_id, true);
+
+--         -- 10. অধ্যাপক ড. মোঃ রিজওয়ান খান (office serial 33)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 33 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES ('অধ্যাপক ড. মোঃ রিজওয়ান খান', 'অধ্যাপক', v_office_id, 10, v_meeting_id, true);
+
+--         -- 11. জনাব আলী আশফাক (office serial 34)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 34 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES ('জনাব আলী আশফাক', NULL, v_office_id, 11, v_meeting_id, true);
+
+--         -- 12. প্রকৌশলী মোঃ আলী জুলকারনাইন (office serial 35)
+--         SELECT id INTO v_office_id FROM offices WHERE serial = 35 LIMIT 1;
+--         INSERT INTO invitees (name, designation, office_id, serial, meeting_id, is_present)
+--         VALUES ('প্রকৌশলী মোঃ আলী জুলকারনাইন', NULL, v_office_id, 12, v_meeting_id, true);
+--     END IF;
+-- END $$;

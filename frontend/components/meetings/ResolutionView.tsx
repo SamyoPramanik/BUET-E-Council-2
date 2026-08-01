@@ -256,188 +256,188 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                       ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`)
                       : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + displaySerial}`}
                   </h3>
-              {agenda.tags && agenda.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {agenda.tags.map((tag: any) => (
-                    <span key={tag.id} className="bg-muted text-muted-foreground text-xs font-medium px-2 py-0.5 rounded-full">
-                      {tag.name}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div className="text-muted-foreground bg-muted/30 p-4 rounded-md border-l-4 border-muted/50 prose prose-sm dark:prose-invert max-w-none">
-                <div dangerouslySetInnerHTML={{ __html: displayContent ? sanitizeHtml(displayContent) : "<p class='italic opacity-50'>Empty agenda...</p>" }} />
-              </div>
-
-              {/* Annexure List placed underneath the agenda content */}
-              <AnnexureList contentId={agenda.id} type="resolution" readOnly={!canEdit} />
-            </div>
-
-            {/* Bottom Section (The Resolution) */}
-            <div>
-              <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-3 flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2">
-                  <FileCheck className="w-4 h-4 text-primary" />
-                  Resolution Outcome
-                </span>
-                {agenda.resolution && (
-                  <div className="flex gap-2">
-                    <RevisionHistory contentId={agenda.id} contentType="resolutionItem" onRestored={() => mutate()} canRestore={canEdit} />
-                    {!readOnly && (
-                      <>
-                        <button
-                          onClick={() => handleEditClick(agenda)}
-                          className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
-                          title="Edit Resolution"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(agenda.id)}
-                          className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
-                          title="Delete Resolution"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </h4>
-
-              {editingId === agenda.id ? (
-                <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10">
-                  <div className="p-3 border-b border-border bg-muted/30">
-                    <TagMultiSelect
-                      options={allTags}
-                      value={editTagIds}
-                      onChange={setEditTagIds}
-                      onAddNew={handleAddNewTag}
-                      placeholder="Add tags..."
-                    />
-                  </div>
-                  <RichTextEditor
-                    content={editContent}
-                    onChange={setEditContent}
-                    className="p-4 min-h-[150px] font-bold"
-                  />
-                  <div className="bg-muted p-2 flex justify-between items-center border-t border-border">
-                    <button
-                      onClick={() => { setTargetAgendaId(agenda.id); setIsDrawerOpen(true); }}
-                      className="px-3 py-1 text-xs text-primary font-medium hover:bg-primary/10 rounded-md flex items-center gap-1.5 transition-colors"
-                    >
-                      <FileText className="w-3.5 h-3.5" /> From Template
-                    </button>
-                    <div className="flex gap-2">
-                      <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
-                      <button onClick={handleSave} disabled={isSaving} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md disabled:opacity-50">
-                        {isSaving ? "Saving..." : "Save Resolution"}
-                      </button>
+                  {agenda.tags && agenda.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {agenda.tags.map((tag: any) => (
+                        <span key={tag.id} className="bg-muted text-muted-foreground text-xs font-medium px-2 py-0.5 rounded-full">
+                          {tag.name}
+                        </span>
+                      ))}
                     </div>
+                  )}
+                  <div className="text-muted-foreground bg-muted/30 p-4 rounded-md border-l-4 border-muted/50 prose prose-sm dark:prose-invert max-w-none">
+                    <div dangerouslySetInnerHTML={{ __html: displayContent ? sanitizeHtml(displayContent) : "<p class='italic opacity-50'>Empty agenda...</p>" }} />
                   </div>
-                </div>
-              ) : agenda.resolution ? (
-                <div
-                  className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-background border border-border p-5 rounded-md shadow-inner font-bold"
-                  dangerouslySetInnerHTML={{
-                    __html: sanitizeHtml(
-                      stripLeadingResolutionPrefix(agenda.resolution)
-                    )
-                  }}
-                />
-              ) : (
-                !readOnly && (
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => handleEditClick(agenda)}
-                      className="bg-background border border-primary text-primary hover:bg-primary/5 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors"
-                    >
-                      <Edit3 className="w-4 h-4" /> Create Resolution
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleEditClick(agenda);
-                        setTargetAgendaId(agenda.id);
-                        setIsDrawerOpen(true);
-                      }}
-                      className="bg-accent text-accent-foreground border border-border shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 hover:bg-accent/80 transition-colors"
-                    >
-                      <FileText className="w-4 h-4" /> From Template
-                    </button>
-                  </div>
-                )
-              )}
-            </div>
 
-            {/* Execution Status (Only for past meetings) */}
-            {meeting.status === 'past' && agenda.resolution && (
-              <div className="mt-8 pt-6 border-t border-border/50">
-                <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-                  <FileCheck className="w-4 h-4 text-emerald-500" />
-                  Execution Status
-                </h4>
-
-                <div className="flex items-center gap-3 mb-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      disabled={readOnly}
-                      className="w-4 h-4 rounded border-input text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-                      checked={agenda.is_executed || false}
-                      onChange={() => handleToggleExecuted(agenda)}
-                    />
-                    <span className="text-sm font-medium">Resolution Executed</span>
-                  </label>
+                  {/* Annexure List placed underneath the agenda content */}
+                  <AnnexureList contentId={agenda.id} type="resolution" readOnly={!canEdit} />
                 </div>
 
+                {/* Bottom Section (The Resolution) */}
                 <div>
-                  {executingId === agenda.id ? (
-                    <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10 mb-4">
+                  <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-3 flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2">
+                      <FileCheck className="w-4 h-4 text-primary" />
+                      Resolution Outcome
+                    </span>
+                    {agenda.resolution && (
+                      <div className="flex gap-2">
+                        <RevisionHistory contentId={agenda.id} contentType="resolutionItem" onRestored={() => mutate()} canRestore={canEdit} />
+                        {!readOnly && (
+                          <>
+                            <button
+                              onClick={() => handleEditClick(agenda)}
+                              className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
+                              title="Edit Resolution"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(agenda.id)}
+                              className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
+                              title="Delete Resolution"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </h4>
+
+                  {editingId === agenda.id ? (
+                    <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10">
+                      <div className="p-3 border-b border-border bg-muted/30">
+                        <TagMultiSelect
+                          options={allTags}
+                          value={editTagIds}
+                          onChange={setEditTagIds}
+                          onAddNew={handleAddNewTag}
+                          placeholder="Add tags..."
+                        />
+                      </div>
                       <RichTextEditor
-                        content={executionContent}
-                        onChange={setExecutionContent}
-                        className="p-4 min-h-[100px]"
+                        content={editContent}
+                        onChange={setEditContent}
+                        className="p-4 min-h-[150px] font-bold"
                       />
-                      <div className="bg-muted p-2 flex justify-end gap-2 border-t border-border">
-                        <button onClick={() => setExecutingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
-                        <button onClick={() => handleSaveExecution(agenda.id)} disabled={isSavingExecution} className="px-3 py-1 text-xs bg-emerald-600 text-white hover:bg-emerald-700 rounded-md disabled:opacity-50 transition-colors">
-                          {isSavingExecution ? "Saving..." : "Save Details"}
+                      <div className="bg-muted p-2 flex justify-between items-center border-t border-border">
+                        <button
+                          onClick={() => { setTargetAgendaId(agenda.id); setIsDrawerOpen(true); }}
+                          className="px-3 py-1 text-xs text-primary font-medium hover:bg-primary/10 rounded-md flex items-center gap-1.5 transition-colors"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> From Template
                         </button>
+                        <div className="flex gap-2">
+                          <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
+                          <button onClick={handleSave} disabled={isSaving} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md disabled:opacity-50">
+                            {isSaving ? "Saving..." : "Save Resolution"}
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  ) : agenda.execution_status ? (
-                    <div className="relative group mb-4">
-                      {!readOnly && (
-                        <button
-                          onClick={() => { setExecutingId(agenda.id); setExecutionContent(agenda.execution_status); }}
-                          className="absolute top-0 right-0 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-emerald-50 rounded-md hover:bg-emerald-100 flex items-center gap-2 text-xs font-medium z-10"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" /> Edit Details
-                        </button>
-                      )}
-                      <div
-                        className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-emerald-200/30 border border-emerald-100 p-4 rounded-md shadow-sm"
-                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.execution_status) }}
-                      />
-                    </div>
+                  ) : agenda.resolution ? (
+                    <div
+                      className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-background border border-border p-5 rounded-md shadow-inner font-bold"
+                      dangerouslySetInnerHTML={{
+                        __html: sanitizeHtml(
+                          stripLeadingResolutionPrefix(agenda.resolution)
+                        )
+                      }}
+                    />
                   ) : (
                     !readOnly && (
-                      <button
-                        onClick={() => { setExecutingId(agenda.id); setExecutionContent(""); }}
-                        className="bg-background border border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors mb-4"
-                      >
-                        <Edit3 className="w-4 h-4" /> Add Execution Details
-                      </button>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleEditClick(agenda)}
+                          className="bg-background border border-primary text-primary hover:bg-primary/5 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors"
+                        >
+                          <Edit3 className="w-4 h-4" /> Create Resolution
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleEditClick(agenda);
+                            setTargetAgendaId(agenda.id);
+                            setIsDrawerOpen(true);
+                          }}
+                          className="bg-accent text-accent-foreground border border-border shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 hover:bg-accent/80 transition-colors"
+                        >
+                          <FileText className="w-4 h-4" /> From Template
+                        </button>
+                      </div>
                     )
                   )}
                 </div>
+
+                {/* Execution Status (Only for past meetings) */}
+                {meeting.status === 'past' && agenda.resolution && (
+                  <div className="mt-8 pt-6 border-t border-border/50">
+                    <h4 className="font-semibold text-sm text-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+                      <FileCheck className="w-4 h-4 text-emerald-500" />
+                      Execution Status
+                    </h4>
+
+                    <div className="flex items-center gap-3 mb-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          disabled={readOnly}
+                          className="w-4 h-4 rounded border-input text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
+                          checked={agenda.is_executed || false}
+                          onChange={() => handleToggleExecuted(agenda)}
+                        />
+                        <span className="text-sm font-medium">Resolution Executed</span>
+                      </label>
+                    </div>
+
+                    <div>
+                      {executingId === agenda.id ? (
+                        <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10 mb-4">
+                          <RichTextEditor
+                            content={executionContent}
+                            onChange={setExecutionContent}
+                            className="p-4 min-h-[100px]"
+                          />
+                          <div className="bg-muted p-2 flex justify-end gap-2 border-t border-border">
+                            <button onClick={() => setExecutingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
+                            <button onClick={() => handleSaveExecution(agenda.id)} disabled={isSavingExecution} className="px-3 py-1 text-xs bg-emerald-600 text-white hover:bg-emerald-700 rounded-md disabled:opacity-50 transition-colors">
+                              {isSavingExecution ? "Saving..." : "Save Details"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : agenda.execution_status ? (
+                        <div className="relative group mb-4">
+                          {!readOnly && (
+                            <button
+                              onClick={() => { setExecutingId(agenda.id); setExecutionContent(agenda.execution_status); }}
+                              className="absolute top-0 right-0 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-emerald-50 rounded-md hover:bg-emerald-100 flex items-center gap-2 text-xs font-medium z-10"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" /> Edit Details
+                            </button>
+                          )}
+                          <div
+                            className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-emerald-200/30 border border-emerald-100 p-4 rounded-md shadow-sm"
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.execution_status) }}
+                          />
+                        </div>
+                      ) : (
+                        !readOnly && (
+                          <button
+                            onClick={() => { setExecutingId(agenda.id); setExecutionContent(""); }}
+                            className="bg-background border border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors mb-4"
+                          >
+                            <Edit3 className="w-4 h-4" /> Add Execution Details
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-      );
-    })
-  )}
+            </div>
+          );
+        })
+      )}
 
       <TemplateDrawer
         isOpen={isDrawerOpen}

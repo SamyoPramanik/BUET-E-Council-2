@@ -9,9 +9,10 @@ interface Meeting {
 
 interface MeetingTableProps {
   meetings: Meeting[];
+  linkPrefix?: string;
 }
 
-export default function MeetingTable({ meetings }: MeetingTableProps) {
+export default function MeetingTable({ meetings, linkPrefix = '/meetings' }: MeetingTableProps) {
   return (
     <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
@@ -33,7 +34,7 @@ export default function MeetingTable({ meetings }: MeetingTableProps) {
                   {meeting.serial}
                 </td>
                 <td className="px-6 py-4 text-sm text-foreground">
-                  <Link href={`/meetings/${meeting.id}`} className="block hover:underline text-primary font-medium">
+                  <Link href={`${linkPrefix}/${meeting.id}`} className="block hover:underline text-primary font-medium">
                     {meeting.title}
                   </Link>
                 </td>

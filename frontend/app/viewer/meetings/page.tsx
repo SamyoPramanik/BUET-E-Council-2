@@ -82,7 +82,7 @@ export default function ViewerMeetingsPage() {
             Loading meetings...
           </div>
         ) : (
-          <MeetingTable meetings={meetings} />
+          <MeetingTable meetings={meetings} linkPrefix="/viewer/meetings" />
         )}
 
       </main>

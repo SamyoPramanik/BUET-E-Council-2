@@ -120,26 +120,28 @@ export default function PublicMeetingView() {
   const [presenteesExpanded, setPresenteesExpanded] = useState(false);
   const [activeAgendaTab, setActiveAgendaTab] = useState<'main' | 'suppli'>('main');
 
-  // Fetch the meeting details
-  const { data: meetingRes, error: meetingError } = useSWR(`/meetings/${params.id}`, fetcher);
+  const meetingId = params?.id;
 
-  const meeting = meetingRes.data;
+  // Fetch the meeting details
+  const { data: meetingRes, error: meetingError } = useSWR(meetingId ? `/meetings/${meetingId}` : null, fetcher);
+
+  const meeting = meetingRes?.data;
   const isPast = meeting?.status === 'past';
 
   // Fetch agendas for current active tab (or merged for past meeting)
   const { data: agendasRes } = useSWR(
-    meetingRes ? (isPast ? `/agendas?meeting_id=${params.id}` : `/agendas?meeting_id=${params.id}&is_suppli=${activeAgendaTab === 'suppli'}`) : null,
+    meeting ? (isPast ? `/agendas?meeting_id=${meetingId}` : `/agendas?meeting_id=${meetingId}&is_suppli=${activeAgendaTab === 'suppli'}`) : null,
     fetcher
   );
 
   // Fetch main agendas for supplementary counting if needed
   const { data: mainAgendasRes } = useSWR(
-    meetingRes && (isPast || activeAgendaTab === 'suppli') ? `/agendas?meeting_id=${params.id}&is_suppli=false` : null,
+    meeting && (isPast || activeAgendaTab === 'suppli') ? `/agendas?meeting_id=${meetingId}&is_suppli=false` : null,
     fetcher
   );
 
   // Fetch presentees if meeting is past
-  const { data: presenteesRes } = useSWR(meetingRes?.data?.status === 'past' ? `/meetings/${params.id}/presentees` : null, fetcher);
+  const { data: presenteesRes } = useSWR(isPast ? `/meetings/${meetingId}/presentees` : null, fetcher);
 
   if (meetingError) return (
     <div className="min-h-screen flex flex-col bg-background">

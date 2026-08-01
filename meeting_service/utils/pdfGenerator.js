@@ -235,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v40';
+const PDF_TEMPLATE_VERSION = 'v41';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -471,9 +471,9 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 let titleStr = item.office || item.designation || '';
                 if (item.isVc && !titleStr.includes('উপাচার্য')) titleStr = 'উপাচার্য';
                 if (item.isProVc && !titleStr.includes('উপ-উপাচার্য')) titleStr = 'উপ-উপাচার্য';
-                
+
                 const isVcOrProVc = item.isVc || item.isProVc || (titleStr && (titleStr.includes('উপাচার্য') || titleStr.includes('উপ-উপাচার্য') || titleStr.includes('উপউপাচার্য')));
-                
+
                 if (isVcOrProVc) {
                     displayName = `${displayName},`;
                     let titleClean = titleStr ? titleStr.replace(/,\s*ঢাকা$/i, '').trim() : '';
@@ -673,10 +673,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
 
                 const targetAgendas = (cacheVariant === 'suppli-agenda'
                     ? agendas.filter(ag => ag.is_suppli)
-                    : (cacheVariant === 'resolution-status'
-                        ? agendas.filter(ag => filterOutEmptyBibidha(ag))
-                        : agendas.filter(ag => !ag.is_suppli && filterOutEmptyBibidha(ag))
-                    )
+                    : agendas.filter(ag => !ag.is_suppli && filterOutEmptyBibidha(ag))
                 );
 
                 const mainAgendaCount = agendas.filter(a => {
@@ -741,18 +738,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
 
                 if (cacheVariant === 'resolution-status') {
                     let tableRows = '';
-                    let hasRenderedSuppliHeader = false;
                     targetAgendas.forEach(ag => {
-                        if (ag.is_suppli && !hasRenderedSuppliHeader) {
-                            hasRenderedSuppliHeader = true;
-                            tableRows += `
-                            <tr>
-                                <td colspan="4" style="border: 1px solid #000; padding: 8px; background-color: #fef3c7; font-weight: bold; font-size: 14px; text-align: center;">
-                                    <b>সম্পূরক আলোচ্যসূচি</b>
-                                </td>
-                            </tr>`;
-                        }
-
                         const agSerialStr = ag.is_suppli
                             ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), serialWidth)
                             : toBanglaDigits(ag.agenda_serial, serialWidth);
@@ -771,9 +757,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                         const annexureTags = validAnnexures.length > 0
                             ? validAnnexures.map((an) => {
                                 const num = an.global_serial || an.annexure_serial;
-                                const prefix = an.is_suppli ? 'সাপ্লি: পরিশিষ্ট-' : 'পরিশिष्ट-';
-                                return `${prefix}${toBanglaDigits(num)}`;
-                              }).join(', ')
+                                return `পরিশিষ্ট-${toBanglaDigits(num)}`;
+                            }).join(', ')
                             : null;
 
                         let contentHtml = isOnlyBibidhaTitle ? '' : convertMarkdownTablesToHtml(ag.content || '');
@@ -860,7 +845,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                             const num = an.global_serial || an.annexure_serial;
                             const prefix = (!isResolution && an.is_suppli) ? 'সাপ্লি: পরিশিষ্ট-' : 'পরিশিষ্ট-';
                             return `${prefix}${toBanglaDigits(num)}`;
-                          }).join(', ')
+                        }).join(', ')
                         : null;
 
                     let contentHtml = isOnlyBibidhaTitle ? '' : convertMarkdownTablesToHtml(ag.content || '');

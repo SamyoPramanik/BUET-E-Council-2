@@ -235,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v43';
+const PDF_TEMPLATE_VERSION = 'v47';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -274,7 +274,7 @@ const storeCachedPdf = async (cacheKey, pdfBuffer, fingerprint) => {
 
 const generatePdf = async (meetingId, isResolution, cacheVariant) => {
     try {
-        const meetingQuery = `SELECT title, meeting_date, description, agenda_prefix, type FROM meetings WHERE id = $1`;
+        const meetingQuery = `SELECT title, meeting_date, description, conclusion, agenda_prefix, type FROM meetings WHERE id = $1`;
         const presenteesQuery = `
             SELECT p.id, p.name, p.designation, p.serial, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM invitees p
@@ -352,7 +352,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const cacheKey = pdfCacheKey(meetingId, cacheType);
         const fingerprint = computeFingerprint({
             type: cacheType,
-            meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, agenda_prefix: meeting.agenda_prefix },
+            meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, conclusion: meeting.conclusion, agenda_prefix: meeting.agenda_prefix },
             presentees: stableRows(presentees),
             agendas: stableRows(agendas)
         });
@@ -637,9 +637,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             <div class="text-center sub-title">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
             `}
 
-            ${cacheVariant === 'resolution-status' ? `
-                ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}
-            ` : (isResolution ? `
+            ${cacheVariant === 'resolution-status' ? '' : (isResolution ? `
                 ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}
 
                 <div class="presentees-header">উপস্থিত সদস্যবৃন্দ</div>
@@ -677,7 +675,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     ? agendas.filter(ag => isSuppliAg(ag))
                     : ((isResolution || cacheVariant === 'resolution-status')
                         ? agendas.filter(ag => filterOutEmptyBibidha(ag))
-                        : agendas.filter(ag => !isSuppliAg(ag) && filterOutEmptyBibidha(ag))
+                        : agendas.filter(ag => !isSuppliAg(ag))
                     )
                 );
 
@@ -724,7 +722,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
 
                 targetAgendas.forEach((ag) => {
                     const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
-                    const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
+                    const isBibidha = !ag.is_suppli && (ag.agenda_serial === 0 || cleanContent.startsWith('বিবিধ'));
                     const catName = ag.category_name ? String(ag.category_name).trim() : '';
                     const isUncategorized = !catName || /^(uncategorized|un-categorized|অশ্রেণীভুক্ত|অশ্রেণিভুক্ত)$/i.test(catName);
 
@@ -749,7 +747,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                             : toBanglaDigits(ag.agenda_serial, serialWidth);
 
                         const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
-                        const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
+                        const isBibidha = !ag.is_suppli && (ag.agenda_serial === 0 || cleanContent.startsWith('বিবিধ'));
                         const strippedText = cleanContent.replace(/^\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
                         const isOnlyBibidhaTitle = isBibidha && !strippedText;
                         const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
@@ -835,7 +833,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                         : toBanglaDigits(ag.agenda_serial, serialWidth);
 
                     const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
-                    const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
+                    const isBibidha = !ag.is_suppli && (ag.agenda_serial === 0 || cleanContent.startsWith('বিবিধ'));
                     const strippedText = cleanContent.replace(/^\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
                     const isOnlyBibidhaTitle = isBibidha && !strippedText;
                     const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
@@ -888,6 +886,11 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     `;
                 }).join('');
             })()}
+            ${isResolution && cacheVariant !== 'resolution-status' && meeting.conclusion ? `
+            <div class="conclusion" style="margin-top: 30px; font-size: 14px; text-align: justify; page-break-inside: avoid;">
+                ${convertMarkdownTablesToHtml(meeting.conclusion)}
+            </div>
+            ` : ''}
         </body>
         </html>
         `;

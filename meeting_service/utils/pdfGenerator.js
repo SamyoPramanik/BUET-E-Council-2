@@ -235,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v41';
+const PDF_TEMPLATE_VERSION = 'v42';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -657,8 +657,10 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             ${(() => {
                 const BANGLA_GROUP_LETTERS = ['ক', 'খ', 'গ', 'ঘ', 'ঙ', 'চ', 'ছ', 'জ', 'ঝ', 'ঞ', 'ট', 'ঠ', 'ড', 'ঢ', 'ণ', 'ত', 'থ', 'দ', 'ধ', 'ন', 'প', 'ফ', 'ব', 'ভ', 'ম', 'য', 'র', 'ল', 'শ', 'ষ', 'স', 'হ'];
 
+                const isSuppliAg = (ag) => ag.is_suppli === true || ag.is_suppli === 'true' || ag.is_suppli === 't' || ag.is_suppli === 1;
+
                 const filterOutEmptyBibidha = (ag) => {
-                    if (!ag.is_suppli) {
+                    if (!isSuppliAg(ag)) {
                         const clean = (ag.content || '').replace(/<[^>]*>/g, '').trim();
                         const isBibidha = ag.agenda_serial === 0 || clean.startsWith('বিবিধ');
                         if (isBibidha) {
@@ -672,12 +674,15 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 };
 
                 const targetAgendas = (cacheVariant === 'suppli-agenda'
-                    ? agendas.filter(ag => ag.is_suppli)
-                    : agendas.filter(ag => !ag.is_suppli && filterOutEmptyBibidha(ag))
+                    ? agendas.filter(ag => isSuppliAg(ag))
+                    : ((isResolution || cacheVariant === 'resolution-status')
+                        ? agendas.filter(ag => filterOutEmptyBibidha(ag))
+                        : agendas.filter(ag => !isSuppliAg(ag) && filterOutEmptyBibidha(ag))
+                    )
                 );
 
                 const mainAgendaCount = agendas.filter(a => {
-                    if (a.is_suppli) return false;
+                    if (isSuppliAg(a)) return false;
                     const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
                     return !clean.startsWith('বিবিধ');
                 }).length;

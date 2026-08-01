@@ -235,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v42';
+const PDF_TEMPLATE_VERSION = 'v43';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -754,7 +754,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                         const isOnlyBibidhaTitle = isBibidha && !strippedText;
                         const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
                         const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
-                        const titleStr = isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
+                        const titleStr = isBibidha ? `বিবিধ :` : `প্রস্তাবনা নং ${fullSerial}`;
 
                         const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
                             .filter(an => !an.is_excluded_in_resolution)
@@ -840,7 +840,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     const isOnlyBibidhaTitle = isBibidha && !strippedText;
                     const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
                     const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
-                    const titleStr = isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
+                    const showBibidhaSerial = !isResolution && !cacheVariant && isOnlyBibidhaTitle;
+                    const titleStr = isBibidha ? (showBibidhaSerial ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
 
                     const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
                         .filter(an => isResolution ? !an.is_excluded_in_resolution : (an.annexure_type !== 'resolution'))

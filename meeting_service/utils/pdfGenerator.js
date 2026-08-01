@@ -235,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v36';
+const PDF_TEMPLATE_VERSION = 'v37';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -295,6 +295,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 a.agenda_serial, 
                 a.content, 
                 a.resolution, 
+                a.is_executed,
+                a.execution_status,
                 a.is_suppli,
                 a.category_id,
                 c.name AS category_name,
@@ -526,7 +528,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         // Agenda (pre-meeting notice) and resolution (post-meeting minutes) are
         // different documents, not the same content with an extra line: they
         // carry different titles and tense ("to be held" vs "held").
-        const docLabel = cacheVariant === 'suppli-agenda' ? 'সম্পূরক আলোচ্যসূচি' : (isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচি');
+        const docLabel = cacheVariant === 'suppli-agenda' ? 'সম্পূরক আলোচ্যসূচি' : (cacheVariant === 'resolution-status' ? 'সিদ্ধান্ত বাস্তবায়ন অবস্থা' : (isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচি'));
         const dateVerb = isResolution ? 'অনুষ্ঠিত' : 'অনুষ্ঠিতব্য';
 
         // Build council label based on meeting type
@@ -731,6 +733,92 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     }
                 });
                 processGroup();
+
+                if (cacheVariant === 'resolution-status') {
+                    let tableRows = '';
+                    targetAgendas.forEach(ag => {
+                        const agSerialStr = ag.is_suppli
+                            ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), serialWidth)
+                            : toBanglaDigits(ag.agenda_serial, serialWidth);
+
+                        const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+                        const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
+                        const strippedText = cleanContent.replace(/^\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
+                        const isOnlyBibidhaTitle = isBibidha && !strippedText;
+                        const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
+                        const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
+                        const titleStr = isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
+
+                        const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
+                            .filter(an => !an.is_excluded_in_resolution)
+                            .sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
+                        const annexureTags = validAnnexures.length > 0
+                            ? validAnnexures.map((an) => {
+                                const num = an.global_serial || an.annexure_serial;
+                                return `পরিশিষ্ট-${toBanglaDigits(num)}`;
+                              }).join(', ')
+                            : null;
+
+                        let contentHtml = isOnlyBibidhaTitle ? '' : convertMarkdownTablesToHtml(ag.content || '');
+                        if (isBibidha) {
+                            contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                        } else if (contentHtml) {
+                            contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*প্রস্তাব(?:না)?\s*নং\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]+\s*)*[০-৯\d\s\/\-]*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                            contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
+                        }
+                        if (annexureTags) {
+                            const tagString = ` <b>(${annexureTags})</b>`;
+                            if (contentHtml.trim().endsWith('</p>')) {
+                                const lastIndex = contentHtml.lastIndexOf('</p>');
+                                contentHtml = contentHtml.substring(0, lastIndex) + tagString + contentHtml.substring(lastIndex);
+                            } else if (contentHtml) {
+                                contentHtml += tagString;
+                            } else {
+                                contentHtml = `<p><b>(${annexureTags})</b></p>`;
+                            }
+                        }
+
+                        const catHeader = categoryHeaderMap.get(ag.id);
+                        if (catHeader) {
+                            tableRows += `
+                            <tr>
+                                <td colspan="4" style="border: 1px solid #000; padding: 8px; background-color: #e5e7eb; font-weight: bold; font-size: 14px;">
+                                    <b>${catHeader}</b>
+                                </td>
+                            </tr>`;
+                        }
+
+                        const isExec = ag.is_executed === 'yes' || ag.is_executed === true;
+                        const execBadge = isExec 
+                            ? '<span style="color: #166534; font-weight: bold; background: #dcfce7; padding: 2px 6px; border-radius: 4px; display: inline-block;">বাস্তবায়িত</span>'
+                            : '<span style="color: #991b1b; font-weight: bold; background: #fee2e2; padding: 2px 6px; border-radius: 4px; display: inline-block;">অবাস্তবায়িত</span>';
+                        const execDetails = ag.execution_status ? `<div style="margin-top: 6px; font-size: 12px; color: #374151;">${convertMarkdownTablesToHtml(ag.execution_status)}</div>` : '';
+                        const statusColHtml = `${execBadge}${execDetails}`;
+
+                        tableRows += `
+                        <tr style="page-break-inside: avoid;">
+                            <td style="border: 1px solid #000; padding: 8px; vertical-align: top; font-weight: bold; text-align: center; width: 12%;">${titleStr}</td>
+                            <td style="border: 1px solid #000; padding: 8px; vertical-align: top; width: 38%;">${contentHtml}</td>
+                            <td style="border: 1px solid #000; padding: 8px; vertical-align: top; width: 35%;">${convertMarkdownTablesToHtml(ag.resolution || '')}</td>
+                            <td style="border: 1px solid #000; padding: 8px; vertical-align: top; text-align: center; width: 15%;">${statusColHtml}</td>
+                        </tr>`;
+                    });
+
+                    return `
+                    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 13px; border: 1px solid #000; margin-top: 20px;">
+                        <thead>
+                            <tr style="background-color: #f2f4f7;">
+                                <th style="border: 1px solid #000; padding: 8px; width: 12%; text-align: center; font-weight: bold;">প্রস্তাবনা নং</th>
+                                <th style="border: 1px solid #000; padding: 8px; width: 38%; text-align: center; font-weight: bold;">আলোচ্যসূচি</th>
+                                <th style="border: 1px solid #000; padding: 8px; width: 35%; text-align: center; font-weight: bold;">সিদ্ধান্ত</th>
+                                <th style="border: 1px solid #000; padding: 8px; width: 15%; text-align: center; font-weight: bold;">বাস্তবায়ন অবস্থা</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>`;
+                }
 
                 return targetAgendas.map(ag => {
                     const agSerialStr = ag.is_suppli

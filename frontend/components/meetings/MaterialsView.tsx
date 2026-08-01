@@ -131,7 +131,7 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
 
       <div className="mb-10">
         <h3 className="text-lg font-semibold mb-4 border-b border-border pb-2">Generate System PDFs</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         
         {/* Generate Agenda PDF */}
         <div 
@@ -170,6 +170,19 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
             <FileCheck className="w-10 h-10 text-foreground group-hover:text-primary transition-colors" />
           )}
           <h3 className="text-foreground font-semibold text-center text-sm">Generate Resolution PDF</h3>
+        </div>
+
+        {/* Generate Resolution Status PDF */}
+        <div 
+          onClick={() => !generating && handleGenerate('resolution-status', 'Resolution_Status')}
+          className={`bg-card border-2 border-border hover:border-emerald-500 cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating === 'resolution-status' ? 'opacity-70 pointer-events-none' : ''}`}
+        >
+          {generating === 'resolution-status' ? (
+            <Loader2 className="w-10 h-10 text-emerald-500 animate-spin" />
+          ) : (
+            <FileCheck className="w-10 h-10 text-foreground group-hover:text-emerald-500 transition-colors" />
+          )}
+          <h3 className="text-foreground font-semibold text-center text-sm">Generate Resolution Status PDF</h3>
         </div>
 
         {/* Generate Attendance Sheet */}

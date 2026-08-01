@@ -235,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v36';
+const PDF_TEMPLATE_VERSION = 'v47';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -295,6 +295,8 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 a.agenda_serial, 
                 a.content, 
                 a.resolution, 
+                a.is_executed,
+                a.execution_status,
                 a.is_suppli,
                 a.category_id,
                 c.name AS category_name,
@@ -374,7 +376,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const cacheKey = pdfCacheKey(meetingId, cacheType);
         const fingerprint = computeFingerprint({
             type: cacheType,
-            meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, agenda_prefix: meeting.agenda_prefix },
+            meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, conclusion: meeting.conclusion, agenda_prefix: meeting.agenda_prefix },
             presentees: stableRows(presentees),
             agendas: stableRows(agendas),
             signatures: { presidentSignature, secretarySignature }
@@ -494,9 +496,9 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 let titleStr = item.office || item.designation || '';
                 if (item.isVc && !titleStr.includes('উপাচার্য')) titleStr = 'উপাচার্য';
                 if (item.isProVc && !titleStr.includes('উপ-উপাচার্য')) titleStr = 'উপ-উপাচার্য';
-                
+
                 const isVcOrProVc = item.isVc || item.isProVc || (titleStr && (titleStr.includes('উপাচার্য') || titleStr.includes('উপ-উপাচার্য') || titleStr.includes('উপউপাচার্য')));
-                
+
                 if (isVcOrProVc) {
                     displayName = `${displayName},`;
                     let titleClean = titleStr ? titleStr.replace(/,\s*ঢাকা$/i, '').trim() : '';
@@ -551,7 +553,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         // Agenda (pre-meeting notice) and resolution (post-meeting minutes) are
         // different documents, not the same content with an extra line: they
         // carry different titles and tense ("to be held" vs "held").
-        const docLabel = cacheVariant === 'suppli-agenda' ? 'সম্পূরক আলোচ্যসূচি' : (isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচি');
+        const docLabel = cacheVariant === 'suppli-agenda' ? 'সম্পূরক আলোচ্যসূচি' : (cacheVariant === 'resolution-status' ? 'সিদ্ধান্ত বাস্তবায়ন অবস্থা' : (isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচি'));
         const dateVerb = isResolution ? 'অনুষ্ঠিত' : 'অনুষ্ঠিতব্য';
 
         // Build council label based on meeting type
@@ -680,7 +682,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             <div class="text-center sub-title">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
             `}
 
-            ${isResolution ? `
+            ${cacheVariant === 'resolution-status' ? '' : (isResolution ? `
                 ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}
 
                 <div class="presentees-header">উপস্থিত সদস্যবৃন্দ</div>
@@ -693,13 +695,15 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     .map(([deptName, dept]) => renderSection(deptName, dept.members)).join('')}
                     ${renderSection('অন্যান্য সদস্য', others, true)}
                 </div>
-            ` : ''}
+            ` : '')}
 
             ${(() => {
                 const BANGLA_GROUP_LETTERS = ['ক', 'খ', 'গ', 'ঘ', 'ঙ', 'চ', 'ছ', 'জ', 'ঝ', 'ঞ', 'ট', 'ঠ', 'ড', 'ঢ', 'ণ', 'ত', 'থ', 'দ', 'ধ', 'ন', 'প', 'ফ', 'ব', 'ভ', 'ম', 'য', 'র', 'ল', 'শ', 'ষ', 'স', 'হ'];
 
+                const isSuppliAg = (ag) => ag.is_suppli === true || ag.is_suppli === 'true' || ag.is_suppli === 't' || ag.is_suppli === 1;
+
                 const filterOutEmptyBibidha = (ag) => {
-                    if (!ag.is_suppli) {
+                    if (!isSuppliAg(ag)) {
                         const clean = (ag.content || '').replace(/<[^>]*>/g, '').trim();
                         const isBibidha = ag.agenda_serial === 0 || clean.startsWith('বিবিধ');
                         if (isBibidha) {
@@ -713,12 +717,15 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 };
 
                 const targetAgendas = (cacheVariant === 'suppli-agenda'
-                    ? agendas.filter(ag => ag.is_suppli)
-                    : agendas.filter(ag => !ag.is_suppli && filterOutEmptyBibidha(ag))
+                    ? agendas.filter(ag => isSuppliAg(ag))
+                    : ((isResolution || cacheVariant === 'resolution-status')
+                        ? agendas.filter(ag => filterOutEmptyBibidha(ag))
+                        : agendas.filter(ag => !isSuppliAg(ag))
+                    )
                 );
 
                 const mainAgendaCount = agendas.filter(a => {
-                    if (a.is_suppli) return false;
+                    if (isSuppliAg(a)) return false;
                     const clean = (a.content || '').replace(/<[^>]*>/g, '').trim();
                     return !clean.startsWith('বিবিধ');
                 }).length;
@@ -760,7 +767,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
 
                 targetAgendas.forEach((ag) => {
                     const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
-                    const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
+                    const isBibidha = !ag.is_suppli && (ag.agenda_serial === 0 || cleanContent.startsWith('বিবিধ'));
                     const catName = ag.category_name ? String(ag.category_name).trim() : '';
                     const isUncategorized = !catName || /^(uncategorized|un-categorized|অশ্রেণীভুক্ত|অশ্রেণিভুক্ত)$/i.test(catName);
 
@@ -777,18 +784,107 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                 });
                 processGroup();
 
+                if (cacheVariant === 'resolution-status') {
+                    let tableRows = '';
+                    targetAgendas.forEach(ag => {
+                        const agSerialStr = ag.is_suppli
+                            ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), serialWidth)
+                            : toBanglaDigits(ag.agenda_serial, serialWidth);
+
+                        const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
+                        const isBibidha = !ag.is_suppli && (ag.agenda_serial === 0 || cleanContent.startsWith('বিবিধ'));
+                        const strippedText = cleanContent.replace(/^\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
+                        const isOnlyBibidhaTitle = isBibidha && !strippedText;
+                        const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
+                        const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
+                        const titleStr = isBibidha ? `বিবিধ :` : `প্রস্তাবনা নং ${fullSerial}`;
+
+                        const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
+                            .filter(an => !an.is_excluded_in_resolution)
+                            .sort((a, b) => (a.global_serial || a.annexure_serial) - (b.global_serial || b.annexure_serial));
+                        const annexureTags = validAnnexures.length > 0
+                            ? validAnnexures.map((an) => {
+                                const num = an.global_serial || an.annexure_serial;
+                                return `পরিশিষ্ট-${toBanglaDigits(num)}`;
+                            }).join(', ')
+                            : null;
+
+                        let contentHtml = isOnlyBibidhaTitle ? '' : convertMarkdownTablesToHtml(ag.content || '');
+                        if (isBibidha) {
+                            contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                        } else if (contentHtml) {
+                            contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*প্রস্তাব(?:না)?\s*নং\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]+\s*)*[০-৯\d\s\/\-]*[:.\-]?\s*(?:<\/strong>)?\s*/i, '$1');
+                            contentHtml = contentHtml.replace(/(<p[^>]*>)?\s*(?:<strong[^>]*>)?\s*[০-৯\d]+\s*[:.\-]\s*(?:<\/strong>)?\s*/i, '$1');
+                        }
+                        if (annexureTags) {
+                            const tagString = ` <b>(${annexureTags})</b>`;
+                            if (contentHtml.trim().endsWith('</p>')) {
+                                const lastIndex = contentHtml.lastIndexOf('</p>');
+                                contentHtml = contentHtml.substring(0, lastIndex) + tagString + contentHtml.substring(lastIndex);
+                            } else if (contentHtml) {
+                                contentHtml += tagString;
+                            } else {
+                                contentHtml = `<p><b>(${annexureTags})</b></p>`;
+                            }
+                        }
+
+                        const catHeader = categoryHeaderMap.get(ag.id);
+                        if (catHeader) {
+                            tableRows += `
+                            <tr>
+                                <td colspan="4" style="border: 1px solid #000; padding: 8px; background-color: #e5e7eb; font-weight: bold; font-size: 14px;">
+                                    <b>${catHeader}</b>
+                                </td>
+                            </tr>`;
+                        }
+
+                        const cleanExecText = ag.execution_status ? ag.execution_status.replace(/<[^>]*>/g, '').trim() : '';
+                        let statusColHtml = '';
+                        if (cleanExecText.length > 0) {
+                            statusColHtml = convertMarkdownTablesToHtml(ag.execution_status);
+                        } else {
+                            const isExec = ag.is_executed === 'yes' || ag.is_executed === true;
+                            statusColHtml = isExec ? 'বাস্তবায়িত' : 'অবাস্তবায়িত';
+                        }
+
+                        tableRows += `
+                        <tr style="page-break-inside: avoid;">
+                            <td style="border: 1px solid #000; padding: 8px; vertical-align: top; font-weight: bold; text-align: center; width: 12%;">${titleStr}</td>
+                            <td style="border: 1px solid #000; padding: 8px; vertical-align: top; width: 38%;">${contentHtml}</td>
+                            <td style="border: 1px solid #000; padding: 8px; vertical-align: top; width: 35%;">${convertMarkdownTablesToHtml(ag.resolution || '')}</td>
+                            <td style="border: 1px solid #000; padding: 8px; vertical-align: top; text-align: center; width: 15%;">${statusColHtml}</td>
+                        </tr>`;
+                    });
+
+                    return `
+                    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 13px; border: 1px solid #000; margin-top: 20px;">
+                        <thead>
+                            <tr style="background-color: #f2f4f7;">
+                                <th style="border: 1px solid #000; padding: 8px; width: 12%; text-align: center; font-weight: bold;">প্রস্তাবনা নং</th>
+                                <th style="border: 1px solid #000; padding: 8px; width: 38%; text-align: center; font-weight: bold;">আলোচ্যসূচি</th>
+                                <th style="border: 1px solid #000; padding: 8px; width: 35%; text-align: center; font-weight: bold;">সিদ্ধান্ত</th>
+                                <th style="border: 1px solid #000; padding: 8px; width: 15%; text-align: center; font-weight: bold;">বাস্তবায়ন অবস্থা</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>`;
+                }
+
                 return targetAgendas.map(ag => {
                     const agSerialStr = ag.is_suppli
                         ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), serialWidth)
                         : toBanglaDigits(ag.agenda_serial, serialWidth);
 
                     const cleanContent = (ag.content || '').replace(/<[^>]*>/g, '').trim();
-                    const isBibidha = !ag.is_suppli && cleanContent.startsWith('বিবিধ');
+                    const isBibidha = !ag.is_suppli && (ag.agenda_serial === 0 || cleanContent.startsWith('বিবিধ'));
                     const strippedText = cleanContent.replace(/^\s*বিবিধ\s*[:.\-]?\s*(?:[ঀ-৥ৰ-৿\w]*\s*[০-৯\d]*)?\s*[:.\-]?\s*/i, '').trim();
                     const isOnlyBibidhaTitle = isBibidha && !strippedText;
                     const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
                     const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
-                    const titleStr = isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
+                    const showBibidhaSerial = !isResolution && !cacheVariant && isOnlyBibidhaTitle;
+                    const titleStr = isBibidha ? (showBibidhaSerial ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
 
                     const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
                         .filter(an => isResolution ? !an.is_excluded_in_resolution : (an.annexure_type !== 'resolution'))
@@ -798,7 +894,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                             const num = an.global_serial || an.annexure_serial;
                             const prefix = (!isResolution && an.is_suppli) ? 'সাপ্লি: পরিশিষ্ট-' : 'পরিশিষ্ট-';
                             return `${prefix}${toBanglaDigits(num)}`;
-                          }).join(', ')
+                        }).join(', ')
                         : null;
 
                     let contentHtml = isOnlyBibidhaTitle ? '' : convertMarkdownTablesToHtml(ag.content || '');
@@ -835,17 +931,9 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     `;
                 }).join('');
             })()}
-
-            ${isResolution ? `
-            <div class="signature-block">
-                <div class="signature-column">
-                    <div class="signature-space"></div>
-                    <div class="signature-text">${presidentSignature.replace(/\n/g, '<br/>')}</div>
-                </div>
-                <div class="signature-column">
-                    <div class="signature-space"></div>
-                    <div class="signature-text">${secretarySignature.replace(/\n/g, '<br/>')}</div>
-                </div>
+            ${isResolution && cacheVariant !== 'resolution-status' && meeting.conclusion ? `
+            <div class="conclusion" style="margin-top: 30px; font-size: 14px; text-align: justify; page-break-inside: avoid;">
+                ${convertMarkdownTablesToHtml(meeting.conclusion)}
             </div>
             ` : ''}
         </body>

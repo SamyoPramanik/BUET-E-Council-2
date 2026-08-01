@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useParams } from "next/navigation";
-import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers, History, Mail, ShieldCheck } from "lucide-react";
+import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers, History, Mail, ShieldCheck, PenTool } from "lucide-react";
 import useSWR from "swr";
 import { fetcher } from "../../../../lib/api";
 import SidebarToggleButton from "../../../../components/SidebarToggleButton";
@@ -21,6 +21,7 @@ const navigation = [
   { name: 'Conclusion', view: 'conclusion', icon: FileText },
   { name: 'Materials', view: 'materials', icon: FileBarChart },
   { name: 'Email', view: 'email', icon: Mail },
+  { name: 'Signed Persona', view: 'signed-persona', icon: PenTool },
 ];
 
 export default function MeetingWorkspaceLayout({

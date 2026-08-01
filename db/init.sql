@@ -972,6 +972,23 @@ INSERT INTO system_settings (key, value) VALUES
 রেজিস্ট্রার (অ. দা.)')
 ON CONFLICT (key) DO NOTHING;
 
+-- Signed Persona defaults for resolution PDF (president & secretary signatures)
+INSERT INTO system_settings (key, value) VALUES
+('academic_president_signature', '')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO system_settings (key, value) VALUES
+('academic_secretary_signature', '')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO system_settings (key, value) VALUES
+('syndicate_president_signature', '')
+ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO system_settings (key, value) VALUES
+('syndicate_secretary_signature', '')
+ON CONFLICT (key) DO NOTHING;
+
 INSERT INTO categories (serial, name) VALUES
 (1, '(উপাচার্য মহোদয় কর্তৃক গৃহীত ব্যবস্থা)'),
 (2, '(ছাত্র-ছাত্রীদের আবেদন ও গ্রেড পরিবর্তন সংক্রান্ত)'),

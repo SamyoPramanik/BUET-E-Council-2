@@ -2,6 +2,13 @@ const CustomError = require('../errors/CustomError');
 const db = require('../db');
 const { generateNoticePdf } = require('../utils/pdfGenerator');
 
+const SIGNED_PERSONA_KEYS = [
+    'academic_president_signature',
+    'academic_secretary_signature',
+    'syndicate_president_signature',
+    'syndicate_secretary_signature'
+];
+
 const getSignatures = async (req, res, next) => {
     try {
         const result = await db.query(
@@ -35,6 +42,48 @@ const updateSignatures = async (req, res, next) => {
         }
 
         res.status(200).json({ success: true, message: 'Signatures updated' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const getSignedPersona = async (req, res, next) => {
+    try {
+        const result = await db.query(
+            `SELECT key, value FROM system_settings WHERE key = ANY($1)`,
+            [SIGNED_PERSONA_KEYS]
+        );
+        const data = {};
+        SIGNED_PERSONA_KEYS.forEach(key => { data[key] = ''; });
+        result.rows.forEach(row => { data[row.key] = row.value; });
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const updateSignedPersona = async (req, res, next) => {
+    try {
+        const { academic_president_signature, academic_secretary_signature, syndicate_president_signature, syndicate_secretary_signature } = req.body;
+
+        const updates = [
+            { key: 'academic_president_signature', val: academic_president_signature },
+            { key: 'academic_secretary_signature', val: academic_secretary_signature },
+            { key: 'syndicate_president_signature', val: syndicate_president_signature },
+            { key: 'syndicate_secretary_signature', val: syndicate_secretary_signature }
+        ];
+
+        for (const { key, val } of updates) {
+            if (key !== undefined) {
+                await db.query(
+                    `INSERT INTO system_settings (key, value) VALUES ($1, $2)
+                     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+                    [key, val ?? '']
+                );
+            }
+        }
+
+        res.status(200).json({ success: true, message: 'Signed persona updated' });
     } catch (error) {
         next(error);
     }
@@ -97,5 +146,7 @@ const generateNoticePdfFromPayload = async (req, res, next) => {
 module.exports = {
     getSignatures,
     updateSignatures,
+    getSignedPersona,
+    updateSignedPersona,
     generateNoticePdfFromPayload
 };

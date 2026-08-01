@@ -29,6 +29,8 @@ const ensureLockingColumns = `
   ALTER TABLE meetings ADD COLUMN IF NOT EXISTS presentees_locked_by_role VARCHAR(255);
   ALTER TABLE meetings ADD COLUMN IF NOT EXISTS conclusion_locked_by_username VARCHAR(255);
   ALTER TABLE meetings ADD COLUMN IF NOT EXISTS conclusion_locked_by_role VARCHAR(255);
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS president_signature TEXT;
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS secretary_signature TEXT;
 `;
 pool.query(ensureLockingColumns).catch(() => {});
 
@@ -80,6 +82,12 @@ const ensureNoticeSchema = `
   INSERT INTO system_settings (key, value) VALUES
     ('academic_signature_str', '(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)\\nরেজিস্ট্রার (অ. দা.)'),
     ('syndicate_signature_str', '(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)\\nরেজিস্ট্রার (অ. দা.)')
+  ON CONFLICT (key) DO NOTHING;
+  INSERT INTO system_settings (key, value) VALUES
+    ('academic_president_signature', ''),
+    ('academic_secretary_signature', ''),
+    ('syndicate_president_signature', ''),
+    ('syndicate_secretary_signature', '')
   ON CONFLICT (key) DO NOTHING;
 `;
 pool.query(ensureNoticeSchema).catch((err) => console.error('ensureNoticeSchema error:', err.message));

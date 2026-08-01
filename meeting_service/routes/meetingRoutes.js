@@ -20,6 +20,7 @@ router.post('/bulk-import', requireNonViewer, meetingController.bulkImportMeetin
 router.get('/:id', meetingController.getMeetingById);
 router.get('/:id/history', adminOnly, meetingController.getMeetingHistory);
 router.put('/:id', requireMeetingAuthor, meetingController.updateMeeting);
+router.put('/:id/signatures', requireNonViewer, meetingController.updateMeetingSignatures);
 router.put('/:id/online-link', requireNonViewer, meetingController.updateOnlineMeetingLink);
 router.delete('/:id', adminOnly, meetingController.deleteMeeting);
 

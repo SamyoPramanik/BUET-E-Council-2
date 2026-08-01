@@ -65,6 +65,7 @@ export default function RoleAndUserManagementPage() {
 
   // System Settings State
   const [minCompletedLevel, setMinCompletedLevel] = useState<string>("1");
+  const [minEmailLevel, setMinEmailLevel] = useState<string>("1");
   const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
@@ -83,15 +84,23 @@ export default function RoleAndUserManagementPage() {
     if (settings.min_completed_level !== undefined) {
       setMinCompletedLevel(String(settings.min_completed_level));
     }
+    if (settings.min_email_level !== undefined) {
+      setMinEmailLevel(String(settings.min_email_level));
+    }
   }, [settings]);
+
+  const [isSubmittingUser, setIsSubmittingUser] = useState(false);
+  const [isSubmittingRole, setIsSubmittingRole] = useState(false);
 
   // Handle User Modal Submit
   const handleUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingUser) return;
+    setIsSubmittingUser(true);
     try {
       const payload: any = {
-        username: userFormData.username,
-        email: userFormData.email,
+        username: userFormData.username.trim(),
+        email: userFormData.email.trim(),
         member_type: userFormData.member_type,
         status: userFormData.status
       };
@@ -106,43 +115,12 @@ export default function RoleAndUserManagementPage() {
         payload.role_id = userFormData.role_id || null;
       }
 
-      const selectedRole = roles.find((r: any) => r.id === payload.role_id);
-      const roleLevel = selectedRole ? selectedRole.level : null;
-      const levelTitle = selectedRole ? selectedRole.level_title : (payload.role === 'admin' ? 'Admin' : payload.role === 'viewer' ? 'Viewer' : 'Editor');
-
       if (isUserEditMode && editingUserId) {
-        const res = await api.put(`/auth/users/${editingUserId}`, payload);
-        const updatedUser = res.data?.data;
-
-        setUsersList((prev) =>
-          prev.map((u: any) =>
-            u.id === editingUserId
-              ? {
-                  ...u,
-                  ...payload,
-                  ...(updatedUser || {}),
-                  role_level: roleLevel,
-                  level_title: levelTitle
-                }
-              : u
-          )
-        );
-
+        await api.put(`/auth/users/${editingUserId}`, payload);
         setIsUserModalOpen(false);
         toast.success("User updated successfully!");
       } else {
         const res = await api.post('/auth/signup', payload);
-        const newUser = res.data?.data;
-        if (newUser) {
-          setUsersList((prev) => [
-            {
-              ...newUser,
-              role_level: roleLevel,
-              level_title: levelTitle
-            },
-            ...prev
-          ]);
-        }
         setIsUserModalOpen(false);
         toast.success("User created successfully!");
         if (res.data?.generated_password) {
@@ -154,16 +132,20 @@ export default function RoleAndUserManagementPage() {
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save user");
       mutateUsers();
+    } finally {
+      setIsSubmittingUser(false);
     }
   };
 
   // Handle Role Modal Submit
   const handleRoleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRole) return;
+    setIsSubmittingRole(true);
     try {
       const payload = {
         level: parseInt(roleFormData.level, 10),
-        level_title: roleFormData.level_title
+        level_title: roleFormData.level_title.trim()
       };
 
       if (isRoleEditMode && editingRoleId) {
@@ -180,6 +162,8 @@ export default function RoleAndUserManagementPage() {
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save role");
       mutateRoles();
+    } finally {
+      setIsSubmittingRole(false);
     }
   };
 
@@ -189,9 +173,10 @@ export default function RoleAndUserManagementPage() {
     setSavingSettings(true);
     try {
       await api.put('/auth/settings', {
-        min_completed_level: parseInt(minCompletedLevel, 10)
+        min_completed_level: parseInt(minCompletedLevel, 10),
+        min_email_level: parseInt(minEmailLevel, 10)
       });
-      toast.success("Completion level setting updated successfully!");
+      toast.success("System settings updated successfully!");
       mutateSettings();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to update settings");
@@ -529,22 +514,22 @@ export default function RoleAndUserManagementPage() {
         </div>
       )}
 
-      {/* ----------------- TAB 3: COMPLETION LEVEL SETTING (ADMIN ONLY) ----------------- */}
+      {/* ----------------- TAB 3: SYSTEM PERMISSIONS SETTINGS (ADMIN ONLY) ----------------- */}
       {activeTab === 'settings' && isAdmin && (
         <div className="max-w-2xl bg-card border border-border shadow-sm rounded-lg p-6 space-y-6">
           <div className="border-b border-border pb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Settings className="w-5 h-5 text-primary" /> Meeting Completion Settings
+              <Settings className="w-5 h-5 text-primary" /> System Workflow Permission Settings
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Only Admin can configure which editor role title and above is authorized to mark a meeting as completed.
+              Only Admin can configure role level thresholds required for critical actions like ending meetings and sending emails.
             </p>
           </div>
 
-          <form onSubmit={handleSaveSettings} className="space-y-4">
+          <form onSubmit={handleSaveSettings} className="space-y-6">
             <div className="space-y-2">
               <label className="text-sm font-medium block">
-                Which role title and above can mark a meeting completed?
+                Which role title and above can mark / end a meeting completed?
               </label>
               <CustomSelect
                 value={minCompletedLevel}
@@ -555,7 +540,24 @@ export default function RoleAndUserManagementPage() {
                 }))}
               />
               <p className="text-xs text-muted-foreground">
-                Users with this role title or higher (or Admin) will have the permission to mark meetings completed.
+                Users with this role level or higher (or Admin) will have permission to mark meetings as completed.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-border/50">
+              <label className="text-sm font-medium block">
+                Which role title and above can send meeting & resolution emails?
+              </label>
+              <CustomSelect
+                value={minEmailLevel}
+                onChange={(val) => setMinEmailLevel(val)}
+                options={roles.map((r: any) => ({
+                  value: String(r.level),
+                  label: `${r.level_title} & Above`
+                }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Users with this role level or higher (or Admin) will have permission to send emails to members.
               </p>
             </div>
 
@@ -565,7 +567,7 @@ export default function RoleAndUserManagementPage() {
                 disabled={savingSettings}
                 className="flex items-center gap-2 px-5 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50"
               >
-                <Check className="w-4 h-4" /> {savingSettings ? "Saving..." : "Save Setting"}
+                <Check className="w-4 h-4" /> {savingSettings ? "Saving..." : "Save Settings"}
               </button>
             </div>
           </form>
@@ -684,9 +686,10 @@ export default function RoleAndUserManagementPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
+                  disabled={isSubmittingUser}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
                 >
-                  {isUserEditMode ? "Update User" : "Create User"}
+                  {isSubmittingUser ? "Saving..." : (isUserEditMode ? "Update User" : "Create User")}
                 </button>
               </div>
             </form>
@@ -737,9 +740,10 @@ export default function RoleAndUserManagementPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
+                  disabled={isSubmittingRole}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
                 >
-                  {isRoleEditMode ? "Update Role" : "Create Role"}
+                  {isSubmittingRole ? "Saving..." : (isRoleEditMode ? "Update Role" : "Create Role")}
                 </button>
               </div>
             </form>

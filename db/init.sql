@@ -47,7 +47,7 @@ CREATE TABLE system_settings (
 
 INSERT INTO
     system_settings (key, value)
-VALUES ('min_completed_level', '1')
+VALUES ('min_completed_level', '1'), ('min_email_level', '1')
 ON CONFLICT DO NOTHING;
 
 -- Users Table

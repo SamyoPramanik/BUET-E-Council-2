@@ -29,7 +29,7 @@ const annexureSizeOptions = [
 
 export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermissionsViewProps) {
   const { user, isAdmin } = useAuth();
-  const { data: rolesRes } = useSWR('/roles', fetcher);
+  const { data: rolesRes } = useSWR('/auth/roles', fetcher);
   const allRoles = rolesRes?.data || [];
 
   const canEdit = canEditPermissions(user, meeting);

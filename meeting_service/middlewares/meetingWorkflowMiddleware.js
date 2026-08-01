@@ -59,6 +59,7 @@ const loadMeeting = async (req) => {
                 invitees_locked_level, presentees_locked_level, conclusion_locked_level, email_locked_level,
                 is_completed, completed_at, completed_by, max_annexure_size_mb,
                 (SELECT value FROM system_settings WHERE key = 'min_completed_level') as min_completed_level,
+                (SELECT value FROM system_settings WHERE key = 'min_email_level') as min_email_level,
                 (SELECT MAX(level) FROM roles) as max_role_level
          FROM meetings WHERE id = $1`,
         [meetingId]
@@ -240,7 +241,10 @@ const calculateMeetingAccess = (meeting, user) => {
 
     // Email editing check
     const emailLock = getLock(meeting.email_locked_level);
-    const canEditEmail = emailLock === null || userLevel >= emailLock;
+    const minEmailLevel = meeting.min_email_level !== undefined && meeting.min_email_level !== null
+        ? parseInt(meeting.min_email_level, 10)
+        : 1;
+    let canEditEmail = (emailLock === null || userLevel >= emailLock) && (isAdmin || userLevel >= minEmailLevel);
     const canUnlockEmail = emailLock === null || userLevel >= emailLock;
 
     // Send Back checks: Only strictly higher levels (> handoverLevel) or admin can send back a handed-over item.

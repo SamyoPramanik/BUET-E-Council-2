@@ -959,10 +959,34 @@ router.post('/roles', requireAuth, requireAdmin, async (req, res) => {
             return res.status(400).json({ success: false, message: 'level must be a valid integer' });
         }
 
+        const trimmedTitle = level_title.trim();
+        if (!trimmedTitle) {
+            return res.status(400).json({ success: false, message: 'level_title cannot be empty' });
+        }
+
+        const existingCheck = await db.query(
+            `SELECT id, level, level_title FROM roles WHERE level = $1 OR LOWER(level_title) = LOWER($2)`,
+            [lvlInt, trimmedTitle]
+        );
+
+        if (existingCheck.rows.length > 0) {
+            const conflict = existingCheck.rows[0];
+            if (conflict.level === lvlInt) {
+                return res.status(409).json({ success: false, message: `Access level priority '${lvlInt}' already exists.` });
+            }
+            return res.status(409).json({ success: false, message: `Role title '${trimmedTitle}' already exists.` });
+        }
+
         const result = await db.query(
             `INSERT INTO roles (level, level_title) VALUES ($1, $2) RETURNING id, level, level_title, created_at`,
-            [lvlInt, level_title.trim()]
+            [lvlInt, trimmedTitle]
         );
+
+        logAudit({
+            userId: req.user.id, username: req.user.username, action: 'create',
+            entityType: 'role', entityId: result.rows[0].id, details: { level: lvlInt, level_title: trimmedTitle }, ip: req.ip
+        });
+
         res.status(201).json({ success: true, message: 'Role created successfully', data: result.rows[0] });
     } catch (err) {
         if (err.code === '23505') {
@@ -998,6 +1022,12 @@ router.put('/roles/reorder', requireAuth, requireAdmin, async (req, res) => {
         }
 
         await db.query('COMMIT');
+
+        logAudit({
+            userId: req.user.id, username: req.user.username, action: 'reorder',
+            entityType: 'role', details: { count: items.length }, ip: req.ip
+        });
+
         res.status(200).json({ success: true, message: 'Roles reordered successfully' });
     } catch (err) {
         await db.query('ROLLBACK').catch(() => {});
@@ -1022,12 +1052,27 @@ router.put('/roles/:id', requireAuth, requireAdmin, async (req, res) => {
 
         if (level !== undefined && level !== null) {
             const lvlInt = parseInt(level, 10);
+            if (Number.isNaN(lvlInt)) {
+                return res.status(400).json({ success: false, message: 'level must be a valid integer' });
+            }
+            const lvlCheck = await db.query('SELECT id FROM roles WHERE level = $1 AND id != $2', [lvlInt, id]);
+            if (lvlCheck.rows.length > 0) {
+                return res.status(409).json({ success: false, message: `Access level priority '${lvlInt}' already exists.` });
+            }
             updates.push(`level = $${pIndex++}`);
             params.push(lvlInt);
         }
         if (level_title) {
+            const trimmedTitle = level_title.trim();
+            if (!trimmedTitle) {
+                return res.status(400).json({ success: false, message: 'level_title cannot be empty' });
+            }
+            const titleCheck = await db.query('SELECT id FROM roles WHERE LOWER(level_title) = LOWER($1) AND id != $2', [trimmedTitle, id]);
+            if (titleCheck.rows.length > 0) {
+                return res.status(409).json({ success: false, message: `Role title '${trimmedTitle}' already exists.` });
+            }
             updates.push(`level_title = $${pIndex++}`);
-            params.push(level_title.trim());
+            params.push(trimmedTitle);
         }
 
         if (updates.length === 0) {
@@ -1039,6 +1084,12 @@ router.put('/roles/:id', requireAuth, requireAdmin, async (req, res) => {
             `UPDATE roles SET ${updates.join(', ')} WHERE id = $${pIndex} RETURNING id, level, level_title`,
             params
         );
+
+        logAudit({
+            userId: req.user.id, username: req.user.username, action: 'update',
+            entityType: 'role', entityId: id, details: { fields_changed: Object.keys(req.body) }, ip: req.ip
+        });
+
         res.status(200).json({ success: true, message: 'Role updated successfully', data: result.rows[0] });
     } catch (err) {
         if (err.code === '23505') {
@@ -1087,12 +1138,19 @@ router.put('/settings', requireAuth, async (req, res) => {
             return res.status(403).json({ success: false, message: 'Forbidden. Admin or editor level access required.' });
         }
 
-        const { min_completed_level } = req.body;
+        const { min_completed_level, min_email_level } = req.body;
         if (min_completed_level !== undefined && min_completed_level !== null) {
             await db.query(
                 `INSERT INTO system_settings (key, value, updated_at) VALUES ('min_completed_level', $1, CURRENT_TIMESTAMP)
                  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
                 [String(min_completed_level)]
+            );
+        }
+        if (min_email_level !== undefined && min_email_level !== null) {
+            await db.query(
+                `INSERT INTO system_settings (key, value, updated_at) VALUES ('min_email_level', $1, CURRENT_TIMESTAMP)
+                 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+                [String(min_email_level)]
             );
         }
 

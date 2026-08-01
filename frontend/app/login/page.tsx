@@ -1,10 +1,12 @@
 "use client";
 
 import { Eye, EyeOff } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSWRConfig } from 'swr';
 import api, { setTabSessionToken } from '../../lib/api';
+
+import { useAuth } from '../../hooks/useAuth';
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -14,6 +16,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { mutate } = useSWRConfig();
+  const { user, isLoading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(user.role === 'viewer' ? '/viewer/meetings' : '/workspace/meetings');
+    }
+  }, [user, authLoading, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

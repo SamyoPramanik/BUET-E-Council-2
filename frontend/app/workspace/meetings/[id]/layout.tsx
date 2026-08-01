@@ -35,7 +35,7 @@ export default function MeetingWorkspaceLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const { data: response, mutate } = useSWR(`/meetings/${params.id}`, fetcher);
-  const { data: rolesRes } = useSWR('/roles', fetcher);
+  const { data: rolesRes } = useSWR('/auth/roles', fetcher);
   const allRoles = rolesRes?.data || [];
   const meeting = response?.data;
 

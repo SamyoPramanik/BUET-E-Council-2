@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, Loader2, FileText } from "lucide-react";
+import { Save, Loader2, FileText, Check } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import api from "../../lib/api";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
   }, [type, meeting, dbField]);
 
   const handleSave = async () => {
+    if (!isDirty || isSaving) return;
     setIsSaving(true);
     try {
       await api.put(`/meetings/${meeting.id}`, { [dbField]: content });
@@ -61,23 +62,51 @@ export default function DescriptionView({ meeting, type, mutate }: { meeting: an
 
         {/* Action Area */}
         {!readOnly && (
-          <div className="bg-muted/30 border-t border-border p-4 flex justify-between shrink-0">
+          <div className="bg-muted/30 border-t border-border p-4 flex justify-between items-center shrink-0">
             <button 
               onClick={() => setIsDrawerOpen(true)}
-            className="text-primary hover:text-primary/80 font-medium px-4 py-2 transition-colors flex items-center gap-2"
-          >
-            <FileText className="w-4 h-4" /> From Template
-          </button>
+              className="text-primary hover:text-primary/80 font-medium px-4 py-2 transition-colors flex items-center gap-2 text-sm"
+            >
+              <FileText className="w-4 h-4" /> From Template
+            </button>
 
-          <button 
-            onClick={handleSave}
-            disabled={!isDirty || isSaving}
-            className="bg-primary text-primary-foreground hover:opacity-90 px-6 py-2 rounded-md font-medium disabled:opacity-50 transition-opacity flex items-center gap-2 shadow-sm"
-          >
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Save {type === 'description' ? 'Description' : 'Conclusion'}
-          </button>
-        </div>
+            <div className="flex items-center gap-3">
+              {isDirty && (
+                <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  Unsaved changes
+                </span>
+              )}
+              <button 
+                onClick={handleSave}
+                disabled={!isDirty || isSaving}
+                className={`py-2 px-6 rounded-md font-medium text-sm flex items-center gap-2 transition-all shadow-sm ${
+                  isSaving
+                    ? "bg-primary/70 text-primary-foreground cursor-wait opacity-80"
+                    : isDirty
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90 ring-2 ring-primary/30 font-semibold cursor-pointer shadow-md"
+                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 dark:bg-emerald-500/20 cursor-default opacity-90"
+                }`}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : isDirty ? (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Save {type === 'description' ? 'Description' : 'Conclusion'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>{type === 'description' ? 'Description' : 'Conclusion'} Saved</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         )}
       </div>
       

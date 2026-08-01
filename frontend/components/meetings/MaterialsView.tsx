@@ -147,17 +147,19 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
         </div>
 
         {/* Generate Supplementary Agenda PDF */}
-        <div 
-          onClick={() => !generating && handleGenerate('suppli-agenda', 'Supplementary_Agenda')}
-          className={`bg-card border-2 border-border hover:border-amber-500 cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating === 'suppli-agenda' ? 'opacity-70 pointer-events-none' : ''}`}
-        >
-          {generating === 'suppli-agenda' ? (
-            <Loader2 className="w-10 h-10 text-amber-500 animate-spin" />
-          ) : (
-            <FileText className="w-10 h-10 text-foreground group-hover:text-amber-500 transition-colors" />
-          )}
-          <h3 className="text-foreground font-semibold text-center text-sm">Generate Supplementary Agenda PDF</h3>
-        </div>
+        {meeting.is_regular !== false && (
+          <div 
+            onClick={() => !generating && handleGenerate('suppli-agenda', 'Supplementary_Agenda')}
+            className={`bg-card border-2 border-border hover:border-amber-500 cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating === 'suppli-agenda' ? 'opacity-70 pointer-events-none' : ''}`}
+          >
+            {generating === 'suppli-agenda' ? (
+              <Loader2 className="w-10 h-10 text-amber-500 animate-spin" />
+            ) : (
+              <FileText className="w-10 h-10 text-foreground group-hover:text-amber-500 transition-colors" />
+            )}
+            <h3 className="text-foreground font-semibold text-center text-sm">Generate Supplementary Agenda PDF</h3>
+          </div>
+        )}
 
         {/* Generate Resolution PDF */}
         <div 
@@ -233,31 +235,33 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
           </div>
 
           {/* Upload Supplementary Agenda PDF */}
-          <div className="bg-card border border-border p-6 rounded-xl shadow-sm flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-amber-500/10 p-3 rounded-lg">
-                <FileText className="w-6 h-6 text-amber-500" />
+          {meeting.is_regular !== false && (
+            <div className="bg-card border border-border p-6 rounded-xl shadow-sm flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-amber-500/10 p-3 rounded-lg">
+                  <FileText className="w-6 h-6 text-amber-500" />
+                </div>
+                <h3 className="font-semibold">Signed Supplementary Agenda</h3>
               </div>
-              <h3 className="font-semibold">Signed Supplementary Agenda</h3>
+              {meeting.suppli_agenda_pdf_link ? (
+                <a href={`/storage/${meeting.suppli_agenda_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
+                  <Eye className="w-4 h-4" /> View Current PDF
+                </a>
+              ) : (
+                <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
+              )}
+              {!readOnly && (
+                <button 
+                  onClick={() => triggerUpload('suppli-agenda')}
+                  disabled={uploading === 'suppli-agenda'}
+                  className="mt-auto flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 py-2 px-4 rounded-md font-medium text-sm transition-colors"
+                >
+                  {uploading === 'suppli-agenda' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  {meeting.suppli_agenda_pdf_link ? "Replace PDF" : "Upload PDF"}
+                </button>
+              )}
             </div>
-            {meeting.suppli_agenda_pdf_link ? (
-              <a href={`/storage/${meeting.suppli_agenda_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
-                <Eye className="w-4 h-4" /> View Current PDF
-              </a>
-            ) : (
-              <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
-            )}
-            {!readOnly && (
-              <button 
-                onClick={() => triggerUpload('suppli-agenda')}
-                disabled={uploading === 'suppli-agenda'}
-                className="mt-auto flex items-center justify-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 py-2 px-4 rounded-md font-medium text-sm transition-colors"
-              >
-                {uploading === 'suppli-agenda' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                {meeting.suppli_agenda_pdf_link ? "Replace PDF" : "Upload PDF"}
-              </button>
-            )}
-          </div>
+          )}
 
           {/* Upload Resolution PDF */}
           <div className="bg-card border border-border p-6 rounded-xl shadow-sm flex flex-col gap-4">

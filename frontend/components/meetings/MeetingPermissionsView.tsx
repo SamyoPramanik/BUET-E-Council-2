@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../hooks/useAuth";
 import { canEditPermissions } from "../../lib/meetingAccess";
 import MeetingWorkflowBar from "./MeetingWorkflowBar";
-import { ShieldCheck, FileText, Layers, Loader2 } from "lucide-react";
+import { ShieldCheck, FileText, Layers, Loader2, Check } from "lucide-react";
 
 interface MeetingPermissionsViewProps {
   meeting: any;
@@ -49,6 +49,10 @@ export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermi
 
   const [savingPermissions, setSavingPermissions] = useState(false);
 
+  const isDirty =
+    String(formData.max_annexure_size_mb) !== String(meeting.max_annexure_size_mb || 50) ||
+    !!formData.is_suppli_visible_to_viewers !== !!meeting.is_suppli_visible_to_viewers;
+
   const canManageAnnexureSize = (() => {
     if (isAdmin) return true;
     if (!user || user.role === 'viewer') return false;
@@ -64,6 +68,7 @@ export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermi
 
   const handleSavePermissions = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!isDirty && !savingPermissions) return;
     setSavingPermissions(true);
     try {
       await api.put(`/meetings/${meeting.id}`, {
@@ -129,32 +134,60 @@ export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermi
 
           {/* SUPPLEMENTARY AGENDA VIEWER VISIBILITY */}
           <div className="space-y-2 pt-4 border-t border-border">
-            <label className="text-sm font-semibold flex items-center justify-between gap-2 cursor-pointer">
+            <label className={`text-sm font-semibold flex items-center justify-between gap-2 ${meeting.is_regular === false ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
               <span className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-amber-500" /> Allow Viewers to View Supplementary Agenda
               </span>
               <input
                 type="checkbox"
-                disabled={readOnly}
-                checked={!!formData.is_suppli_visible_to_viewers}
+                disabled={readOnly || meeting.is_regular === false}
+                checked={meeting.is_regular !== false && !!formData.is_suppli_visible_to_viewers}
                 onChange={(e) => setFormData({ ...formData, is_suppli_visible_to_viewers: e.target.checked })}
                 className="w-5 h-5 text-primary rounded border-input focus:ring-primary accent-primary cursor-pointer disabled:opacity-50"
               />
             </label>
             <p className="text-xs text-muted-foreground">
-              When enabled, users with the viewer role can select and view supplementary agenda items for this ongoing meeting.
+              {meeting.is_regular === false
+                ? "Immediate meetings do not support supplementary agendas."
+                : "When enabled, users with the viewer role can select and view supplementary agenda items for this ongoing meeting."}
             </p>
           </div>
 
           {!readOnly && (
-            <div className="flex justify-end pt-4 border-t border-border">
+            <div className="flex justify-end pt-4 border-t border-border items-center gap-3">
+              {isDirty && (
+                <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  Unsaved permission changes
+                </span>
+              )}
               <button
                 type="submit"
-                disabled={savingPermissions}
-                className="bg-primary text-primary-foreground py-2.5 px-6 rounded-md font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 text-sm flex items-center gap-2"
+                disabled={savingPermissions || !isDirty}
+                className={`py-2.5 px-6 rounded-md font-medium text-sm flex items-center gap-2 transition-all shadow-sm ${
+                  savingPermissions
+                    ? "bg-primary/70 text-primary-foreground cursor-wait opacity-80"
+                    : isDirty
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90 ring-2 ring-primary/30 font-semibold cursor-pointer"
+                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 dark:bg-emerald-500/20 cursor-default opacity-90"
+                }`}
               >
-                {savingPermissions && <Loader2 className="w-4 h-4 animate-spin" />}
-                {savingPermissions ? "Saving..." : "Confirm Permissions"}
+                {savingPermissions ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : isDirty ? (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Confirm Permissions</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>Permissions Confirmed</span>
+                  </>
+                )}
               </button>
             </div>
           )}

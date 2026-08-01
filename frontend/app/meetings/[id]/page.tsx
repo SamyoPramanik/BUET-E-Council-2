@@ -350,7 +350,7 @@ export default function PublicMeetingView() {
             )}
 
             <section>
-              {!isPast && meeting.is_suppli_visible_to_viewers && (
+              {!isPast && meeting.is_suppli_visible_to_viewers && meeting.is_regular !== false && (
                 <div className="flex gap-2 border-b border-border pb-3 mb-6">
                   <button
                     type="button"

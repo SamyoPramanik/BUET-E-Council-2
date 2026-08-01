@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree } from "lucide-react";
+import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree, Layers } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import AnnexureList from "./AnnexureList";
 import RevisionHistory from "./RevisionHistory";
@@ -454,6 +454,16 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     processGroup();
   }
 
+  if (isSuppliView && isEmergencyMeeting) {
+    return (
+      <div className="bg-card border border-border rounded-lg p-8 text-center space-y-3 max-w-2xl mx-auto my-8 shadow-sm">
+        <Layers className="w-12 h-12 text-muted-foreground/40 mx-auto" />
+        <h3 className="text-xl font-bold text-foreground">No Supplementary Agendas</h3>
+        <p className="text-sm text-muted-foreground">Immediate meetings are restricted to 1 main agendum and cannot have supplementary agendas.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-start gap-8 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
       <ConfirmModal />
@@ -530,7 +540,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               );
             })}
 
-            {!isSuppliView && !hasBibidhaInAgendas && (
+            {!isSuppliView && !isEmergencyMeeting && !hasBibidhaInAgendas && (
               <div className="bg-muted/40 border border-border/80 p-6 rounded-lg shadow-sm opacity-80 select-none">
                 <h3 className="font-semibold text-lg text-muted-foreground">
                   বিবিধ : {bibidhaSerial}
@@ -709,7 +719,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 </div>
               );
             })}
-            {!isSuppliView && !hasBibidhaInAgendas && (
+            {!isSuppliView && !isEmergencyMeeting && !hasBibidhaInAgendas && (
               <div className="bg-muted/40 border border-border/80 p-6 rounded-lg shadow-sm opacity-80 select-none">
                 <h3 className="font-semibold text-lg text-muted-foreground">
                   বিবিধ : {bibidhaSerial}
@@ -803,7 +813,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                 }
               })}
 
-              {!isSuppliView && (
+              {!isSuppliView && !isEmergencyMeeting && (
                 <div className="bg-muted/40 border border-border/80 p-3 rounded-md flex items-center gap-3 opacity-70 select-none cursor-not-allowed">
                   <span className="font-semibold text-xs text-muted-foreground">
                     বিবিধ : {bibidhaSerial}

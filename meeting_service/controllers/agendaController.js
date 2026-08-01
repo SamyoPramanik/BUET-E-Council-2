@@ -20,6 +20,17 @@ const setAgendaTags = async (agendaId, tagIds) => {
 const ensureBibidhaAgenda = async (meetingId) => {
     if (!meetingId) return;
 
+    const meetingRes = await db.query('SELECT is_regular FROM meetings WHERE id = $1', [meetingId]);
+    if (meetingRes.rows.length === 0) return;
+
+    if (meetingRes.rows[0].is_regular === false) {
+        await db.query(
+            "DELETE FROM agenda WHERE meeting_id = $1 AND is_suppli = false AND (content = 'বিবিধ :' OR content = 'বিবিধ' OR TRIM(content) = 'বিবিধ :')",
+            [meetingId]
+        );
+        return;
+    }
+
     const res = await db.query(
         'SELECT id, agenda_serial, content FROM agenda WHERE meeting_id = $1 AND is_suppli = false ORDER BY agenda_serial ASC',
         [meetingId]
@@ -133,11 +144,10 @@ const createAgendam = async (req, res, next) => {
             return next(new CustomError('meeting_id is required', 400));
         }
 
-        // "Emergency" is a creation-time-only choice that is never persisted on
-        // the meeting row, so the client re-sends it on every create call; cap
-        // enforcement here only ever sees one request at a time (no DB column
-        // to check against), which is the intended tradeoff for not storing it.
-        if (meeting_criteria === 'emergency' && !is_suppli) {
+        const meetingCheck = await db.query('SELECT is_regular FROM meetings WHERE id = $1', [meeting_id]);
+        const isImmediateMeeting = meetingCheck.rows.length > 0 && meetingCheck.rows[0].is_regular === false;
+
+        if ((meeting_criteria === 'emergency' || isImmediateMeeting) && !is_suppli) {
             const existing = await db.query(
                 'SELECT COUNT(*) FROM agenda WHERE meeting_id = $1 AND is_suppli = false',
                 [meeting_id]
@@ -149,6 +159,10 @@ const createAgendam = async (req, res, next) => {
 
         const requestedSerial = parseInt(agenda_serial, 10);
         const targetSuppli = is_suppli === true || is_suppli === 'true';
+
+        if (isImmediateMeeting && targetSuppli) {
+            return next(new CustomError('Immediate meetings cannot have supplementary agendas.', 400));
+        }
 
         if (!Number.isNaN(requestedSerial)) {
             await db.query(

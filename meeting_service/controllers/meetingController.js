@@ -262,11 +262,13 @@ const createMeeting = async (req, res, next) => {
         const newMeeting = result.rows[0];
         meetingFileSystem.createMeetingDir(newMeeting);
 
-        // Insert default main agenda "বিবিধ :"
-        await db.query(
-            `INSERT INTO agenda (meeting_id, agenda_serial, content, is_suppli) VALUES ($1, 1, 'বিবিধ :', false)`,
-            [newMeeting.id]
-        );
+        // Insert default main agenda "বিবিধ :" only for regular meetings
+        if (effectiveIsRegular) {
+            await db.query(
+                `INSERT INTO agenda (meeting_id, agenda_serial, content, is_suppli) VALUES ($1, 1, 'বিবিধ :', false)`,
+                [newMeeting.id]
+            );
+        }
 
         res.status(201).json({ success: true, message: 'Meeting created', data: newMeeting });
     } catch (error) {
@@ -352,6 +354,17 @@ const updateMeeting = async (req, res, next) => {
              WHERE id = $16 RETURNING *`,
             [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, validMaxAnnexureSize, is_suppli_visible_to_viewers !== undefined ? !!is_suppli_visible_to_viewers : null, is_regular !== undefined ? !!is_regular : null, id]
         );
+
+        if (is_regular === false) {
+            await client.query(
+                "DELETE FROM agenda WHERE meeting_id = $1 AND is_suppli = false AND (content = 'বিবিধ :' OR content = 'বিবিধ' OR TRIM(content) = 'বিবিধ :')",
+                [id]
+            );
+            await client.query(
+                "DELETE FROM agenda WHERE meeting_id = $1 AND is_suppli = true",
+                [id]
+            );
+        }
 
         await client.query('COMMIT');
 

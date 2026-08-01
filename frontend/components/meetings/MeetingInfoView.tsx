@@ -11,7 +11,7 @@ import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
 import { canAuthorMeeting, canUnlockItem, canSendBack } from "../../lib/meetingAccess";
 import MeetingWorkflowBar from "./MeetingWorkflowBar";
-import { Trash2, Video, Lock, Unlock, ArrowRightLeft, CheckCircle2, ShieldAlert, CornerDownLeft, Clock, Users, UserCheck, FileText, Layers, KeyRound, ShieldCheck, Mail } from "lucide-react";
+import { Trash2, Video, Lock, Unlock, ArrowRightLeft, CheckCircle2, ShieldAlert, CornerDownLeft, Clock, Users, UserCheck, FileText, Layers, KeyRound, ShieldCheck, Mail, Check, Save, Loader2 } from "lucide-react";
 
 const typeOptions = [
   { value: "syndicate", label: "Syndicate" },
@@ -77,6 +77,27 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
 
   const [onlineMeetingLink, setOnlineMeetingLink] = useState(meeting.online_meeting_link || "");
 
+  useEffect(() => {
+    setOnlineMeetingLink(meeting.online_meeting_link || "");
+  }, [meeting.online_meeting_link]);
+
+  const isInfoDirty = (() => {
+    const origDate = meeting.meeting_date ? new Date(meeting.meeting_date).toISOString().split('T')[0] : "";
+    const origRegular = meeting.is_regular !== undefined ? meeting.is_regular : true;
+    const origOnlineLink = meeting.online_meeting_link || "";
+
+    return (
+      (formData.title || "") !== (meeting.title || "") ||
+      (formData.meeting_title || "") !== (meeting.meeting_title || "") ||
+      formData.meeting_date !== origDate ||
+      (formData.type || "syndicate") !== (meeting.type || "syndicate") ||
+      (formData.status || "draft") !== (meeting.status || "draft") ||
+      (formData.agenda_prefix || "") !== (meeting.agenda_prefix || "") ||
+      formData.is_regular !== origRegular ||
+      (onlineMeetingLink.trim() || "") !== (origOnlineLink || "")
+    );
+  })();
+
   const [saving, setSaving] = useState(false);
   const [savingPermissions, setSavingPermissions] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -112,6 +133,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
 
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!isInfoDirty || saving) return;
     setSaving(true);
     try {
       const requests = [];
@@ -416,13 +438,40 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
             </div>
 
             {!readOnly && (
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-end pt-2 items-center gap-3">
+                {isInfoDirty && (
+                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5 animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    Unsaved info changes
+                  </span>
+                )}
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="bg-primary text-primary-foreground py-2 px-6 rounded-md font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 text-sm"
+                  disabled={saving || !isInfoDirty}
+                  className={`py-2 px-6 rounded-md font-medium text-sm flex items-center gap-2 transition-all shadow-sm ${
+                    saving
+                      ? "bg-primary/70 text-primary-foreground cursor-wait opacity-80"
+                      : isInfoDirty
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90 ring-2 ring-primary/30 font-semibold cursor-pointer shadow-md"
+                      : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 dark:bg-emerald-500/20 cursor-default opacity-90"
+                  }`}
                 >
-                  {saving ? "Saving..." : "Save Info Changes"}
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : isInfoDirty ? (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>Save Info Changes</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>Info Saved</span>
+                    </>
+                  )}
                 </button>
               </div>
             )}
@@ -474,19 +523,21 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                         )}
                       </button>
 
-                      <button
-                        onClick={() => openHandoverModal('handover-suppli-agenda', 'Supplementary Agenda handed over to upper levels.')}
-                        disabled={!access.canHandoverSuppliAgenda}
-                        title={!access.canHandoverSuppliAgenda ? (meeting.suppli_agenda_handover_level !== null ? "Already handed over" : "No access to handover") : ""}
-                        className="w-full text-left px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
-                      >
-                        <span>Handover Suppli Agenda</span>
-                        {meeting.suppli_agenda_handover_level !== null && (
-                          <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">
-                            Handed over ({getLevelTitle(meeting.suppli_agenda_handover_level)})
-                          </span>
-                        )}
-                      </button>
+                      {meeting.is_regular !== false && (
+                        <button
+                          onClick={() => openHandoverModal('handover-suppli-agenda', 'Supplementary Agenda handed over to upper levels.')}
+                          disabled={!access.canHandoverSuppliAgenda}
+                          title={!access.canHandoverSuppliAgenda ? (meeting.suppli_agenda_handover_level !== null ? "Already handed over" : "No access to handover") : ""}
+                          className="w-full text-left px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                        >
+                          <span>Handover Suppli Agenda</span>
+                          {meeting.suppli_agenda_handover_level !== null && (
+                            <span className="text-[10px] bg-amber-500/20 px-1.5 py-0.5 rounded font-bold">
+                              Handed over ({getLevelTitle(meeting.suppli_agenda_handover_level)})
+                            </span>
+                          )}
+                        </button>
+                      )}
 
                       <button
                         onClick={() => openHandoverModal('handover-resolution', 'Resolution handed over to upper levels.')}
@@ -559,14 +610,16 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                                 Send Back Agenda to {currentTargetTitle}
                               </button>
 
-                              <button
-                                onClick={() => handleSendBack('suppli-agenda')}
-                                disabled={!canSbSuppli || actionLoading === 'send-back-suppli-agenda'}
-                                title={!canSbSuppli && meeting.suppli_agenda_handover_level !== null ? "Handed over by your level. Only upper levels can send back." : ""}
-                                className="w-full text-left px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-900 dark:text-blue-200 border border-blue-600/30 rounded text-xs font-medium transition-colors disabled:opacity-40"
-                              >
-                                Send Back Suppli Agenda to {currentTargetTitle}
-                              </button>
+                              {meeting.is_regular !== false && (
+                                <button
+                                  onClick={() => handleSendBack('suppli-agenda')}
+                                  disabled={!canSbSuppli || actionLoading === 'send-back-suppli-agenda'}
+                                  title={!canSbSuppli && meeting.suppli_agenda_handover_level !== null ? "Handed over by your level. Only upper levels can send back." : ""}
+                                  className="w-full text-left px-2.5 py-1.5 bg-blue-600/10 hover:bg-blue-600/20 text-blue-900 dark:text-blue-200 border border-blue-600/30 rounded text-xs font-medium transition-colors disabled:opacity-40"
+                                >
+                                  Send Back Suppli Agenda to {currentTargetTitle}
+                                </button>
+                              )}
 
                               <button
                                 onClick={() => handleSendBack('resolution')}
@@ -686,24 +739,26 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                     )}
 
                     {/* 3. Lock / Unlock Supplementary Agenda */}
-                    {meeting.suppli_agenda_locked_level !== null ? (
-                      <button
-                        onClick={() => handleControlAction('unlock-suppli-agenda', 'Supplementary Agenda unlocked.')}
-                        disabled={!canUnlockItem(user, meeting.suppli_agenda_locked_level) || actionLoading === 'unlock-suppli-agenda'}
-                        className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
-                      >
-                        <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Suppli Agenda</span>
-                        <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.suppli_agenda_locked_level, meeting.suppli_agenda_locked_by_username, meeting.suppli_agenda_locked_by_role)}</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleControlAction('lock-suppli-agenda', 'Supplementary Agenda locked for lower levels.')}
-                        disabled={!access.canLockSuppliAgenda || actionLoading === 'lock-suppli-agenda'}
-                        title={!access.canLockSuppliAgenda ? "Handed over by your level. You can no longer lock this item." : ""}
-                        className="w-full text-left px-3 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
-                      >
-                        <span className="flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" /> Lock Suppli Agenda</span>
-                      </button>
+                    {meeting.is_regular !== false && (
+                      meeting.suppli_agenda_locked_level !== null ? (
+                        <button
+                          onClick={() => handleControlAction('unlock-suppli-agenda', 'Supplementary Agenda unlocked.')}
+                          disabled={!canUnlockItem(user, meeting.suppli_agenda_locked_level) || actionLoading === 'unlock-suppli-agenda'}
+                          className="w-full text-left px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 border border-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                        >
+                          <span className="flex items-center gap-1.5"><Unlock className="w-3.5 h-3.5" /> Unlock Suppli Agenda</span>
+                          <span className="text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">Locked by {getLevelTitle(meeting.suppli_agenda_locked_level, meeting.suppli_agenda_locked_by_username, meeting.suppli_agenda_locked_by_role)}</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleControlAction('lock-suppli-agenda', 'Supplementary Agenda locked for lower levels.')}
+                          disabled={!access.canLockSuppliAgenda || actionLoading === 'lock-suppli-agenda'}
+                          title={!access.canLockSuppliAgenda ? "Handed over by your level. You can no longer lock this item." : ""}
+                          className="w-full text-left px-3 py-2 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-md text-xs font-medium transition-colors disabled:opacity-40 flex items-center justify-between"
+                        >
+                          <span className="flex items-center gap-1.5"><Layers className="w-3.5 h-3.5" /> Lock Suppli Agenda</span>
+                        </button>
+                      )
                     )}
 
                     {/* 4. Lock / Unlock Resolution */}

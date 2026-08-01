@@ -55,14 +55,19 @@ export default function MeetingWorkspaceLayout({
     return userLvl >= 2;
   })();
 
+  const isEmergencyMeeting = meeting?.is_regular === false;
+
   let navItems = navigation;
   if (!isDeputyOrAbove) {
-    navItems = navigation.filter(item => item.view !== 'permissions');
+    navItems = navItems.filter(item => item.view !== 'permissions');
+  }
+  if (isEmergencyMeeting) {
+    navItems = navItems.filter(item => item.view !== 'suppli-agenda');
   }
 
   if (isViewer) {
     navItems = [{ name: 'Agenda', view: 'agenda', icon: LayoutList }];
-    if (meeting?.is_suppli_visible_to_viewers) {
+    if (meeting?.is_suppli_visible_to_viewers && !isEmergencyMeeting) {
       navItems.push({ name: 'Supplementary Agenda', view: 'suppli-agenda', icon: Layers });
     }
     if (isPast) {

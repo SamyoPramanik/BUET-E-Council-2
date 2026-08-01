@@ -274,7 +274,7 @@ const storeCachedPdf = async (cacheKey, pdfBuffer, fingerprint) => {
 
 const generatePdf = async (meetingId, isResolution, cacheVariant) => {
     try {
-        const meetingQuery = `SELECT title, meeting_date, description, conclusion, agenda_prefix, type, president_signature, secretary_signature FROM meetings WHERE id = $1`;
+        const meetingQuery = `SELECT title, meeting_date, description, conclusion, agenda_prefix, type, president_signature, secretary_signature, is_regular FROM meetings WHERE id = $1`;
         const presenteesQuery = `
             SELECT p.id, p.name, p.designation, p.serial, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM invitees p
@@ -376,7 +376,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const cacheKey = pdfCacheKey(meetingId, cacheType);
         const fingerprint = computeFingerprint({
             type: cacheType,
-            meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, conclusion: meeting.conclusion, agenda_prefix: meeting.agenda_prefix },
+            meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, conclusion: meeting.conclusion, agenda_prefix: meeting.agenda_prefix, is_regular: meeting.is_regular },
             presentees: stableRows(presentees),
             agendas: stableRows(agendas),
             signatures: { presidentSignature, secretarySignature }
@@ -546,14 +546,26 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             return html;
         };
 
+        const dateShort = (() => {
+            if (!meeting.meeting_date) return '';
+            const d = new Date(meeting.meeting_date);
+            const day = d.getDate();
+            const month = d.getMonth() + 1;
+            const year = d.getFullYear();
+            return `${toBanglaDigits(day, 2)}-${toBanglaDigits(String(month).padStart(2, '0'), 2)}-${toBanglaDigits(year)}`;
+        })();
+
+        const isImmediate = meeting.is_regular === false;
         const meetingDate = toBanglaDigits(new Date(meeting.meeting_date).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' }));
         const serialNo = formatMeetingSerial(meeting.title || 'Untitled');
+        const serialNoDigits = serialNo.replace(/[^\d০-৯]/g, '');
+        const formattedSerial = serialNoDigits ? toBanglaDigits(serialNoDigits, 2) : toBanglaDigits(serialNo, 2);
         const meetingSerialLabel = (serialNo.includes('সভা') || serialNo.includes('কাউন্সিল')) ? serialNo : `${serialNo}নং সভার`;
 
         // Agenda (pre-meeting notice) and resolution (post-meeting minutes) are
         // different documents, not the same content with an extra line: they
         // carry different titles and tense ("to be held" vs "held").
-        const docLabel = cacheVariant === 'suppli-agenda' ? 'সম্পূরক আলোচ্যসূচি' : (cacheVariant === 'resolution-status' ? 'সিদ্ধান্ত বাস্তবায়ন অবস্থা' : (isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচি'));
+        const docLabel = cacheVariant === 'suppli-agenda' ? 'সম্পূরক আলোচ্যসূচি' : (cacheVariant === 'resolution-status' ? 'সিদ্ধান্ত বাস্তবায়ন অবস্থা' : (isResolution ? 'কার্যবিবরণী' : 'আলোচ্যসূচী'));
         const dateVerb = isResolution ? 'অনুষ্ঠিত' : 'অনুষ্ঠিতব্য';
 
         // Build council label based on meeting type
@@ -677,10 +689,13 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         <body>
             ${cacheVariant === 'suppli-agenda' ? `
             <div class="text-center sub-title">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
+            ` : (isImmediate ? `
+            <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title">${dateShort} তারিখে অনুষ্ঠিতব্য ${formattedSerial} নং জরুরী (Immediate) সভার ${docLabel}</div>
             ` : `
             <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
             <div class="text-center sub-title">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
-            `}
+            `)}
 
             ${cacheVariant === 'resolution-status' ? '' : (isResolution ? `
                 ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}

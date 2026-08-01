@@ -235,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v47';
+const PDF_TEMPLATE_VERSION = 'v48';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -274,7 +274,7 @@ const storeCachedPdf = async (cacheKey, pdfBuffer, fingerprint) => {
 
 const generatePdf = async (meetingId, isResolution, cacheVariant) => {
     try {
-        const meetingQuery = `SELECT title, meeting_date, description, agenda_prefix, type, president_signature, secretary_signature FROM meetings WHERE id = $1`;
+        const meetingQuery = `SELECT title, meeting_date, description, conclusion, agenda_prefix, type, president_signature, secretary_signature FROM meetings WHERE id = $1`;
         const presenteesQuery = `
             SELECT p.id, p.name, p.designation, p.serial, d.name_bangla as department_name, d.serial as department_serial, o.name_bangla as office_name
             FROM invitees p
@@ -934,6 +934,19 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             ${isResolution && cacheVariant !== 'resolution-status' && meeting.conclusion ? `
             <div class="conclusion" style="margin-top: 30px; font-size: 14px; text-align: justify; page-break-inside: avoid;">
                 ${convertMarkdownTablesToHtml(meeting.conclusion)}
+            </div>
+            ` : ''}
+
+            ${isResolution && cacheVariant !== 'resolution-status' ? `
+            <div class="signature-block">
+                <div class="signature-column">
+                    <div class="signature-space"></div>
+                    <div class="signature-text">${(presidentSignature || '').replace(/\n/g, '<br/>')}</div>
+                </div>
+                <div class="signature-column">
+                    <div class="signature-space"></div>
+                    <div class="signature-text">${(secretarySignature || '').replace(/\n/g, '<br/>')}</div>
+                </div>
             </div>
             ` : ''}
         </body>

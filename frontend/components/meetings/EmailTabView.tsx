@@ -25,7 +25,7 @@ export default function EmailTabView({ meeting, mutate }: EmailTabViewProps) {
   const params = useParams();
   const { user } = useAuth();
   const isEmailEditable = canEditEmail(user, meeting);
-  const canSendEmail = (user?.role === 'admin' || user?.role === 'superadmin' || user?.role === 'moderator') && isEmailEditable;
+  const canSendEmail = isEmailEditable;
   const isPast = meeting.status === "past";
   const isOngoing = meeting.status === "ongoing";
   const isDraft = meeting.status === "draft";
@@ -85,7 +85,7 @@ export default function EmailTabView({ meeting, mutate }: EmailTabViewProps) {
         <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-900 dark:text-amber-200 text-sm flex items-center gap-3">
           <Lock className="w-5 h-5 shrink-0 text-amber-600" />
           <div>
-            <span className="font-semibold">Email functionality is locked.</span> Your role level is lower than the lock level set for this meeting. Email sending actions are disabled.
+            <span className="font-semibold">Email functionality is restricted or locked.</span> Your role level is lower than the required minimum email sending level configured in System Settings, or email is locked for this meeting.
           </div>
         </div>
       )}

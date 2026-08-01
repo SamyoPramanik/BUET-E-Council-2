@@ -235,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v37';
+const PDF_TEMPLATE_VERSION = 'v38';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -637,7 +637,9 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             <div class="text-center sub-title">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
             `}
 
-            ${isResolution ? `
+            ${cacheVariant === 'resolution-status' ? `
+                ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}
+            ` : (isResolution ? `
                 ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}
 
                 <div class="presentees-header">উপস্থিত সদস্যবৃন্দ</div>
@@ -650,7 +652,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     .map(([deptName, dept]) => renderSection(deptName, dept.members)).join('')}
                     ${renderSection('অন্যান্য সদস্য', others, true)}
                 </div>
-            ` : ''}
+            ` : '')}
 
             ${(() => {
                 const BANGLA_GROUP_LETTERS = ['ক', 'খ', 'গ', 'ঘ', 'ঙ', 'চ', 'ছ', 'জ', 'ঝ', 'ঞ', 'ট', 'ঠ', 'ড', 'ঢ', 'ণ', 'ত', 'থ', 'দ', 'ধ', 'ন', 'প', 'ফ', 'ব', 'ভ', 'ম', 'য', 'র', 'ল', 'শ', 'ষ', 'স', 'হ'];

@@ -379,8 +379,8 @@ const requireMeetingOperator = async (req, res, next) => {
     }
 };
 
-// Email sending is a separate action from the workflow — admin/superadmin/moderator
-// can send emails at any stage (as long as the meeting isn't completed).
+// Email sending is a separate action from the workflow — authorized editors/admins
+// can send emails at any stage (as long as the meeting isn't completed and email is not locked).
 const requireEmailSender = async (req, res, next) => {
     try {
         if (!req.user) return next(new CustomError('You are not logged in.', 401));
@@ -388,10 +388,8 @@ const requireEmailSender = async (req, res, next) => {
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found.', 404));
 
-        // Only admin/superadmin/moderator can send emails
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
-        if (!isAdmin && req.user.role !== 'moderator') {
-            return next(new CustomError('Only admin, superadmin, or moderator can send emails.', 403));
+        if (req.user.role === 'viewer') {
+            return next(new CustomError('Viewers are not authorized to send emails.', 403));
         }
 
         const access = calculateMeetingAccess(meeting, req.user);
@@ -418,10 +416,8 @@ const requireCompletedMeetingEmailSender = async (req, res, next) => {
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found.', 404));
 
-        // Only admin/superadmin/moderator can send emails
-        const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
-        if (!isAdmin && req.user.role !== 'moderator') {
-            return next(new CustomError('Only admin, superadmin, or moderator can send emails.', 403));
+        if (req.user.role === 'viewer') {
+            return next(new CustomError('Viewers are not authorized to send emails.', 403));
         }
 
         const access = calculateMeetingAccess(meeting, req.user);

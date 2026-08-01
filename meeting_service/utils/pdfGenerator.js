@@ -235,7 +235,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v38';
+const PDF_TEMPLATE_VERSION = 'v39';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -790,12 +790,14 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                             </tr>`;
                         }
 
-                        const isExec = ag.is_executed === 'yes' || ag.is_executed === true;
-                        const execBadge = isExec 
-                            ? '<span style="color: #166534; font-weight: bold; background: #dcfce7; padding: 2px 6px; border-radius: 4px; display: inline-block;">বাস্তবায়িত</span>'
-                            : '<span style="color: #991b1b; font-weight: bold; background: #fee2e2; padding: 2px 6px; border-radius: 4px; display: inline-block;">অবাস্তবায়িত</span>';
-                        const execDetails = ag.execution_status ? `<div style="margin-top: 6px; font-size: 12px; color: #374151;">${convertMarkdownTablesToHtml(ag.execution_status)}</div>` : '';
-                        const statusColHtml = `${execBadge}${execDetails}`;
+                        const cleanExecText = ag.execution_status ? ag.execution_status.replace(/<[^>]*>/g, '').trim() : '';
+                        let statusColHtml = '';
+                        if (cleanExecText.length > 0) {
+                            statusColHtml = convertMarkdownTablesToHtml(ag.execution_status);
+                        } else {
+                            const isExec = ag.is_executed === 'yes' || ag.is_executed === true;
+                            statusColHtml = isExec ? 'বাস্তবায়িত' : 'অবাস্তবায়িত';
+                        }
 
                         tableRows += `
                         <tr style="page-break-inside: avoid;">

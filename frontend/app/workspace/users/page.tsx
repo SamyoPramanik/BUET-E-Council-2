@@ -390,8 +390,15 @@ export default function RoleAndUserManagementPage() {
           const targetUserLevel = u.role === 'admin' ? 999999 : (u.role_level !== null && u.role_level !== undefined ? Number(u.role_level) : -1);
           const canChangeUserStatus = isAdmin || (currentUserLevel > targetUserLevel && u.role !== 'admin');
 
+          const roleTitleText = u.role === 'admin' ? 'Admin (Super Access)' : u.role === 'viewer' ? 'Viewer (Read Only)' : (u.level_title || 'Editor');
+          const memberTypeText = u.member_type || 'none';
+          const statusText = u.status || 'active';
+
           return {
             ...u,
+            role_title_text: roleTitleText,
+            member_type_text: memberTypeText,
+            status_text: statusText,
             role_title_display: u.role === 'admin' ? (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
                 Admin (Super Access)
@@ -467,9 +474,9 @@ export default function RoleAndUserManagementPage() {
               columns={[
                 { key: "username", label: "Username" },
                 { key: "email", label: "Email" },
-                { key: "role_title_display", label: "Role Title" },
-                { key: "member_type_display", label: "Member Type" },
-                { key: "status_display", label: "Status" }
+                { key: "role_title_display", sortKey: "role_title_text", label: "Role Title" },
+                { key: "member_type_display", sortKey: "member_type_text", label: "Member Type" },
+                { key: "status_display", sortKey: "status_text", label: "Status" }
               ]}
               data={formattedUsers}
               title={`System Users (${usersList.length})`}

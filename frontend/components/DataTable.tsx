@@ -7,6 +7,7 @@ interface Column {
   key: string;
   label: string;
   sortable?: boolean;
+  sortKey?: string;
 }
 
 interface DataTableProps {
@@ -96,23 +97,45 @@ export default function DataTable({
 
   const sortedData = useMemo(() => {
     if (!sortConfig) return data;
+    const col = columns.find(c => c.key === sortConfig.key);
+    const sortKey = col?.sortKey || sortConfig.key;
 
     return [...data].sort((a, b) => {
-      if (a[sortConfig.key] < b[sortConfig.key]) {
-        return sortConfig.direction === 'asc' ? -1 : 1;
+      let valA = a[sortKey];
+      let valB = b[sortKey];
+
+      if (valA === valB) return 0;
+      if (valA === undefined || valA === null) return 1;
+      if (valB === undefined || valB === null) return -1;
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
       }
-      if (a[sortConfig.key] > b[sortConfig.key]) {
-        return sortConfig.direction === 'asc' ? 1 : -1;
-      }
-      return 0;
+
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+
+      const cmp = strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
+      return sortConfig.direction === 'asc' ? cmp : -cmp;
     });
-  }, [data, sortConfig]);
+  }, [data, sortConfig, columns]);
 
   const filteredData = useMemo(() => {
     if (!searchable || !query.trim()) return sortedData;
     const q = query.trim().toLowerCase();
     return sortedData.filter(row =>
-      columns.some(col => String(row[col.key] ?? '').toLowerCase().includes(q))
+      columns.some(col => {
+        const keyToSearch = col.sortKey || col.key;
+        const val = row[keyToSearch];
+        if (typeof val === 'string' || typeof val === 'number') {
+          return String(val).toLowerCase().includes(q);
+        }
+        const rawVal = row[col.key];
+        if (typeof rawVal === 'string' || typeof rawVal === 'number') {
+          return String(rawVal).toLowerCase().includes(q);
+        }
+        return false;
+      })
     );
   }, [sortedData, query, searchable, columns]);
 

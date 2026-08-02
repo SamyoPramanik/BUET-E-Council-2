@@ -25,7 +25,9 @@ const parseFilters = (req) => {
     const serialToVal = req.query.serialTo ? parseInt(req.query.serialTo, 10) : null;
     const serialFrom = Number.isNaN(serialFromVal) ? null : serialFromVal;
     const serialTo = Number.isNaN(serialToVal) ? null : serialToVal;
-    const meetingType = viewerTypeRestriction(req.user);
+    const userRestriction = viewerTypeRestriction(req.user);
+    const requestedType = (req.query.type === 'syndicate' || req.query.type === 'academic') ? req.query.type : null;
+    const meetingType = userRestriction || requestedType;
     return { q, scope, tags, dateFrom, dateTo, serialFrom, serialTo, meetingType };
 };
 

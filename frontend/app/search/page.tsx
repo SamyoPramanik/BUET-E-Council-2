@@ -74,6 +74,9 @@ function SearchPageInner() {
 
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [scope, setScope] = useState<"agenda" | "both">(searchParams.get("scope") === "agenda" ? "agenda" : "both");
+  const [typeInput, setTypeInput] = useState<"all" | "academic" | "syndicate">(
+    (searchParams.get("type") as "academic" | "syndicate") || "all"
+  );
   const [tagIdsInput, setTagIdsInput] = useState<string[]>((searchParams.get("tags") || "").split(",").filter(Boolean));
   const [dateFromInput, setDateFromInput] = useState(searchParams.get("dateFrom") || "");
   const [dateToInput, setDateToInput] = useState(searchParams.get("dateTo") || "");
@@ -89,12 +92,14 @@ function SearchPageInner() {
   const activeDateTo = searchParams.get("dateTo") || "";
   const activeSerialFrom = searchParams.get("serialFrom") || "";
   const activeSerialTo = searchParams.get("serialTo") || "";
-  const hasSearchCriteria = !!activeQuery.trim() || activeTagIds.length > 0 || !!activeSerialFrom || !!activeSerialTo;
+  const activeType = searchParams.get("type") || "all";
+  const hasSearchCriteria = !!activeQuery.trim() || activeTagIds.length > 0 || !!activeSerialFrom || !!activeSerialTo || activeType !== "all";
 
   // Sync inputs with URL on searchParams change (e.g. back/forward navigation)
   useEffect(() => {
     setQuery(searchParams.get("q") || "");
     setScope(searchParams.get("scope") === "agenda" ? "agenda" : "both");
+    setTypeInput((searchParams.get("type") as "academic" | "syndicate") || "all");
     setTagIdsInput((searchParams.get("tags") || "").split(",").filter(Boolean));
     setDateFromInput(searchParams.get("dateFrom") || "");
     setDateToInput(searchParams.get("dateTo") || "");
@@ -112,17 +117,18 @@ function SearchPageInner() {
   }, [scope]);
 
   const searchKey = useMemo(() => {
-    if (!activeQuery.trim() && activeTagIds.length === 0 && !activeSerialFrom && !activeSerialTo) return null;
+    if (!activeQuery.trim() && activeTagIds.length === 0 && !activeSerialFrom && !activeSerialTo && activeType === "all") return null;
     const params = new URLSearchParams();
     if (activeQuery.trim()) params.set("q", activeQuery.trim());
     params.set("scope", scope);
+    if (activeType !== "all") params.set("type", activeType);
     if (activeTagIds.length > 0) params.set("tags", activeTagIds.join(","));
     if (activeDateFrom) params.set("dateFrom", activeDateFrom);
     if (activeDateTo) params.set("dateTo", activeDateTo);
     if (activeSerialFrom) params.set("serialFrom", activeSerialFrom);
     if (activeSerialTo) params.set("serialTo", activeSerialTo);
     return `/search?${params.toString()}`;
-  }, [activeQuery, scope, activeTagIds, activeDateFrom, activeDateTo, activeSerialFrom, activeSerialTo]);
+  }, [activeQuery, scope, activeType, activeTagIds, activeDateFrom, activeDateTo, activeSerialFrom, activeSerialTo]);
 
   const { data, isLoading } = useSWR(searchKey, fetcher);
   const results = data?.data || [];
@@ -131,6 +137,7 @@ function SearchPageInner() {
     const params = new URLSearchParams();
     if (query.trim()) params.set("q", query.trim());
     if (scope !== "both") params.set("scope", scope);
+    if (typeInput !== "all") params.set("type", typeInput);
     if (tagIdsInput.length > 0) params.set("tags", tagIdsInput.join(","));
     if (dateFromInput) params.set("dateFrom", dateFromInput);
     if (dateToInput) params.set("dateTo", dateToInput);
@@ -183,6 +190,20 @@ function SearchPageInner() {
             </div>
 
             <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Meeting Type</label>
+              <select
+                value={typeInput}
+                onChange={(e) => setTypeInput(e.target.value as "all" | "academic" | "syndicate")}
+                onKeyDown={handleKeyDown}
+                className="px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground cursor-pointer"
+              >
+                <option value="all">All Types</option>
+                <option value="academic">Academic</option>
+                <option value="syndicate">Syndicate</option>
+              </select>
+            </div>
+
+            <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">From</label>
               <input
                 type="date"
@@ -203,7 +224,7 @@ function SearchPageInner() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Serial From</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Meeting Serial From</label>
               <input
                 type="number"
                 min="0"
@@ -211,11 +232,11 @@ function SearchPageInner() {
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSerialFromInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="e.g. 50"
-                className="w-24 px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground"
+                className="w-28 px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground"
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Serial To</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Meeting Serial To</label>
               <input
                 type="number"
                 min="0"
@@ -223,7 +244,7 @@ function SearchPageInner() {
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSerialToInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="e.g. 100"
-                className="w-24 px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground"
+                className="w-28 px-3 py-2 text-sm bg-input/20 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground placeholder:text-muted-foreground"
               />
             </div>
 

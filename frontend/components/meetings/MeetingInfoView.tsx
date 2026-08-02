@@ -407,7 +407,7 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                 value={formData.agenda_prefix}
                 onChange={e => setFormData({...formData, agenda_prefix: e.target.value})}
                 className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm disabled:opacity-50"
-                placeholder="e.g., ২১০৬ (same for every agendum in this meeting)"
+                placeholder={formData.type === 'syndicate' ? "e.g., সি ২১০৬ (same for every agendum in this meeting)" : "e.g., এ ২১০৬ (same for every agendum in this meeting)"}
               />
             </div>
 

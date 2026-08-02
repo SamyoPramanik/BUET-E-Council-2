@@ -2869,7 +2869,7 @@ const sendBackSuppliAgenda = async (req, res, next) => {
 const updateMeetingSignatures = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { president_signature, secretary_signature } = req.body;
+        const { president_signature, secretary_signature, president_signature_image, secretary_signature_image } = req.body;
 
         const meetingResult = await db.query('SELECT id FROM meetings WHERE id = $1', [id]);
         if (meetingResult.rows.length === 0) {
@@ -2877,11 +2877,54 @@ const updateMeetingSignatures = async (req, res, next) => {
         }
 
         await db.query(
-            `UPDATE meetings SET president_signature = $1, secretary_signature = $2 WHERE id = $3`,
-            [president_signature ?? '', secretary_signature ?? '', id]
+            `UPDATE meetings 
+             SET president_signature = COALESCE($1, president_signature), 
+                 secretary_signature = COALESCE($2, secretary_signature),
+                 president_signature_image = $3,
+                 secretary_signature_image = $4
+             WHERE id = $5`,
+            [president_signature ?? '', secretary_signature ?? '', president_signature_image ?? '', secretary_signature_image ?? '', id]
         );
 
         res.status(200).json({ success: true, message: 'Meeting signatures updated' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const uploadMeetingSignatureImage = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const target = (req.body.target || 'president').toLowerCase();
+        if (target !== 'president' && target !== 'secretary') {
+            return next(new CustomError('Invalid target, must be president or secretary', 400));
+        }
+
+        if (!req.file) {
+            return next(new CustomError('No image file uploaded', 400));
+        }
+
+        const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+        if (!validTypes.includes(req.file.mimetype)) {
+            return next(new CustomError('Invalid file type. Only PNG, JPG, JPEG, and WebP images are allowed.', 400));
+        }
+
+        const meetingResult = await db.query('SELECT id FROM meetings WHERE id = $1', [id]);
+        if (meetingResult.rows.length === 0) {
+            return next(new CustomError('Meeting not found', 404));
+        }
+
+        const ext = req.file.originalname.split('.').pop() || 'png';
+        const fileKey = `signatures/meetings/${id}_${target}_${Date.now()}.${ext}`;
+        await storageService.uploadFile(req.file.buffer, fileKey, req.file.mimetype);
+
+        const columnName = target === 'president' ? 'president_signature_image' : 'secretary_signature_image';
+        await db.query(
+            `UPDATE meetings SET ${columnName} = $1 WHERE id = $2`,
+            [fileKey, id]
+        );
+
+        res.status(200).json({ success: true, message: `${target} signature image uploaded successfully`, image_key: fileKey });
     } catch (error) {
         next(error);
     }
@@ -2939,7 +2982,6 @@ module.exports = {
     saveAttendance,
     generatePdf,
     getAttendanceGroups,
-    completeMeeting,
     uploadMaterial,
     bulkImportMeeting,
     getInviteesEmails,
@@ -2947,5 +2989,6 @@ module.exports = {
     sendNoticeEmail,
     sendAgendaEmailBulk,
     sendResolutionEmail,
-    updateMeetingSignatures
+    updateMeetingSignatures,
+    uploadMeetingSignatureImage
 };

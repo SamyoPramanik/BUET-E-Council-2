@@ -27,6 +27,22 @@ const getFontBase64 = () => {
 // Read and encode the Bangla font once at startup, then reuse for every request.
 const FONT_BASE64 = getFontBase64();
 
+const getSignatureImageBase64 = async (imageKey) => {
+    if (!imageKey) return null;
+    try {
+        const buffer = await storageService.getFileBuffer(imageKey);
+        if (!buffer || buffer.length === 0) return null;
+        const ext = imageKey.split('.').pop().toLowerCase();
+        let mime = 'image/png';
+        if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
+        else if (ext === 'webp') mime = 'image/webp';
+        return `data:${mime};base64,${buffer.toString('base64')}`;
+    } catch (err) {
+        console.error(`Error loading signature image ${imageKey}:`, err.message);
+        return null;
+    }
+};
+
 function convertMarkdownTablesToHtml(content) {
     if (!content || typeof content !== 'string') return content || '';
     if (content.includes('<table') || content.includes('<TABLE')) return content;
@@ -353,22 +369,41 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         const isMeetingSyndicate = meetingType === 'syndicate' || meetingType.includes('syndicate');
         const presidentKey = isMeetingSyndicate ? 'syndicate_president_signature' : 'academic_president_signature';
         const secretaryKey = isMeetingSyndicate ? 'syndicate_secretary_signature' : 'academic_secretary_signature';
+        const presidentImageKey = isMeetingSyndicate ? 'syndicate_president_signature_image' : 'academic_president_signature_image';
+        const secretaryImageKey = isMeetingSyndicate ? 'syndicate_secretary_signature_image' : 'academic_secretary_signature_image';
 
         let presidentSignature = meeting.president_signature || '';
         let secretarySignature = meeting.secretary_signature || '';
+        let presidentSignatureImage = meeting.president_signature_image || '';
+        let secretarySignatureImage = meeting.secretary_signature_image || '';
 
         if (isResolution) {
-            // If meeting-specific signatures are empty, fetch defaults
-            if (!presidentSignature || !secretarySignature) {
+            // Fetch defaults if meeting-specific text or image keys are missing
+            const keysToFetch = [];
+            if (!presidentSignature) keysToFetch.push(presidentKey);
+            if (!secretarySignature) keysToFetch.push(secretaryKey);
+            if (!presidentSignatureImage) keysToFetch.push(presidentImageKey);
+            if (!secretarySignatureImage) keysToFetch.push(secretaryImageKey);
+
+            if (keysToFetch.length > 0) {
                 const sigResult = await pool.query(
-                    `SELECT key, value FROM system_settings WHERE key IN ($1, $2)`,
-                    [presidentKey, secretaryKey]
+                    `SELECT key, value FROM system_settings WHERE key = ANY($1)`,
+                    [keysToFetch]
                 );
                 sigResult.rows.forEach(row => {
                     if (row.key === presidentKey && !presidentSignature) presidentSignature = row.value || '';
                     if (row.key === secretaryKey && !secretarySignature) secretarySignature = row.value || '';
+                    if (row.key === presidentImageKey && !presidentSignatureImage) presidentSignatureImage = row.value || '';
+                    if (row.key === secretaryImageKey && !secretarySignatureImage) secretarySignatureImage = row.value || '';
                 });
             }
+        }
+
+        let presidentSignatureBase64 = null;
+        let secretarySignatureBase64 = null;
+        if (isResolution && cacheVariant !== 'resolution-status') {
+            if (presidentSignatureImage) presidentSignatureBase64 = await getSignatureImageBase64(presidentSignatureImage);
+            if (secretarySignatureImage) secretarySignatureBase64 = await getSignatureImageBase64(secretarySignatureImage);
         }
 
         // Serve a cached PDF when the underlying data is unchanged.
@@ -379,7 +414,7 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, conclusion: meeting.conclusion, agenda_prefix: meeting.agenda_prefix, is_regular: meeting.is_regular },
             presentees: stableRows(presentees),
             agendas: stableRows(agendas),
-            signatures: { presidentSignature, secretarySignature }
+            signatures: { presidentSignature, secretarySignature, presidentSignatureImage, secretarySignatureImage }
         });
         const cached = await getCachedPdf(cacheKey, fingerprint);
         if (cached) return cached;
@@ -955,11 +990,15 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             ${isResolution && cacheVariant !== 'resolution-status' ? `
             <div class="signature-block">
                 <div class="signature-column">
-                    <div class="signature-space"></div>
+                    <div class="signature-space" style="display: flex; align-items: flex-end; justify-content: center;">
+                        ${presidentSignatureBase64 ? `<img src="${presidentSignatureBase64}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />` : ''}
+                    </div>
                     <div class="signature-text">${(presidentSignature || '').replace(/\n/g, '<br/>')}</div>
                 </div>
                 <div class="signature-column">
-                    <div class="signature-space"></div>
+                    <div class="signature-space" style="display: flex; align-items: flex-end; justify-content: center;">
+                        ${secretarySignatureBase64 ? `<img src="${secretarySignatureBase64}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />` : ''}
+                    </div>
                     <div class="signature-text">${(secretarySignature || '').replace(/\n/g, '<br/>')}</div>
                 </div>
             </div>
@@ -1268,6 +1307,19 @@ const generateNoticePdf = async (notice, presentees) => {
 
     // Signature
     const signatureText = notice.signature_text || '';
+    let signatureImageKey = notice.signature_image || '';
+
+    if (!signatureImageKey) {
+        const targetDefaultKey = isSyndicate ? 'syndicate_signature_image' : 'academic_signature_image';
+        try {
+            const sigRes = await pool.query('SELECT value FROM system_settings WHERE key = $1', [targetDefaultKey]);
+            if (sigRes.rows.length > 0) signatureImageKey = sigRes.rows[0].value || '';
+        } catch (e) {
+            console.error('Error loading default notice signature image:', e);
+        }
+    }
+
+    const signatureImageBase64 = signatureImageKey ? await getSignatureImageBase64(signatureImageKey) : null;
 
     // Members list for syndicate
     let membersHtml = '';
@@ -1393,7 +1445,9 @@ const generateNoticePdf = async (notice, presentees) => {
 
         <div class="signature-section">
             <div class="signature-label">আপনার বিশ্বস্ত,</div>
-            <div class="signature-space"></div>
+            <div class="signature-space" style="display: flex; justify-content: flex-end; align-items: flex-end;">
+                ${signatureImageBase64 ? `<img src="${signatureImageBase64}" style="max-height: 55px; max-width: 160px; object-fit: contain;" />` : ''}
+            </div>
             <div class="signature-text">${signatureText.replace(/\n/g, '<br/>')}</div>
             <div class="secretary-label">এবং<br/>${secretaryLabel}</div>
         </div>

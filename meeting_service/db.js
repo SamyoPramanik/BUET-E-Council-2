@@ -31,6 +31,8 @@ const ensureLockingColumns = `
   ALTER TABLE meetings ADD COLUMN IF NOT EXISTS conclusion_locked_by_role VARCHAR(255);
   ALTER TABLE meetings ADD COLUMN IF NOT EXISTS president_signature TEXT;
   ALTER TABLE meetings ADD COLUMN IF NOT EXISTS secretary_signature TEXT;
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS president_signature_image TEXT;
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS secretary_signature_image TEXT;
 `;
 pool.query(ensureLockingColumns).catch(() => {});
 
@@ -81,13 +83,19 @@ const ensureNoticeSchema = `
   ALTER TABLE meetings ADD COLUMN IF NOT EXISTS is_regular BOOLEAN DEFAULT true;
   INSERT INTO system_settings (key, value) VALUES
     ('academic_signature_str', '(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)\\nরেজিস্ট্রার (অ. দা.)'),
-    ('syndicate_signature_str', '(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)\\nরেজিস্ট্রার (অ. দা.)')
+    ('syndicate_signature_str', '(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)\\nরেজিস্ট্রার (অ. দা.)'),
+    ('academic_signature_image', ''),
+    ('syndicate_signature_image', '')
   ON CONFLICT (key) DO NOTHING;
   INSERT INTO system_settings (key, value) VALUES
     ('academic_president_signature', ''),
     ('academic_secretary_signature', ''),
     ('syndicate_president_signature', ''),
-    ('syndicate_secretary_signature', '')
+    ('syndicate_secretary_signature', ''),
+    ('academic_president_signature_image', ''),
+    ('academic_secretary_signature_image', ''),
+    ('syndicate_president_signature_image', ''),
+    ('syndicate_secretary_signature_image', '')
   ON CONFLICT (key) DO NOTHING;
 `;
 pool.query(ensureNoticeSchema).catch((err) => console.error('ensureNoticeSchema error:', err.message));

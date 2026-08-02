@@ -125,22 +125,27 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
   const [sigForm, setSigForm] = useState({ academic_signature_str: '', syndicate_signature_str: '' });
 
   const defaultSigKey = isSyndicate ? 'syndicate_signature_str' : 'academic_signature_str';
+  const defaultSigImageKey = isSyndicate ? 'syndicate_signature_image' : 'academic_signature_image';
+
+  const [uploadingSig, setUploadingSig] = useState(false);
 
   const [form, setForm] = useState({
     notice_number: "",
     notice_date: new Date().toISOString().split('T')[0],
     notice_type: getDefaultNoticeType(meeting.status || 'draft', isRegular),
     body: "",
-    signature_text: ""
+    signature_text: "",
+    signature_image: ""
   });
 
   // Initialize form signature from saved signatures on mount
   useEffect(() => {
     setForm(prev => ({
       ...prev,
-      signature_text: signatures[defaultSigKey] || DEFAULT_SIGNATURE
+      signature_text: signatures[defaultSigKey] || DEFAULT_SIGNATURE,
+      signature_image: signatures[defaultSigImageKey] || ""
     }));
-  }, [signatures]);
+  }, [signatures, defaultSigKey, defaultSigImageKey]);
 
   // Sync sigForm when signatures load
   useEffect(() => {
@@ -177,7 +182,8 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
         notice_date: new Date(form.notice_date).toISOString(),
         notice_type: form.notice_type,
         body: form.body,
-        signature_text: form.signature_text
+        signature_text: form.signature_text,
+        signature_image: form.signature_image
       }, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
@@ -199,13 +205,49 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
     try {
       await api.put('/notices/settings/signatures', {
         academic_signature_str: sigForm.academic_signature_str,
-        syndicate_signature_str: sigForm.syndicate_signature_str
+        syndicate_signature_str: sigForm.syndicate_signature_str,
+        academic_signature_image: signatures.academic_signature_image,
+        syndicate_signature_image: signatures.syndicate_signature_image
       });
       mutateSig();
       toast.success("Signatures saved permanently");
       setShowSigModal(false);
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save signatures");
+    }
+  };
+
+  const handleUploadDefaultSigImage = async (file: File) => {
+    const type = isSyndicate ? 'syndicate' : 'academic';
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', type);
+    setUploadingSig(true);
+    try {
+      const res = await api.post('/notices/settings/signatures/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      mutateSig();
+      setForm(prev => ({ ...prev, signature_image: res.data.image_key }));
+      toast.success("Signature image uploaded");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Upload failed");
+    } finally {
+      setUploadingSig(false);
+    }
+  };
+
+  const handleRemoveDefaultSigImage = async () => {
+    const keyToClear = isSyndicate ? 'syndicate_signature_image' : 'academic_signature_image';
+    try {
+      await api.put('/notices/settings/signatures', {
+        [keyToClear]: ''
+      });
+      mutateSig();
+      setForm(prev => ({ ...prev, signature_image: '' }));
+      toast.success("Signature image removed");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to remove signature image");
     }
   };
 
@@ -218,6 +260,10 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
       : `<p style="margin-bottom: 20px;">একাডেমিক কাউন্সিলের সম্মানিত সদস্য<br/>বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়<br/>ঢাকা-১০০০ ।</p>`;
 
     const secretaryLabel = isSyndicate ? 'সিন্ডিকেটের সচিব।' : 'একাডেমিক কাউন্সিলের সচিব।';
+
+    const sigImageHtml = form.signature_image
+      ? `<div style="display: flex; justify-content: flex-end; margin-bottom: 5px;"><img src="/api/storage/${form.signature_image}" style="max-height: 50px; max-width: 150px; object-fit: contain;" /></div>`
+      : `<div style="height: 40px;"></div>`;
 
     // Members list for syndicate notices
     let membersHtml = '';
@@ -276,7 +322,7 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
         <div style="margin-top: 30px; display: flex; justify-content: flex-end;">
           <div style="text-align: right;">
             <div>আপনার বিশ্বস্ত,</div>
-            <div style="height: 40px;"></div>
+            ${sigImageHtml}
             <div style="white-space: pre-line; font-size: 13px;">${(form.signature_text || '').replace(/\n/g, '<br/>')}</div>
             <div style="margin-top: 10px; font-size: 13px;">এবং<br/>${secretaryLabel}</div>
           </div>
@@ -352,18 +398,38 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Signature (Right Aligned)</label>
-            <textarea
-              value={form.signature_text}
-              onChange={e => setForm({...form, signature_text: e.target.value})}
-              rows={4}
-              className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm text-center resize-none"
-              placeholder="(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)&#10;রেজিস্ট্রার (অ. দা.)"
-            />
-            <p className="text-xs text-muted-foreground text-center">
-              Click &quot;Signature Settings&quot; to save as default for future notices.
-            </p>
+          <div className="space-y-3 pt-2">
+            <label className="text-sm font-medium">Notice Signature Card</label>
+            <div className="p-4 border border-border bg-muted/20 rounded-lg space-y-3">
+              {form.signature_image && (
+                <div className="flex items-center justify-between p-3 bg-background border border-border rounded-md">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={`/api/storage/${form.signature_image}`}
+                      alt="Notice Signature Preview"
+                      className="h-12 object-contain bg-white border border-input rounded px-2 py-1"
+                    />
+                    <span className="text-xs text-muted-foreground font-medium">Signature Image Uploaded</span>
+                  </div>
+                  <button
+                    onClick={() => setForm(prev => ({ ...prev, signature_image: '' }))}
+                    className="text-xs text-destructive hover:underline"
+                  >
+                    Remove Image
+                  </button>
+                </div>
+              )}
+              <textarea
+                value={form.signature_text}
+                onChange={e => setForm({...form, signature_text: e.target.value})}
+                rows={3}
+                className="w-full px-3 py-2 bg-input/20 border border-input rounded-md focus:ring-1 focus:ring-ring text-sm text-center resize-none"
+                placeholder="(অধ্যাপক ড. এন.এম. গোলাম জাকারিয়া)&#10;রেজিস্ট্রার (অ. দা.)"
+              />
+              <p className="text-xs text-muted-foreground text-center">
+                Click &quot;Signature Settings&quot; to manage global default signature text and image.
+              </p>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -393,7 +459,7 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
               <h3 className="text-lg font-semibold">Notice Preview</h3>
               <button onClick={() => setShowPreview(false)} className="text-muted-foreground hover:text-foreground">✕</button>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 bg-white">
+            <div className="flex-1 overflow-y-auto p-6 bg-white text-foreground">
               <div dangerouslySetInnerHTML={{ __html: buildPreviewHtml() }} />
             </div>
             <div className="flex justify-end gap-2 p-4 border-t border-border">
@@ -415,14 +481,63 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
       {showSigModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-card w-full max-w-lg rounded-lg shadow-xl border border-border p-6">
-            <h3 className="text-lg font-semibold mb-4">Signature Settings</h3>
+            <h3 className="text-lg font-semibold mb-2">Signature Settings</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Set the default signature text for {isSyndicate ? 'syndicate' : 'academic'} notices. This will be saved permanently.
+              Set default signature text and image for {isSyndicate ? 'Syndicate' : 'Academic'} notices/emails.
             </p>
             <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  {isSyndicate ? 'Syndicate' : 'Academic'} Digital Signature Image
+                </label>
+                {signatures[defaultSigImageKey] ? (
+                  <div className="flex items-center justify-between p-3 border border-border rounded-md bg-muted/20">
+                    <img
+                      src={`/api/storage/${signatures[defaultSigImageKey]}`}
+                      alt="Digital Signature"
+                      className="h-12 object-contain bg-white border border-input rounded px-2 py-1"
+                    />
+                    <div className="flex items-center gap-2">
+                      <label className="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground rounded cursor-pointer hover:bg-secondary/80">
+                        {uploadingSig ? 'Uploading...' : 'Change Image'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg,image/webp"
+                          className="hidden"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleUploadDefaultSigImage(file);
+                          }}
+                        />
+                      </label>
+                      <button
+                        onClick={handleRemoveDefaultSigImage}
+                        className="px-2.5 py-1.5 text-xs text-destructive hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-input p-4 rounded-md cursor-pointer hover:bg-muted/30 transition-colors">
+                    <span className="text-xs text-muted-foreground font-medium mb-1">Upload Signature Image</span>
+                    <span className="text-[11px] text-muted-foreground">PNG, JPG, WEBP (Max 5MB)</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadDefaultSigImage(file);
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+
               <div className="space-y-1">
                 <label className="text-sm font-medium">
-                  {isSyndicate ? 'Syndicate' : 'Academic'} Signature (Default)
+                  {isSyndicate ? 'Syndicate' : 'Academic'} Signature Text (Default)
                 </label>
                 <textarea
                   value={isSyndicate ? sigForm.syndicate_signature_str : sigForm.academic_signature_str}

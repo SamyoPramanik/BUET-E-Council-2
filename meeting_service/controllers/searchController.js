@@ -42,8 +42,8 @@ const runKeywordSearchRaw = async (queryText, filters, excludedKeys = []) => {
         AND ($2::uuid[] IS NULL OR EXISTS (SELECT 1 FROM agenda_tags at2 WHERE at2.agenda_id = a.id AND at2.tag_id = ANY($2::uuid[])))
         AND ($3::date IS NULL OR m.meeting_date >= $3::date)
         AND ($4::date IS NULL OR m.meeting_date <= $4::date)
-        AND ($5::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $5::numeric)
-        AND ($6::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $6::numeric)
+        AND ($5::numeric IS NULL OR (CASE WHEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789') ~ '^\\s*[0-9]+\\s*$' THEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789')::numeric ELSE NULL END) >= $5::numeric)
+        AND ($6::numeric IS NULL OR (CASE WHEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789') ~ '^\\s*[0-9]+\\s*$' THEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789')::numeric ELSE NULL END) <= $6::numeric)
         AND ($7::uuid[] IS NULL OR a.id <> ALL($7::uuid[]))
         AND ($8::text IS NULL OR m.type::text = $8)
     `;
@@ -171,8 +171,8 @@ const runEntitySearchFast = async (queryText, filters, excludedKeys = []) => {
         AND ($2::uuid[] IS NULL OR EXISTS (SELECT 1 FROM agenda_tags at2 WHERE at2.agenda_id = a.id AND at2.tag_id = ANY($2::uuid[])))
         AND ($3::date IS NULL OR m.meeting_date >= $3::date)
         AND ($4::date IS NULL OR m.meeting_date <= $4::date)
-        AND ($5::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $5::numeric)
-        AND ($6::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $6::numeric)
+        AND ($5::numeric IS NULL OR (CASE WHEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789') ~ '^\\s*[0-9]+\\s*$' THEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789')::numeric ELSE NULL END) >= $5::numeric)
+        AND ($6::numeric IS NULL OR (CASE WHEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789') ~ '^\\s*[0-9]+\\s*$' THEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789')::numeric ELSE NULL END) <= $6::numeric)
         AND ($7::uuid[] IS NULL OR a.id <> ALL($7::uuid[]))
         AND ($8::text IS NULL OR m.type::text = $8)
     `;
@@ -219,8 +219,8 @@ const runSemanticSearchHNSW = async (queryVector, filters, excludedKeys = []) =>
           AND ($3::uuid[] IS NULL OR EXISTS (SELECT 1 FROM agenda_tags at2 WHERE at2.agenda_id = a.id AND at2.tag_id = ANY($3::uuid[])))
           AND ($4::date IS NULL OR m.meeting_date >= $4::date)
           AND ($5::date IS NULL OR m.meeting_date <= $5::date)
-          AND ($6::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $6::numeric)
-          AND ($7::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $7::numeric)
+          AND ($6::numeric IS NULL OR (CASE WHEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789') ~ '^\\s*[0-9]+\\s*$' THEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789')::numeric ELSE NULL END) >= $6::numeric)
+          AND ($7::numeric IS NULL OR (CASE WHEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789') ~ '^\\s*[0-9]+\\s*$' THEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789')::numeric ELSE NULL END) <= $7::numeric)
           AND ($8::text IS NULL OR m.type::text = $8)
         ORDER BY c.embedding <=> $1::vector ASC
         LIMIT ${RESULT_LIMIT}
@@ -256,9 +256,9 @@ const search = async (req, res, next) => {
     try {
         const filters = parseFilters(req);
 
-        // Filter-only search (tags, serial, date range)
+        // Filter-only search (tags, serial, date range, meeting type)
         if (!filters.q) {
-            if ((filters.tags && filters.tags.length > 0) || filters.serialFrom || filters.serialTo) {
+            if ((filters.tags && filters.tags.length > 0) || filters.serialFrom || filters.serialTo || filters.meetingType || filters.dateFrom || filters.dateTo) {
                 db.query("DELETE FROM search_cache WHERE created_at < NOW() - INTERVAL '24 hours'").catch(() => {});
 
                 const cacheKey = crypto.createHash('sha256').update(JSON.stringify(filters)).digest('hex');
@@ -272,8 +272,8 @@ const search = async (req, res, next) => {
                     AND ($1::uuid[] IS NULL OR EXISTS (SELECT 1 FROM agenda_tags at2 WHERE at2.agenda_id = a.id AND at2.tag_id = ANY($1::uuid[])))
                     AND ($2::date IS NULL OR m.meeting_date >= $2::date)
                     AND ($3::date IS NULL OR m.meeting_date <= $3::date)
-                    AND ($4::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) >= $4::numeric)
-                    AND ($5::numeric IS NULL OR (CASE WHEN m.title ~ '^\\s*[0-9]+\\s*$' THEN trim(m.title)::numeric ELSE NULL END) <= $5::numeric)
+                    AND ($4::numeric IS NULL OR (CASE WHEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789') ~ '^\\s*[0-9]+\\s*$' THEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789')::numeric ELSE NULL END) >= $4::numeric)
+                    AND ($5::numeric IS NULL OR (CASE WHEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789') ~ '^\\s*[0-9]+\\s*$' THEN translate(trim(m.title), '০১২৩৪৫৬৭৮৯', '0123456789')::numeric ELSE NULL END) <= $5::numeric)
                     AND ($6::text IS NULL OR m.type::text = $6)
                 `;
 

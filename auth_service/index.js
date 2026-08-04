@@ -9,6 +9,8 @@ const { verifyOrigin, ALLOWED_ORIGINS } = require('./csrfMiddleware');
 const app = express();
 const port = process.env.PORT || 8000;
 
+app.disable('x-powered-by'); // Don't reveal Express version in response headers
+
 app.set('trust proxy', true);
 
 app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true })); // Needs credentials for cookies

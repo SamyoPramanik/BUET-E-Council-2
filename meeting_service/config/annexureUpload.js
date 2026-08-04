@@ -5,7 +5,7 @@ const ALLOWED_EXTENSIONS = [
     'pdf', 'docx', 'doc', 'txt', 'rtf', 'odt',
     'xlsx', 'xls', 'csv', 'ods',
     'pptx', 'ppt', 'odp',
-    'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'tiff',
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff',
     'mp3', 'mp4', 'wav', 'm4a', 'avi', 'mkv',
     'zip', 'rar', '7z', 'tar', 'gz'
 ];

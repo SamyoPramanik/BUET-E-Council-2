@@ -5,6 +5,7 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const { Parser } = require('json2csv');
 const { Readable } = require('stream');
+const rateLimit = require('express-rate-limit');
 const db = require('./db');
 const { requireAuth, requireAdmin } = require('./middleware');
 const { getDeviceInfo } = require('./utils');
@@ -13,6 +14,16 @@ const { logAudit } = require('./auditLog');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+// Rate limiter: max 10 login attempts per IP per 15 minutes
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many login attempts. Please try again after 15 minutes.' },
+    skipSuccessfulRequests: true // only count failed/errored requests
+});
 
 /**
  * @swagger
@@ -169,7 +180,7 @@ router.post('/signup', requireAuth, async (req, res) => {
  *         description: Account is inactive
  */
 // 2. POST /signin
-router.post('/signin', async (req, res) => {
+router.post('/signin', loginLimiter, async (req, res) => {
     try {
         const { username, password, location } = req.body;
         const deviceInfo = JSON.stringify(getDeviceInfo(req));
@@ -240,7 +251,7 @@ router.post('/signin', async (req, res) => {
         });
     } catch (err) {
         console.error('Signin error:', err);
-        res.status(500).json({ success: false, message: 'Internal server error', error: err.message, stack: err.stack });
+        res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });
 

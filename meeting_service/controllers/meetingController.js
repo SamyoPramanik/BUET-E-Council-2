@@ -313,6 +313,16 @@ const updateMeeting = async (req, res, next) => {
             return next(new CustomError('Only Deputy Registrar & Above can change supplementary agenda viewer visibility.', 403));
         }
 
+        if (status && status !== meeting.status && (status === 'ongoing' || status === 'past')) {
+            const settingRes = await client.query("SELECT value FROM system_settings WHERE key = 'min_completed_level'");
+            const minLevel = settingRes.rows.length > 0 ? parseInt(settingRes.rows[0].value, 10) : 1;
+            const userLevel = req.user?.role_level !== null && req.user?.role_level !== undefined ? parseInt(req.user.role_level, 10) : 0;
+            if (!isUserAdmin && userLevel < minLevel) {
+                await client.query('ROLLBACK');
+                return next(new CustomError(`Forbidden. You do not have permission to change meeting status to ${status}.`, 403));
+            }
+        }
+
         if (status && status === 'past') {
             await client.query(
                 `UPDATE meetings SET is_completed = TRUE, completed_at = COALESCE(completed_at, NOW()), completed_by = COALESCE(completed_by, $1) WHERE id = $2`,

@@ -465,22 +465,6 @@ VALUES (
     )
 ON CONFLICT DO NOTHING;
 
-INSERT INTO
-    users (
-        username,
-        email,
-        password,
-        role,
-        status
-    )
-VALUES (
-        'superadmin',
-        'superadmin@buet.ac.bd',
-        '$2b$10$Uept771hLFh/Wc0hKa8wZeS9XLVfvXdNYpVUq2oGhq/Fk3K4wvQaq', -- bcrypt hash of '123456' (same hash reused, same password)
-        'superadmin',
-        'active'
-    )
-ON CONFLICT DO NOTHING;
 
 INSERT INTO
     faculties (name_english, name_bangla)

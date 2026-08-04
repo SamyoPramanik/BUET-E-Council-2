@@ -58,7 +58,7 @@ const ensureCategorySchema = `
     (11, '(স্নাতক পর্যায়ের পরীক্ষা কমিটি সংক্রান্ত)'),
     (12, '(ইকুইভ্যালেন্স কমিটির সুপারিশ সংক্রান্ত)'),
     (13, '(শিক্ষার্থীদের শাস্তি মওকুফের আবেদন সংক্রান্ত)'),
-    (14, '(অন্যান্য বিষয় সংক্রান্ত)')
+    (14, '(অন্যান্য বিষয় সংক্রান্ত)')
   ON CONFLICT (name) DO NOTHING;
 `;
 pool.query(ensureCategorySchema).catch((err) => console.error('ensureCategorySchema error:', err.message));

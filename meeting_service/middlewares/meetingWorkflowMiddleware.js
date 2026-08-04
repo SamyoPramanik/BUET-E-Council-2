@@ -253,11 +253,11 @@ const calculateMeetingAccess = (meeting, user) => {
     const canSendBackResolution = resHandover !== null && (user.role === 'admin' || userLevel > resHandover);
     const canSendBackResolutionStatus = resStatusHandover !== null && (user.role === 'admin' || userLevel > resStatusHandover);
 
-    // Mark Meeting Completed check
+    // Change Meeting Status (ongoing, past) check
     const minCompletedLevel = meeting.min_completed_level !== undefined && meeting.min_completed_level !== null
         ? parseInt(meeting.min_completed_level, 10)
         : 1;
-    const canMarkCompleted = !isCompleted && (user.role === 'admin' || userLevel >= minCompletedLevel);
+    const canMarkCompleted = (user.role === 'admin' || user.role === 'superadmin' || userLevel >= minCompletedLevel);
 
     return {
         canEditMeeting,

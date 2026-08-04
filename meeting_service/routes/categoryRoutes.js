@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const categoryController = require('../controllers/categoryController');
+const { authMiddleware } = require('../middlewares/authMiddleware');
 const { requireRole } = require('../middlewares/roleMiddleware');
 
-const canEdit = requireRole(['admin', 'superadmin', 'moderator', 'file_initiator']);
+const canEdit = requireRole('admin', 'editor');
+
+router.use(authMiddleware);
 
 router.get('/', categoryController.getCategories);
 router.post('/', canEdit, categoryController.createCategory);

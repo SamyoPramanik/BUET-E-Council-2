@@ -16,21 +16,46 @@ const createCategory = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Category name is required' });
         }
 
-        let catSerial = serial;
-        if (!catSerial) {
+        const trimmedName = name.trim();
+
+        // Check if category name already exists
+        const existingName = await db.query(
+            'SELECT id FROM categories WHERE LOWER(TRIM(name)) = LOWER($1)',
+            [trimmedName]
+        );
+        if (existingName.rows.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Category "${trimmedName}" already exists. Category was not added.`
+            });
+        }
+
+        let catSerial = serial ? parseInt(serial, 10) : null;
+        if (catSerial) {
+            const existingSerial = await db.query(
+                'SELECT id, name FROM categories WHERE serial = $1',
+                [catSerial]
+            );
+            if (existingSerial.rows.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Serial ${catSerial} is already assigned to category "${existingSerial.rows[0].name}". Category was not added.`
+                });
+            }
+        } else {
             const maxRes = await db.query('SELECT COALESCE(MAX(serial), 0) + 1 AS next_serial FROM categories');
             catSerial = maxRes.rows[0].next_serial;
         }
 
         const result = await db.query(
             'INSERT INTO categories (name, serial) VALUES ($1, $2) RETURNING *',
-            [name.trim(), catSerial]
+            [trimmedName, catSerial]
         );
 
         res.status(201).json({ success: true, data: result.rows[0] });
     } catch (error) {
         if (error.code === '23505') {
-            return res.status(400).json({ success: false, message: 'Category with this name already exists' });
+            return res.status(400).json({ success: false, message: 'Category already exists. Category was not added.' });
         }
         next(error);
     }
@@ -45,9 +70,37 @@ const updateCategory = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Category name is required' });
         }
 
+        const trimmedName = name.trim();
+
+        // Check if category name already exists under another ID
+        const existingName = await db.query(
+            'SELECT id FROM categories WHERE LOWER(TRIM(name)) = LOWER($1) AND id != $2',
+            [trimmedName, id]
+        );
+        if (existingName.rows.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Category "${trimmedName}" already exists. Category was not updated.`
+            });
+        }
+
+        let catSerial = serial ? parseInt(serial, 10) : null;
+        if (catSerial) {
+            const existingSerial = await db.query(
+                'SELECT id, name FROM categories WHERE serial = $1 AND id != $2',
+                [catSerial, id]
+            );
+            if (existingSerial.rows.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Serial ${catSerial} is already assigned to category "${existingSerial.rows[0].name}". Category was not updated.`
+                });
+            }
+        }
+
         const result = await db.query(
             'UPDATE categories SET name = $1, serial = COALESCE($2, serial) WHERE id = $3 RETURNING *',
-            [name.trim(), serial, id]
+            [trimmedName, catSerial, id]
         );
 
         if (result.rows.length === 0) {
@@ -57,7 +110,7 @@ const updateCategory = async (req, res, next) => {
         res.status(200).json({ success: true, data: result.rows[0] });
     } catch (error) {
         if (error.code === '23505') {
-            return res.status(400).json({ success: false, message: 'Category with this name already exists' });
+            return res.status(400).json({ success: false, message: 'Category already exists. Category was not updated.' });
         }
         next(error);
     }

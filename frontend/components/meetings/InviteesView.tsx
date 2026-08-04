@@ -666,12 +666,38 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
 
   const renderMemberGroup = (title: string, members: any[], icon: React.ReactNode) => {
     if (members.length === 0) return null;
+    const isGroupAllSelected = members.every((m: any) => selectedMembers.includes(m.id));
+    const isGroupIndeterminate = members.some((m: any) => selectedMembers.includes(m.id)) && !isGroupAllSelected;
+
+    const toggleGroupMembers = () => {
+      const groupIds = members.map((m: any) => m.id);
+      setSelectedMembers(prev => {
+        if (isGroupAllSelected) {
+          return prev.filter(id => !groupIds.includes(id));
+        } else {
+          return Array.from(new Set([...prev, ...groupIds]));
+        }
+      });
+    };
+
     return (
       <div key={title} className="space-y-2">
-        <div className="flex items-center gap-2 pt-2 first:pt-0">
-          {icon}
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
-          <span className="text-xs text-muted-foreground">({members.length})</span>
+        <div className="flex items-center justify-between pt-2 first:pt-0">
+          <div className="flex items-center gap-2">
+            {icon}
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h4>
+            <span className="text-xs text-muted-foreground">({members.length})</span>
+          </div>
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium cursor-pointer select-none hover:text-foreground">
+            <input
+              type="checkbox"
+              className="w-3.5 h-3.5 rounded border-input text-primary focus:ring-primary cursor-pointer"
+              checked={isGroupAllSelected}
+              ref={el => { if (el) el.indeterminate = isGroupIndeterminate; }}
+              onChange={toggleGroupMembers}
+            />
+            Select Group
+          </label>
         </div>
         {members.map((member: any) => {
           const isAlreadyAdded = isPast
@@ -969,6 +995,40 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                   placeholder="Filter Office"
                 />
               </div>
+              {filteredMembers.length > 0 && (
+                <div className="flex items-center justify-between pt-2 border-t border-border/50 text-xs">
+                  <span className="text-muted-foreground font-medium">
+                    Selected: {selectedMembers.length} of {allMembers.length}
+                  </span>
+                  <label className="flex items-center gap-1.5 font-medium text-primary cursor-pointer select-none hover:underline">
+                    <input
+                      type="checkbox"
+                      className="w-3.5 h-3.5 rounded border-input text-primary focus:ring-primary cursor-pointer"
+                      checked={filteredMembers.length > 0 && filteredMembers.every((m: any) => selectedMembers.includes(m.id))}
+                      ref={el => {
+                        if (el) {
+                          const count = filteredMembers.filter((m: any) => selectedMembers.includes(m.id)).length;
+                          el.indeterminate = count > 0 && count < filteredMembers.length;
+                        }
+                      }}
+                      onChange={() => {
+                        const filteredIds = filteredMembers.map((m: any) => m.id);
+                        const isAllSelected = filteredMembers.every((m: any) => selectedMembers.includes(m.id));
+                        if (isAllSelected) {
+                          setSelectedMembers(prev => prev.filter(id => !filteredIds.includes(id)));
+                        } else {
+                          setSelectedMembers(prev => Array.from(new Set([...prev, ...filteredIds])));
+                        }
+                      }}
+                    />
+                    <span>
+                      {filteredMembers.every((m: any) => selectedMembers.includes(m.id))
+                        ? "Deselect All"
+                        : `Select All (${filteredMembers.length})`}
+                    </span>
+                  </label>
+                </div>
+              )}
             </div>
             <div className="p-6 overflow-y-auto flex-1">
               <div className="space-y-4">

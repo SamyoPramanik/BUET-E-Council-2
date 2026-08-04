@@ -40,6 +40,27 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
     );
   }, [invitees, searchQuery]);
 
+  // Master Select All selection status
+  const isAllGlobalSelected = useMemo(() => {
+    return filteredInvitees.length > 0 && filteredInvitees.every(m => presentIds.has(m.id));
+  }, [filteredInvitees, presentIds]);
+
+  const isGlobalIndeterminate = useMemo(() => {
+    return filteredInvitees.some(m => presentIds.has(m.id)) && !isAllGlobalSelected;
+  }, [filteredInvitees, presentIds, isAllGlobalSelected]);
+
+  const toggleAllGlobal = () => {
+    setPresentIds(prev => {
+      const next = new Set(prev);
+      if (isAllGlobalSelected) {
+        filteredInvitees.forEach(m => next.delete(m.id));
+      } else {
+        filteredInvitees.forEach(m => next.add(m.id));
+      }
+      return next;
+    });
+  };
+
   // Grouping logic — matching InviteesView categorization
   const isVC = (m: Invitee) => {
     const des = (m.designation || '').toLowerCase();
@@ -199,11 +220,26 @@ export default function TakeAttendanceView({ invitees, onSave, onCancel, isSavin
       </div>
 
       <div className="bg-muted/30 p-4 rounded-lg border border-border mb-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-500" />
-          <span className="text-sm font-medium text-foreground">Total Present:</span>
-          <span className="text-lg font-bold text-primary">{presentIds.size}</span>
-          <span className="text-sm text-muted-foreground">/ {invitees.length}</span>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="text-sm font-medium text-foreground">Total Present:</span>
+            <span className="text-lg font-bold text-primary">{presentIds.size}</span>
+            <span className="text-sm text-muted-foreground">/ {invitees.length}</span>
+          </div>
+
+          {filteredInvitees.length > 0 && (
+            <label className="flex items-center gap-2 cursor-pointer select-none bg-card hover:bg-muted/50 px-3 py-1.5 rounded-md border border-border text-sm font-medium text-foreground transition-colors shadow-sm">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded border-input text-primary focus:ring-primary cursor-pointer"
+                checked={isAllGlobalSelected}
+                ref={input => { if (input) input.indeterminate = isGlobalIndeterminate; }}
+                onChange={toggleAllGlobal}
+              />
+              <span>{isAllGlobalSelected ? "Deselect All" : "Select All"} ({filteredInvitees.length})</span>
+            </label>
+          )}
         </div>
 
         {/* Search Bar */}

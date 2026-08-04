@@ -80,10 +80,33 @@ export default function ManageCategoriesPage() {
       return;
     }
 
+    const trimmedName = formData.name.trim();
+    const inputSerial = formData.serial ? parseInt(formData.serial, 10) : undefined;
+
+    // Check duplicate name locally
+    const duplicateName = categories.find(
+      (c: any) => c.id !== editingId && c.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (duplicateName) {
+      toast.error(`Category "${trimmedName}" already exists. Category was not added.`);
+      return;
+    }
+
+    // Check duplicate serial locally
+    if (inputSerial !== undefined && !isNaN(inputSerial)) {
+      const duplicateSerial = categories.find(
+        (c: any) => c.id !== editingId && Number(c.serial) === inputSerial
+      );
+      if (duplicateSerial) {
+        toast.error(`Serial ${inputSerial} is already assigned to category "${duplicateSerial.name}". Category was not added.`);
+        return;
+      }
+    }
+
     try {
       const payload = {
-        name: formData.name.trim(),
-        serial: formData.serial ? parseInt(formData.serial, 10) : undefined
+        name: trimmedName,
+        serial: inputSerial
       };
 
       if (isEditMode && editingId) {

@@ -327,7 +327,7 @@ export default function RoleAndUserManagementPage() {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-border pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Role & User Management</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Users,Role & Permissions</h1>
           <p className="text-sm text-muted-foreground">
             Manage system users, level-based editor permissions, and meeting completion settings.
           </p>
@@ -359,7 +359,7 @@ export default function RoleAndUserManagementPage() {
                 activeTab === 'settings' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Settings className="w-4 h-4" /> Completion Level
+              <Settings className="w-4 h-4" /> Permissions
             </button>
           )}
         </div>
@@ -536,7 +536,7 @@ export default function RoleAndUserManagementPage() {
           <form onSubmit={handleSaveSettings} className="space-y-6">
             <div className="space-y-2">
               <label className="text-sm font-medium block">
-                Which role title and above can mark / end a meeting completed?
+                Which role title and above can change meeting status(ongoing,past) of a meeting
               </label>
               <CustomSelect
                 value={minCompletedLevel}
@@ -547,7 +547,7 @@ export default function RoleAndUserManagementPage() {
                 }))}
               />
               <p className="text-xs text-muted-foreground">
-                Users with this role level or higher (or Admin) will have permission to mark meetings as completed.
+                Users with this role level or higher (or Admin) will have permission to change meeting status to ongoing or past.
               </p>
             </div>
 

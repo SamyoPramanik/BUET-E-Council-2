@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../hooks/useAuth";
 import { Download, Eye, Loader2, Settings, Wand2 } from "lucide-react";
 import { toBanglaDigits } from "../../lib/banglaNumerals";
+import { sanitizeHtml } from "../../lib/sanitize";
 
 const BANGLA_DAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
 const BANGLA_MONTHS = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
@@ -460,7 +461,7 @@ export default function NoticeView({ meeting, mutate }: { meeting: any, mutate: 
               <button onClick={() => setShowPreview(false)} className="text-muted-foreground hover:text-foreground">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 bg-white text-foreground">
-              <div dangerouslySetInnerHTML={{ __html: buildPreviewHtml() }} />
+              <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(buildPreviewHtml()) }} />
             </div>
             <div className="flex justify-end gap-2 p-4 border-t border-border">
               <button onClick={() => setShowPreview(false)} className="px-4 py-2 text-sm bg-muted rounded-md">Close</button>

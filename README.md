@@ -245,7 +245,6 @@ Upon fresh database initialization (`db/init.sql`), two default administrative a
 | Username | Default Password | Role | Access Level |
 |---|---|---|---|
 | `admin` | `123456` | `admin` | Full Administrative Privileges |
-| `superadmin` | `123456` | `superadmin` | Full System Overlord Privileges |
 
 ---
 

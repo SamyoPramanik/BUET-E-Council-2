@@ -5,6 +5,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5432:5432"
     restart: always
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -30,6 +32,8 @@ services:
       SMTP_PASS: ${SMTP_PASS}
       MAIL_FROM: ${MAIL_FROM}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:9001}
+    ports:
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy # FIX: Wait until PostgreSQL is fully initialized
@@ -60,6 +64,8 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       MAIL_FROM: ${MAIL_FROM:-no-reply@buet-ecouncil.local}
+    ports:
+      - "127.0.0.1:8001:8001"
     volumes:
       - ./meetings:/meetings
     depends_on:

@@ -319,7 +319,7 @@ const updateMeeting = async (req, res, next) => {
             const userLevel = req.user?.role_level !== null && req.user?.role_level !== undefined ? parseInt(req.user.role_level, 10) : 0;
             if (!isUserAdmin && userLevel < minLevel) {
                 await client.query('ROLLBACK');
-                return next(new CustomError(`Forbidden. You do not have permission to change meeting status to ${status}.`, 403));
+                return next(new CustomError('You are not eligible to change meeting status.', 403));
             }
         }
 

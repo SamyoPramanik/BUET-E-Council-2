@@ -110,6 +110,9 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
   const [handoverPassword, setHandoverPassword] = useState("");
   const [isSubmittingHandover, setIsSubmittingHandover] = useState(false);
 
+  // Ineligible Status Change Modal
+  const [statusErrorModalOpen, setStatusErrorModalOpen] = useState(false);
+
   const canEdit = canAuthorMeeting(user, meeting);
   const readOnly = !canEdit;
 
@@ -134,6 +137,14 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!isInfoDirty || saving) return;
+
+    if (!isAdmin && formData.status !== meeting.status && (formData.status === 'ongoing' || formData.status === 'past')) {
+      if (access.canMarkCompleted === false) {
+        setStatusErrorModalOpen(true);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const requests = [];
@@ -151,7 +162,12 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
       mutate();
       toast.success("Meeting info updated successfully.");
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to update meeting info');
+      const msg = err.response?.data?.message || 'Failed to update meeting info';
+      if (err.response?.status === 403 && (msg.toLowerCase().includes('eligible') || msg.toLowerCase().includes('status'))) {
+        setStatusErrorModalOpen(true);
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -379,7 +395,13 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                   <CustomSelect 
                     options={statusOptions}
                     value={formData.status}
-                    onChange={(val) => setFormData({...formData, status: val})}
+                    onChange={(val) => {
+                      if (!isAdmin && val !== meeting.status && (val === 'ongoing' || val === 'past') && access.canMarkCompleted === false) {
+                        setStatusErrorModalOpen(true);
+                        return;
+                      }
+                      setFormData({...formData, status: val});
+                    }}
                   />
                 )}
               </div>
@@ -938,6 +960,32 @@ export default function MeetingInfoView({ meeting, mutate }: { meeting: any, mut
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Ineligible Status Change Pop-Up Modal */}
+      {statusErrorModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border rounded-lg p-6 max-w-md w-full shadow-xl space-y-4 text-center mx-4">
+            <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-foreground">Permission Restricted</h3>
+              <p className="text-sm text-muted-foreground font-medium">
+                You are not eligible to change meeting status.
+              </p>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setStatusErrorModalOpen(false)}
+                className="w-full py-2 px-4 bg-primary text-primary-foreground font-semibold text-sm rounded-md hover:bg-primary/90 transition-colors shadow-sm cursor-pointer"
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
       )}

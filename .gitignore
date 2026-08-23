@@ -72,3 +72,9 @@ app/static/pdfs/*
 .env
 .claudemeetings/
 /meetings/
+
+# SSL Certificates
+certs/
+*.pem
+*.crt
+*.key

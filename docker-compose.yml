@@ -158,8 +158,10 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       frontend:
         condition: service_healthy # FIX: Wait until Next.js has finished booting

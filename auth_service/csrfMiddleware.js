@@ -4,7 +4,7 @@
 // Origin on every cross-origin request (and on same-origin unsafe-method
 // requests in all current browsers), so a forged request from another site
 // simply won't carry an origin this server trusts.
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:9001')
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'https://ecouncil.buet.ac.bd')
     .split(',').map(o => o.trim()).filter(Boolean);
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);

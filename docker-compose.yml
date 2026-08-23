@@ -31,7 +31,7 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       MAIL_FROM: ${MAIL_FROM}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:9001}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://ecouncil.buet.ac.bd}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -57,7 +57,7 @@ services:
       R3_SECRET_ACCESS_KEY: ${R3_SECRET_ACCESS_KEY}
       R3_BUCKET_NAME: ${R3_BUCKET_NAME}
       MAX_ANNEXURE_SIZE_MB: ${MAX_ANNEXURE_SIZE_MB:-20}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:9001}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://ecouncil.buet.ac.bd}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
@@ -157,7 +157,7 @@ services:
     image: nginx:alpine
     restart: always
     ports:
-      - "9001:80"
+      - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
     depends_on:

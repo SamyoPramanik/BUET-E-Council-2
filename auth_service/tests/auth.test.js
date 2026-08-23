@@ -241,4 +241,75 @@ describe('Auth Service Endpoints', () => {
             expect(meRes3.statusCode).toBe(401);
         });
     });
+
+    describe('8. Admin Protection & Self-Deactivation Rules', () => {
+        let adminUserId = '';
+        let adminCookie = '';
+
+        beforeAll(async () => {
+            const adminRes = await db.query("SELECT id FROM users WHERE username = 'admin'");
+            if (adminRes.rows.length > 0) {
+                adminUserId = adminRes.rows[0].id;
+            }
+
+            const loginRes = await request(app)
+                .post('/api/auth/signin')
+                .send({ username: 'admin', password: '123456' });
+
+            if (loginRes.headers['set-cookie']) {
+                adminCookie = loginRes.headers['set-cookie'][0].split(';')[0];
+            }
+        });
+
+        it('should prevent user from deactivating their own account', async () => {
+            if (!adminCookie) return;
+            const res = await request(app)
+                .patch(`/api/auth/users/${adminUserId}/status`)
+                .set('Cookie', adminCookie)
+                .send({ status: 'inactive' });
+
+            expect(res.statusCode).toBe(400);
+            expect(res.body.success).toBe(false);
+            expect(res.body.message).toContain('cannot deactivate your own account');
+        });
+
+        it('should prevent user from deleting their own account', async () => {
+            if (!adminCookie) return;
+            const res = await request(app)
+                .delete(`/api/auth/users/${adminUserId}`)
+                .set('Cookie', adminCookie);
+
+            expect(res.statusCode).toBe(400);
+            expect(res.body.success).toBe(false);
+            expect(res.body.message).toContain('cannot delete your own account');
+        });
+
+        it('should prevent deactivating the last active admin in the database', async () => {
+            // Create a secondary admin to test target user updates
+            const secondaryAdminRes = await db.query(
+                `INSERT INTO users (username, email, password, role, status)
+                 VALUES ('secadmin', 'secadmin@example.com', 'hash', 'admin', 'active')
+                 RETURNING id`
+            );
+            const secAdminId = secondaryAdminRes.rows[0].id;
+
+            // Attempting to deactivate the secondary admin while primary admin is inactive
+            // First deactivate primary admin directly in DB for testing
+            await db.query("UPDATE users SET status = 'inactive' WHERE id = $1", [adminUserId]);
+
+            // Attempting to deactivate the last remaining active admin (secAdminId) via DB/API
+            try {
+                await db.query("UPDATE users SET status = 'inactive' WHERE id = $1", [secAdminId]);
+                // Should not reach here
+                expect(true).toBe(false);
+            } catch (err) {
+                expect(err.message).toContain('last active admin account');
+            }
+
+            // Cleanup test secondary admin and reactivate primary admin
+            await db.query("DELETE FROM users WHERE id = $1", [secAdminId]);
+            await db.query("UPDATE users SET status = 'active' WHERE id = $1", [adminUserId]);
+        });
+    });
 });
+

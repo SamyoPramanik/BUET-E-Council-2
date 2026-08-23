@@ -96,6 +96,12 @@ export default function RoleAndUserManagementPage() {
   const handleUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmittingUser) return;
+
+    if (isUserEditMode && editingUserId === currentUser?.id && userFormData.status === 'inactive') {
+      toast.error("You cannot deactivate your own account.");
+      return;
+    }
+
     setIsSubmittingUser(true);
     try {
       const payload: any = {
@@ -187,6 +193,11 @@ export default function RoleAndUserManagementPage() {
 
   // Delete Handlers
   const handleDeleteUser = (u: any) => {
+    if (currentUser?.id === u.id) {
+      toast.error("You cannot delete your own account.");
+      return;
+    }
+
     if (u.role === 'admin' && !isAdmin) {
       toast.error("Only admin users can delete admin user information.");
       return;

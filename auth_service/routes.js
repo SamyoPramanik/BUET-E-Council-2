@@ -522,6 +522,10 @@ router.put('/users/:id', requireAuth, async (req, res) => {
 
         const { username, email, password, role, role_id, member_type, status } = req.body;
 
+        if (req.user.id === id && status === 'inactive') {
+            return res.status(400).json({ success: false, message: 'You cannot deactivate your own account.' });
+        }
+
         if (username || email) {
             const checkU = username ? username.trim() : '';
             const checkE = email ? email.trim() : '';
@@ -607,6 +611,9 @@ router.put('/users/:id', requireAuth, async (req, res) => {
 
         res.status(200).json({ success: true, message: 'User updated successfully', data: result.rows[0] });
     } catch (err) {
+        if (err.message && err.message.includes('last active admin account')) {
+            return res.status(400).json({ success: false, message: err.message });
+        }
         console.error('Update user error:', err);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
@@ -619,6 +626,10 @@ router.patch('/users/:id/status', requireAuth, async (req, res) => {
         const { status } = req.body;
         const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
         const userLevel = req.user.role_level;
+
+        if (req.user.id === id && status === 'inactive') {
+            return res.status(400).json({ success: false, message: 'You cannot deactivate your own account.' });
+        }
 
         if (!isAdmin && userLevel === null) {
             return res.status(403).json({ success: false, message: 'Forbidden. Permission denied.' });
@@ -666,6 +677,9 @@ router.patch('/users/:id/status', requireAuth, async (req, res) => {
 
         res.status(200).json({ success: true, message: 'User status updated successfully', data: result.rows[0] });
     } catch (err) {
+        if (err.message && err.message.includes('last active admin account')) {
+            return res.status(400).json({ success: false, message: err.message });
+        }
         console.error('Update status error:', err);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }
@@ -677,6 +691,10 @@ router.delete('/users/:id', requireAuth, async (req, res) => {
         const { id } = req.params;
         const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
         const userLevel = req.user.role_level;
+
+        if (req.user.id === id) {
+            return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
+        }
 
         if (!isAdmin && userLevel === null) {
             return res.status(403).json({ success: false, message: 'Forbidden. Access denied.' });
@@ -714,6 +732,9 @@ router.delete('/users/:id', requireAuth, async (req, res) => {
 
         res.status(200).json({ success: true, message: 'User deleted successfully' });
     } catch (err) {
+        if (err.message && err.message.includes('last active admin account')) {
+            return res.status(400).json({ success: false, message: err.message });
+        }
         console.error('Delete user error:', err);
         res.status(500).json({ success: false, message: 'Internal server error' });
     }

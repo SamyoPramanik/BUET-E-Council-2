@@ -345,6 +345,41 @@ AFTER UPDATE OF serial ON members FOR EACH ROW
 WHEN (OLD.serial IS DISTINCT FROM NEW.serial)
 EXECUTE FUNCTION sync_invitee_serial ();
 
+-- Ensures at least one active admin account exists in the database at all times.
+CREATE OR REPLACE FUNCTION check_at_least_one_active_admin () RETURNS TRIGGER AS $$
+DECLARE
+    active_admin_count INTEGER;
+BEGIN
+    IF (OLD.role IN ('admin', 'superadmin') AND OLD.status = 'active') THEN
+        IF (TG_OP = 'DELETE') OR 
+           (TG_OP = 'UPDATE' AND (NEW.role NOT IN ('admin', 'superadmin') OR NEW.status != 'active')) THEN
+            
+            SELECT COUNT(*) INTO active_admin_count
+            FROM users
+            WHERE role IN ('admin', 'superadmin')
+              AND status = 'active'
+              AND id != OLD.id;
+
+            IF active_admin_count < 1 THEN
+                RAISE EXCEPTION 'Cannot deactivate, demote, or delete the last active admin account in the database.';
+            END IF;
+        END IF;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    ELSE
+        RETURN NEW;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_check_at_least_one_active_admin ON users;
+CREATE TRIGGER trg_check_at_least_one_active_admin
+BEFORE UPDATE OR DELETE ON users
+FOR EACH ROW
+EXECUTE FUNCTION check_at_least_one_active_admin ();
+
 -- Revisions Table (Version control for content)
 CREATE TABLE revisions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),

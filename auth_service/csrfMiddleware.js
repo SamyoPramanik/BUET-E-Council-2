@@ -3,7 +3,6 @@
 
 const defaultOrigins = [
     'https://ecouncil.buet.ac.bd',
-    'http://ecouncil.buet.ac.bd',
     'http://localhost:3000',
     'http://localhost:9001',
     'http://localhost'

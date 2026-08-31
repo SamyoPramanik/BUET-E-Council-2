@@ -16,7 +16,14 @@ const resolveMeetingId = async (req) => {
         if (req.method === 'POST' && req.path === '/' && req.body.meeting_id) {
             return req.body.meeting_id;
         }
-        if (potentialId && potentialId !== 'annexures' && potentialId !== 'resolutions') {
+        if (req.path.startsWith('/meeting/') && pathParts.length >= 2) {
+            return pathParts[1];
+        }
+        if (req.path.startsWith('/archived/') && pathParts.length >= 2) {
+            const r = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [pathParts[1]]);
+            return r.rows[0]?.meeting_id || null;
+        }
+        if (potentialId && potentialId !== 'annexures' && potentialId !== 'resolutions' && potentialId !== 'archived' && potentialId !== 'meeting') {
             const r = await db.query('SELECT meeting_id FROM agenda WHERE id = $1', [potentialId]);
             return r.rows[0]?.meeting_id || null;
         }

@@ -22,6 +22,7 @@
     "@tiptap/react": "^3.27.1",
     "@tiptap/starter-kit": "^3.27.1",
     "axios": "^1.18.1",
+    "bijoy2unicode": "^1.0.2",
     "dompurify": "^3.4.11",
     "jszip": "^3.10.1",
     "lucide-react": "^1.23.0",

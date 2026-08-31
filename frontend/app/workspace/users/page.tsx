@@ -66,6 +66,7 @@ export default function RoleAndUserManagementPage() {
   // System Settings State
   const [minCompletedLevel, setMinCompletedLevel] = useState<string>("1");
   const [minEmailLevel, setMinEmailLevel] = useState<string>("1");
+  const [minArchiveLevel, setMinArchiveLevel] = useState<string>("1");
   const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
@@ -86,6 +87,9 @@ export default function RoleAndUserManagementPage() {
     }
     if (settings.min_email_level !== undefined) {
       setMinEmailLevel(String(settings.min_email_level));
+    }
+    if (settings.min_archive_level !== undefined) {
+      setMinArchiveLevel(String(settings.min_archive_level));
     }
   }, [settings]);
 
@@ -180,7 +184,8 @@ export default function RoleAndUserManagementPage() {
     try {
       await api.put('/auth/settings', {
         min_completed_level: parseInt(minCompletedLevel, 10),
-        min_email_level: parseInt(minEmailLevel, 10)
+        min_email_level: parseInt(minEmailLevel, 10),
+        min_archive_level: parseInt(minArchiveLevel, 10)
       });
       toast.success("System settings updated successfully!");
       mutateSettings();
@@ -576,6 +581,23 @@ export default function RoleAndUserManagementPage() {
               />
               <p className="text-xs text-muted-foreground">
                 Users with this role level or higher (or Admin) will have permission to send emails to members.
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-border/50">
+              <label className="text-sm font-medium block">
+                Which role title and above can archive agendas & manage archive box?
+              </label>
+              <CustomSelect
+                value={minArchiveLevel}
+                onChange={(val) => setMinArchiveLevel(val)}
+                options={roles.map((r: any) => ({
+                  value: String(r.level),
+                  label: `${r.level_title} & Above`
+                }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Users with this role level or higher (or Admin) will have permission to archive agendas and manage items in the Archive Box.
               </p>
             </div>
 

@@ -13,7 +13,7 @@ export function useConfirm() {
   const ConfirmModal = () => {
     if (!isOpen) return null;
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
         <div className="bg-card border border-border shadow-lg rounded-lg w-full max-w-sm p-6 animate-in zoom-in-95 duration-200 m-4">
           <div className="flex items-center gap-3 mb-2 text-destructive">
             <AlertCircle className="w-5 h-5" />

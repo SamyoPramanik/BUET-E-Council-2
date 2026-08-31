@@ -15,7 +15,7 @@ interface AttendanceSheetOptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
   meeting: any;
-  onGenerate: (mode: 'all' | 'separate', selectedGroups: string[]) => Promise<void>;
+  onGenerate: (mode: 'all' | 'separate', selectedGroups: string[], format?: 'pdf' | 'docx') => Promise<void>;
 }
 
 function computeGroups(invitees: any[]): AttendanceGroup[] {
@@ -118,12 +118,14 @@ export default function AttendanceSheetOptionsModal({
     return <Users className="w-4 h-4" />;
   };
 
+  const [format, setFormat] = useState<'pdf' | 'docx'>('pdf');
+
   const handleGenerate = async () => {
     if (mode === 'separate' && selectedGroups.size === 0) return;
 
     setIsGenerating(true);
     try {
-      await onGenerate(mode, mode === 'separate' ? Array.from(selectedGroups) : []);
+      await onGenerate(mode, mode === 'separate' ? Array.from(selectedGroups) : [], format);
       onClose();
     } catch (err) {
     } finally {
@@ -163,6 +165,37 @@ export default function AttendanceSheetOptionsModal({
             </div>
           ) : (
             <div className="space-y-6">
+              {/* File Format Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">File Format</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormat('pdf')}
+                    className={`py-2 px-4 rounded-lg border-2 font-medium text-sm transition-all flex items-center justify-center gap-2 ${
+                      format === 'pdf'
+                        ? 'border-red-500 bg-red-50 text-red-700 font-semibold'
+                        : 'border-border text-muted-foreground hover:border-red-300'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 text-red-500" />
+                    PDF Document
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormat('docx')}
+                    className={`py-2 px-4 rounded-lg border-2 font-medium text-sm transition-all flex items-center justify-center gap-2 ${
+                      format === 'docx'
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 font-semibold'
+                        : 'border-border text-muted-foreground hover:border-blue-300'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 text-blue-500" />
+                    Word (.docx)
+                  </button>
+                </div>
+              </div>
+
               <div className="space-y-3">
                 <label className="text-sm font-medium text-foreground">Generation Mode</label>
 
@@ -186,7 +219,7 @@ export default function AttendanceSheetOptionsModal({
                       Generate as Whole
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Single PDF with all sections combined
+                      Single {format.toUpperCase()} with all sections combined
                     </p>
                   </div>
                 </label>
@@ -211,7 +244,7 @@ export default function AttendanceSheetOptionsModal({
                       Generate Separately
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Generate separate PDFs for each selected section
+                      Generate separate {format.toUpperCase()} files for each selected section
                     </p>
                   </div>
                 </label>

@@ -1,3 +1,4 @@
+const HTMLtoDOCX = require('html-to-docx');
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');
@@ -102,7 +103,7 @@ function convertMarkdownTablesToHtml(content) {
             }
 
             if (leadText) {
-                result.push(`<p>${leadText}</p>`);
+                result.push(`<p style="line-height: 1.5; margin-bottom: 10px; text-align: justify; font-size: 14px;">${leadText}</p>`);
             }
 
             let dataLines = [];
@@ -126,7 +127,7 @@ function convertMarkdownTablesToHtml(content) {
 
             let tableHtml = '<table class="meeting-table" border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;margin:12px 0;border:1px solid #000;"><thead><tr>';
             headers.forEach(h => {
-                tableHtml += `<th style="border:1px solid #000;padding:6px;background-color:rgba(0,0,0,0.05);font-weight:600;text-align:left;">${h}</th>`;
+                tableHtml += `<th style="border:1px solid #000;padding:6px;background-color:rgba(0,0,0,0.05);font-weight:bold;text-align:left;">${h}</th>`;
             });
             tableHtml += '</tr></thead><tbody>';
 
@@ -147,13 +148,111 @@ function convertMarkdownTablesToHtml(content) {
         } else {
             let cleanText = lines[idx].replace(/^\||\|$/g, '').trim();
             if (cleanText) {
-                result.push(`<p>${cleanText}</p>`);
+                result.push(`<p style="line-height: 1.5; margin-bottom: 10px; text-align: justify; font-size: 14px;">${cleanText}</p>`);
             }
             idx++;
         }
     }
 
     return result.join('\n');
+}
+
+function styleRichTextHtml(htmlContent, isIndented = false) {
+    if (!htmlContent) return '';
+    let str = String(htmlContent);
+    const indentPx = isIndented ? 30 : 0;
+
+    // Helper: merge missing CSS properties into an existing inline style value
+    const mergeStyle = (existing, additions) => {
+        let s = existing || '';
+        for (const [prop, val] of Object.entries(additions)) {
+            if (!s.includes(prop)) s += `; ${prop}: ${val}`;
+        }
+        return s.replace(/^;\s*/, '').trim();
+    };
+
+    // Helper: inject/update a style attribute on an HTML opening tag string
+    const injectStyle = (tag, additions) => {
+        if (/style="([^"]*)"/i.test(tag)) {
+            return tag.replace(/style="([^"]*)"/i, (m, s) => `style="${mergeStyle(s, additions)}"`);
+        }
+        const styleStr = Object.entries(additions).map(([k, v]) => `${k}: ${v}`).join('; ');
+        return tag.replace(/(\s*\/?>)$/, ` style="${styleStr}"$1`);
+    };
+
+    // Paragraphs
+    str = str.replace(/<p(\s[^>]*)?>/gi, (match) => {
+        const base = { 'line-height': '1.6', 'margin-top': '0', 'margin-bottom': '10px', 'text-align': 'justify', 'font-size': '14px' };
+        if (isIndented) base['margin-left'] = `${indentPx}px`;
+        return injectStyle(match, base);
+    });
+
+    // Headings
+    const headingSizes = { h1: '22px', h2: '18px', h3: '16px', h4: '14px', h5: '13px', h6: '12px' };
+    for (const [tag, size] of Object.entries(headingSizes)) {
+        str = str.replace(new RegExp(`<${tag}(\\s[^>]*)?>`, 'gi'), (match) =>
+            injectStyle(match, { 'font-size': size, 'font-weight': 'bold', 'line-height': '1.4', 'margin-top': '12px', 'margin-bottom': '8px' })
+        );
+    }
+
+    // Bold
+    str = str.replace(/<(strong|b)(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'font-weight': 'bold' }));
+
+    // Italic
+    str = str.replace(/<(em|i)(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'font-style': 'italic' }));
+
+    // Underline
+    str = str.replace(/<u(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'text-decoration': 'underline' }));
+
+    // Strikethrough
+    str = str.replace(/<(s|del|strike)(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'text-decoration': 'line-through' }));
+
+    // Unordered lists
+    str = str.replace(/<ul(\s[^>]*)?>/gi, (match) =>
+        injectStyle(match, { 'margin': '8px 0', 'padding-left': `${indentPx + 20}px`, 'font-size': '14px', 'line-height': '1.6' })
+    );
+
+    // Ordered lists
+    str = str.replace(/<ol(\s[^>]*)?>/gi, (match) =>
+        injectStyle(match, { 'margin': '8px 0', 'padding-left': `${indentPx + 20}px`, 'font-size': '14px', 'line-height': '1.6' })
+    );
+
+    // List items
+    str = str.replace(/<li(\s[^>]*)?>/gi, (match) =>
+        injectStyle(match, { 'font-size': '14px', 'line-height': '1.6', 'margin-bottom': '4px' })
+    );
+
+    // Blockquote
+    str = str.replace(/<blockquote(\s[^>]*)?>/gi, (match) =>
+        injectStyle(match, { 'border-left': '4px solid #ccc', 'margin': '10px 0 10px 20px', 'padding-left': '12px', 'color': '#555', 'font-style': 'italic', 'font-size': '14px' })
+    );
+
+    // Preformatted / code blocks
+    str = str.replace(/<pre(\s[^>]*)?>/gi, (match) =>
+        injectStyle(match, { 'font-family': 'monospace', 'font-size': '12px', 'background': '#f4f4f4', 'padding': '8px', 'border': '1px solid #ddd', 'white-space': 'pre-wrap' })
+    );
+
+    // Tables
+    str = str.replace(/<table(\s[^>]*)?>/gi, (match) => {
+        if (match.includes('border-collapse')) return match;
+        const styled = injectStyle(match, { 'border-collapse': 'collapse', 'width': '100%', 'margin': '12px 0', 'border': '1px solid #000' });
+        if (!styled.includes('border=')) return styled.replace('<table', '<table border="1" cellpadding="6" cellspacing="0"');
+        return styled;
+    });
+
+    // Table headers
+    str = str.replace(/<th(\s[^>]*)?>/gi, (match) => {
+        if (match.includes('font-weight')) return match;
+        return injectStyle(match, { 'border': '1px solid #000', 'padding': '6px', 'background-color': '#f2f4f7', 'font-weight': 'bold', 'text-align': 'left', 'font-size': '14px' });
+    });
+
+    // Table cells
+    str = str.replace(/<td(\s[^>]*)?>/gi, (match) => {
+        if (match.includes('font-size')) return match;
+        return injectStyle(match, { 'border': '1px solid #000', 'padding': '6px', 'text-align': 'left', 'font-size': '14px', 'vertical-align': 'top' });
+    });
+
+    return str;
 }
 
 // Reuse a single Chromium instance across requests instead of launching one per PDF.
@@ -251,7 +350,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v48';
+const PDF_TEMPLATE_VERSION = 'v49';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -288,7 +387,7 @@ const storeCachedPdf = async (cacheKey, pdfBuffer, fingerprint) => {
     }
 };
 
-const generatePdf = async (meetingId, isResolution, cacheVariant) => {
+const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
     try {
         const meetingQuery = `SELECT title, meeting_date, description, conclusion, agenda_prefix, type, president_signature, secretary_signature, is_regular FROM meetings WHERE id = $1`;
         const presenteesQuery = `
@@ -416,8 +515,6 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             agendas: stableRows(agendas),
             signatures: { presidentSignature, secretarySignature, presidentSignatureImage, secretarySignatureImage }
         });
-        const cached = await getCachedPdf(cacheKey, fingerprint);
-        if (cached) return cached;
 
         const topLeadership = [];
         const deans = [];
@@ -567,15 +664,17 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
 
         const renderSection = (title, items, isOthers = false, isLeadership = false) => {
             if (!items || items.length === 0) return '';
-            let html = `<div class="presentee-section">`;
+            let html = `<div class="presentee-section" style="margin-bottom: 15px; page-break-inside: avoid;">`;
             if (title) {
-                html += `<div class="section-title"><u>${title}</u></div>`;
+                html += `<div class="section-title" style="font-weight: bold; margin-bottom: 5px; text-decoration: underline;"><u>${title}</u></div>`;
             }
             items.forEach(item => {
-                html += `<div class="presentee-row">
-                    <div class="p-name">${getDisplayName(item, isOthers, isLeadership)}</div>
-                    <div class="p-suffix">${getSuffix(item)}</div>
-                </div>`;
+                html += `<table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border: none; margin-bottom: 4px; font-size: 13px; line-height: 1.4;">
+                    <tr>
+                        <td style="width: 75%; text-align: left; vertical-align: top; border: none; font-size: 13px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${getDisplayName(item, isOthers, isLeadership)}</td>
+                        <td style="width: 25%; text-align: right; vertical-align: top; font-weight: bold; border: none; font-size: 13px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${getSuffix(item)}</td>
+                    </tr>
+                </table>`;
             });
             html += `</div>`;
             return html;
@@ -626,12 +725,12 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             }
 
             return `
-            <div class="agenda-block">
-                <div class="agenda-title">${isBibidha ? 'বিবিধ :' : 'প্রস্তাবনা নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</div>
-                <div class="agenda-content">${ag.content || ''}</div>
+            <div class="agenda-block" style="page-break-inside: avoid; margin-bottom: 30px;">
+                <div class="agenda-title" style="font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${isBibidha ? 'বিবিধ :' : 'প্রস্তাবনা নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</b></div>
+                <div class="agenda-content" style="margin-left: 30px; text-align: justify; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${styleRichTextHtml(displayContent, true)}</div>
                 ${isResolution ? `
-                <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
-                <div class="agenda-resolution">${stripResolutionPrefix(ag.resolution || '')}</div>
+                <div class="agenda-title" style="margin-top:15px; font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>সিদ্ধান্ত:</b></div>
+                <div class="agenda-resolution" style="margin-left: 30px; text-align: justify; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${styleRichTextHtml(stripResolutionPrefix(ag.resolution || ''), true)}</b></div>
                 ` : ''}
             </div>
             `;
@@ -723,19 +822,19 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
         </head>
         <body>
             ${cacheVariant === 'suppli-agenda' ? `
-            <div class="text-center sub-title">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
             ` : (isImmediate ? `
-            <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title">${dateShort} তারিখে অনুষ্ঠিতব্য ${formattedSerial} নং জরুরী (Immediate) সভার ${docLabel}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 19px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${dateShort} তারিখে অনুষ্ঠিতব্য ${formattedSerial} নং জরুরী (Immediate) সভার ${docLabel}</div>
             ` : `
-            <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 19px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
             `)}
 
             ${cacheVariant === 'resolution-status' ? '' : (isResolution ? `
-                ${meeting.description ? `<div class="description">${meeting.description}</div>` : ''}
+                ${meeting.description ? `<div class="description" style="font-size: 14px; text-align: justify; line-height: 1.6; margin-bottom: 25px;">${meeting.description}</div>` : ''}
 
-                <div class="presentees-header">উপস্থিত সদস্যবৃন্দ</div>
+                <div class="presentees-header" style="font-size: 14px; font-weight: bold; text-decoration: underline; margin-bottom: 15px;">উপস্থিত সদস্যবৃন্দ</div>
                 <div class="columns-container">
                     ${renderSection(null, topLeadership, false, true)}
                     ${renderSection('সকল ডিন', deans)}
@@ -969,46 +1068,60 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
                     const catHeader = categoryHeaderMap.get(ag.id);
 
                     return `
-                    ${catHeader ? `<div class="category-header"><b>${catHeader}</b></div>` : ''}
-                    <div class="agenda-block">
-                        <div class="agenda-title">${titleStr}</div>
-                        ${contentHtml ? `<div class="agenda-content">${contentHtml}</div>` : ''}
+                    ${catHeader ? `<div class="category-header" style="font-weight: bold; font-size: 15px; margin-top: 25px; margin-bottom: 15px;"><b>${catHeader}</b></div>` : ''}
+                    <div class="agenda-block" style="margin-bottom: 30px;">
+                        <div class="agenda-title" style="font-weight: bold; font-size: 14px; margin-bottom: 8px;"><b>${titleStr}</b></div>
+                        ${contentHtml ? `<div class="agenda-content" style="margin-left: 30px; text-align: justify; font-size: 14px; line-height: 1.6; margin-bottom: 12px;">${styleRichTextHtml(contentHtml, true)}</div>` : ''}
                         ${isResolution ? `
-                        <div class="agenda-title" style="margin-top:15px;">সিদ্ধান্ত:</div>
-                        <div class="agenda-resolution">${convertMarkdownTablesToHtml(ag.resolution || '')}</div>
+                        <div class="agenda-title" style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 8px;"><b>সিদ্ধান্ত:</b></div>
+                        <div class="agenda-resolution" style="margin-left: 30px; text-align: justify; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px;"><b>${styleRichTextHtml(convertMarkdownTablesToHtml(ag.resolution || ''), true)}</b></div>
                         ` : ''}
                     </div>
                     `;
                 }).join('');
             })()}
             ${isResolution && cacheVariant !== 'resolution-status' && meeting.conclusion ? `
-            <div class="conclusion" style="margin-top: 30px; font-size: 14px; text-align: justify; page-break-inside: avoid;">
-                ${convertMarkdownTablesToHtml(meeting.conclusion)}
+            <div class="conclusion" style="margin-top: 30px; font-size: 14px; text-align: justify; line-height: 1.6; page-break-inside: avoid;">
+                ${styleRichTextHtml(convertMarkdownTablesToHtml(meeting.conclusion))}
             </div>
             ` : ''}
 
             ${isResolution && cacheVariant !== 'resolution-status' ? `
-            <div class="signature-block">
-                <div class="signature-column">
-                    <div class="signature-space" style="display: flex; align-items: flex-end; justify-content: center;">
-                        ${presidentSignatureBase64 ? `<img src="${presidentSignatureBase64}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />` : ''}
-                    </div>
-                    <div class="signature-text">${(presidentSignature || '').replace(/\n/g, '<br/>')}</div>
-                </div>
-                <div class="signature-column">
-                    <div class="signature-space" style="display: flex; align-items: flex-end; justify-content: center;">
-                        ${secretarySignatureBase64 ? `<img src="${secretarySignatureBase64}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />` : ''}
-                    </div>
-                    <div class="signature-text">${(secretarySignature || '').replace(/\n/g, '<br/>')}</div>
-                </div>
-            </div>
+            <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border: none; margin-top: 50px; page-break-inside: avoid;">
+                <tr>
+                    <td style="width: 45%; text-align: center; vertical-align: bottom; border: none;">
+                        <div class="signature-space" style="height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 10px; text-align: center;">
+                            ${presidentSignatureBase64 ? `<img src="${presidentSignatureBase64}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />` : ''}
+                        </div>
+                        <div class="signature-text" style="font-size: 13px; line-height: 1.5; font-weight: bold; text-align: center; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${(presidentSignature || '').replace(/\n/g, '<br/>')}</div>
+                    </td>
+                    <td style="width: 10%; border: none;"></td>
+                    <td style="width: 45%; text-align: center; vertical-align: bottom; border: none;">
+                        <div class="signature-space" style="height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 10px; text-align: center;">
+                            ${secretarySignatureBase64 ? `<img src="${secretarySignatureBase64}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />` : ''}
+                        </div>
+                        <div class="signature-text" style="font-size: 13px; line-height: 1.5; font-weight: bold; text-align: center; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${(secretarySignature || '').replace(/\n/g, '<br/>')}</div>
+                    </td>
+                </tr>
+            </table>
             ` : ''}
         </body>
         </html>
         `;
 
+        return { html, cacheKey, fingerprint };
+    } catch (error) {
+        throw error;
+    }
+};
+
+const generatePdf = async (meetingId, isResolution, cacheVariant) => {
+    try {
+        const { html, cacheKey, fingerprint } = await buildMeetingHtml(meetingId, isResolution, cacheVariant);
+        const cached = await getCachedPdf(cacheKey, fingerprint);
+        if (cached) return cached;
+
         const pdfBuffer = await renderPdf(html);
-        // Cache for future requests (best-effort; keyed by the content fingerprint).
         await storeCachedPdf(cacheKey, pdfBuffer, fingerprint);
         try {
             const pdfType = cacheVariant || (isResolution ? 'resolution' : 'agenda');
@@ -1017,13 +1130,34 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
             console.error('Error saving meeting PDF to filesystem:', e);
         }
         return pdfBuffer;
-
     } catch (error) {
         throw error;
     }
 };
 
-const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
+const generateMeetingDocx = async (meetingId, isResolution, cacheVariant) => {
+    try {
+        const { html } = await buildMeetingHtml(meetingId, isResolution, cacheVariant);
+        const docxBuffer = await HTMLtoDOCX(html, null, {
+            table: { row: { cantSplit: true } },
+            footer: true,
+            pageNumber: true,
+            font: 'Kalpurush',
+            fontSize: 24,
+            margins: {
+                top: 1440,
+                right: 1440,
+                bottom: 1440,
+                left: 1440
+            }
+        });
+        return docxBuffer;
+    } catch (error) {
+        throw error;
+    }
+};
+
+const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
     try {
         const meetingQuery = `SELECT title FROM meetings WHERE id = $1`;
         const presenteesQuery = `
@@ -1054,8 +1188,6 @@ const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
             meeting: { title: meeting.title },
             invitees: stableRows(presentees)
         });
-        const cached = await getCachedPdf(cacheKey, fingerprint);
-        if (cached) return cached;
 
         const admins = [];
         const deans = [];
@@ -1137,13 +1269,13 @@ const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
         const renderTableSection = (title, items) => {
             if (!items || items.length === 0) return '';
             let html = `
-                <div class="attendance-page">
-                    <div class="section-title">${title}</div>
-                    <table>
+                <div class="attendance-page" style="margin-bottom: 25px;">
+                    <div class="section-title" style="font-size: 16px; font-weight: bold; margin-top: 15px; margin-bottom: 10px; text-decoration: underline;"><u>${title}</u></div>
+                    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; border: 1px solid black; margin-bottom: 20px;">
                         <thead>
-                            <tr>
-                                <th style="width: 70%;">নাম (পদবী, বিভাগ, অফিস)</th>
-                                <th style="width: 30%;">স্বাক্ষর</th>
+                            <tr style="background-color: #f2f4f7;">
+                                <th style="border: 1px solid black; padding: 8px; width: 70%; text-align: left; font-weight: bold;">নাম (পদবী, বিভাগ, অফিস)</th>
+                                <th style="border: 1px solid black; padding: 8px; width: 30%; text-align: center; font-weight: bold;">স্বাক্ষর</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1151,11 +1283,11 @@ const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
             items.forEach(item => {
                 html += `
                     <tr>
-                        <td>
-                            <strong>${item.name}</strong><br/>
+                        <td style="border: 1px solid black; padding: 8px; vertical-align: middle;">
+                            <strong style="font-weight: bold; font-size: 14px;">${item.name}</strong><br/>
                             <span style="font-size: 12px; color: #333;">${item.detailStr}</span>
                         </td>
-                        <td></td>
+                        <td style="border: 1px solid black; padding: 8px; height: 40px;"></td>
                     </tr>
                 `;
             });
@@ -1233,18 +1365,50 @@ const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
             </style>
         </head>
         <body>
-            <div class="text-center header-title">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title">${attendanceSubTitle}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 19px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${attendanceSubTitle}</div>
             ${sections}
         </body>
         </html>
         `;
 
+        return { html, cacheKey, fingerprint };
+    } catch (error) {
+        throw error;
+    }
+};
+
+const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
+    try {
+        const { html, cacheKey, fingerprint } = await buildAttendanceHtml(meetingId, groupFilter);
+        const cached = await getCachedPdf(cacheKey, fingerprint);
+        if (cached) return cached;
+
         const pdfBuffer = await renderPdf(html);
-        // Cache for future requests (best-effort; keyed by the content fingerprint).
         await storeCachedPdf(cacheKey, pdfBuffer, fingerprint);
         return pdfBuffer;
+    } catch (error) {
+        throw error;
+    }
+};
 
+const generateAttendanceDocxSheet = async (meetingId, groupFilter = null) => {
+    try {
+        const { html } = await buildAttendanceHtml(meetingId, groupFilter);
+        const docxBuffer = await HTMLtoDOCX(html, null, {
+            table: { row: { cantSplit: true } },
+            footer: true,
+            pageNumber: true,
+            font: 'Kalpurush',
+            fontSize: 24,
+            margins: {
+                top: 1440,
+                right: 1440,
+                bottom: 1440,
+                left: 1440
+            }
+        });
+        return docxBuffer;
     } catch (error) {
         throw error;
     }
@@ -1560,7 +1724,9 @@ function renderNoticeMembers(presentees) {
 
 module.exports = {
     generatePdf,
+    generateMeetingDocx,
     generateAttendanceSheet,
+    generateAttendanceDocxSheet,
     generateNoticePdf,
     warmUp
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { FileText, FileCheck, Users, Loader2, Upload, Download, Eye } from "lucide-react";
+import { FileText, FileCheck, Users, Loader2, Upload, Download, Eye, Trash2 } from "lucide-react";
 import api, { getTabSessionToken } from "../../lib/api";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
@@ -15,42 +15,46 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
   const token = typeof window !== 'undefined' ? getTabSessionToken() : null;
   const [generating, setGenerating] = useState<string | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadType, setUploadType] = useState<string | null>(null);
   const { mutate } = useSWRConfig();
   const readOnly = !canEdit;
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
 
-  const handleGenerate = async (type: string, filename: string) => {
-    setGenerating(type);
+  const handleGenerate = async (type: string, filename: string, format: 'pdf' | 'docx' = 'pdf') => {
+    const key = `${type}-${format}`;
+    setGenerating(key);
     try {
-      const response = await api.get(`/meetings/${meeting.id}/pdf/${type}`, {
+      const ext = format === 'docx' ? 'docx' : 'pdf';
+      const response = await api.get(`/meetings/${meeting.id}/${format}/${type}`, {
         responseType: 'blob'
       });
       
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `${filename}-${meeting.title}.pdf`);
+      link.setAttribute('download', `${filename}-${meeting.title}.${ext}`);
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
     } catch (err) {
-      toast.error(`Failed to generate ${type} PDF.`);
+      toast.error(`Failed to generate ${type} ${format.toUpperCase()}.`);
     } finally {
       setGenerating(null);
     }
   };
 
-  const handleGenerateAttendance = async (mode: 'all' | 'separate', selectedGroups: string[]) => {
+  const handleGenerateAttendance = async (mode: 'all' | 'separate', selectedGroups: string[], format: 'pdf' | 'docx' = 'pdf') => {
+    const ext = format === 'docx' ? 'docx' : 'pdf';
     if (mode === 'all') {
-      await handleGenerate('attendance', 'Attendance');
+      await handleGenerate('attendance', 'Attendance', format);
     } else {
-      // Generate separate PDFs for each selected group
+      // Generate separate files for each selected group
       for (const group of selectedGroups) {
-        setGenerating(`attendance-${group}`);
+        setGenerating(`attendance-${group}-${format}`);
         try {
-          const response = await api.get(`/meetings/${meeting.id}/pdf/attendance`, {
+          const response = await api.get(`/meetings/${meeting.id}/${format}/attendance`, {
             params: { group },
             responseType: 'blob'
           });
@@ -58,24 +62,22 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
           const url = window.URL.createObjectURL(new Blob([response.data]));
           const link = document.createElement('a');
           link.href = url;
-          // Create a readable filename from the group key
           const groupLabel = group.startsWith('dept:') 
             ? group.replace('dept:', '').replace(/\s+/g, '_')
             : group;
-          link.setAttribute('download', `Attendance_${groupLabel}-${meeting.title}.pdf`);
+          link.setAttribute('download', `Attendance_${groupLabel}-${meeting.title}.${ext}`);
           document.body.appendChild(link);
           link.click();
           link.parentNode?.removeChild(link);
           
-          // Small delay between downloads to avoid browser blocking
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (err) {
-          toast.error(`Failed to generate PDF for ${group}.`);
+          toast.error(`Failed to generate ${format.toUpperCase()} for ${group}.`);
         } finally {
           setGenerating(null);
         }
       }
-      toast.success(`Generated ${selectedGroups.length} attendance PDF(s)`);
+      toast.success(`Generated ${selectedGroups.length} attendance ${format.toUpperCase()} file(s)`);
     }
   };
 
@@ -108,6 +110,20 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
     }
   };
 
+  const handleDeleteMaterial = async (type: string) => {
+    if (!confirm(`Are you sure you want to delete the signed ${type.replace('-', ' ')} PDF?`)) return;
+    setDeleting(type);
+    try {
+      await api.delete(`/meetings/${meeting.id}/materials/${type}`);
+      toast.success(`Signed ${type.replace('-', ' ')} PDF deleted successfully`);
+      mutate(`/meetings/${meeting.id}`);
+    } catch (err) {
+      toast.error(`Failed to delete signed ${type.replace('-', ' ')} PDF.`);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   const triggerUpload = (type: string) => {
     setUploadType(type);
     setTimeout(() => {
@@ -129,80 +145,164 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
         onChange={handleFileChange} 
       />
 
+      {/* Section 1: Generate System Documents */}
       <div className="mb-10">
-        <h3 className="text-lg font-semibold mb-4 border-b border-border pb-2">Generate System PDFs</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <h3 className="text-lg font-semibold mb-4 border-b border-border pb-2">Generate System Documents</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         
-        {/* Generate Agenda PDF */}
-        <div 
-          onClick={() => !generating && handleGenerate('agenda', 'Agenda')}
-          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating === 'agenda' ? 'opacity-70 pointer-events-none' : ''}`}
-        >
-          {generating === 'agenda' ? (
-            <Loader2 className="w-10 h-10 text-primary animate-spin" />
-          ) : (
-            <FileText className="w-10 h-10 text-foreground group-hover:text-primary transition-colors" />
-          )}
-          <h3 className="text-foreground font-semibold text-center text-sm">Generate Agenda PDF</h3>
-        </div>
-
-        {/* Generate Supplementary Agenda PDF */}
-        {meeting.is_regular !== false && (
-          <div 
-            onClick={() => !generating && handleGenerate('suppli-agenda', 'Supplementary_Agenda')}
-            className={`bg-card border-2 border-border hover:border-amber-500 cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating === 'suppli-agenda' ? 'opacity-70 pointer-events-none' : ''}`}
-          >
-            {generating === 'suppli-agenda' ? (
-              <Loader2 className="w-10 h-10 text-amber-500 animate-spin" />
-            ) : (
-              <FileText className="w-10 h-10 text-foreground group-hover:text-amber-500 transition-colors" />
-            )}
-            <h3 className="text-foreground font-semibold text-center text-sm">Generate Supplementary Agenda PDF</h3>
+          {/* Agenda Card */}
+          <div className="bg-card border border-border p-5 rounded-xl shadow-sm flex flex-col justify-between gap-4 hover:border-primary/50 transition-all">
+            <div className="flex items-center gap-3">
+              <div className="bg-primary/10 p-3 rounded-lg text-primary">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground text-base">Agenda Document</h3>
+                <p className="text-xs text-muted-foreground">Standard meeting agendas</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                onClick={() => handleGenerate('agenda', 'Agenda', 'pdf')}
+                disabled={!!generating}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {generating === 'agenda-pdf' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                PDF
+              </button>
+              <button
+                onClick={() => handleGenerate('agenda', 'Agenda', 'docx')}
+                disabled={!!generating}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {generating === 'agenda-docx' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Word (.docx)
+              </button>
+            </div>
           </div>
-        )}
 
-        {/* Generate Resolution PDF */}
-        <div 
-          onClick={() => !generating && handleGenerate('resolution', 'Resolution')}
-          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating === 'resolution' ? 'opacity-70 pointer-events-none' : ''}`}
-        >
-          {generating === 'resolution' ? (
-            <Loader2 className="w-10 h-10 text-primary animate-spin" />
-          ) : (
-            <FileCheck className="w-10 h-10 text-foreground group-hover:text-primary transition-colors" />
+          {/* Supplementary Agenda Card */}
+          {meeting.is_regular !== false && (
+            <div className="bg-card border border-border p-5 rounded-xl shadow-sm flex flex-col justify-between gap-4 hover:border-amber-500/50 transition-all">
+              <div className="flex items-center gap-3">
+                <div className="bg-amber-500/10 p-3 rounded-lg text-amber-500">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground text-base">Supplementary Agenda</h3>
+                  <p className="text-xs text-muted-foreground">Additional agenda items</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <button
+                  onClick={() => handleGenerate('suppli-agenda', 'Supplementary_Agenda', 'pdf')}
+                  disabled={!!generating}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                >
+                  {generating === 'suppli-agenda-pdf' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                  PDF
+                </button>
+                <button
+                  onClick={() => handleGenerate('suppli-agenda', 'Supplementary_Agenda', 'docx')}
+                  disabled={!!generating}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                >
+                  {generating === 'suppli-agenda-docx' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  Word (.docx)
+                </button>
+              </div>
+            </div>
           )}
-          <h3 className="text-foreground font-semibold text-center text-sm">Generate Resolution PDF</h3>
-        </div>
 
-        {/* Generate Resolution Status PDF */}
-        <div 
-          onClick={() => !generating && handleGenerate('resolution-status', 'Resolution_Status')}
-          className={`bg-card border-2 border-border hover:border-emerald-500 cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating === 'resolution-status' ? 'opacity-70 pointer-events-none' : ''}`}
-        >
-          {generating === 'resolution-status' ? (
-            <Loader2 className="w-10 h-10 text-emerald-500 animate-spin" />
-          ) : (
-            <FileCheck className="w-10 h-10 text-foreground group-hover:text-emerald-500 transition-colors" />
-          )}
-          <h3 className="text-foreground font-semibold text-center text-sm">Generate Resolution Status PDF</h3>
-        </div>
+          {/* Resolution Card */}
+          <div className="bg-card border border-border p-5 rounded-xl shadow-sm flex flex-col justify-between gap-4 hover:border-primary/50 transition-all">
+            <div className="flex items-center gap-3">
+              <div className="bg-primary/10 p-3 rounded-lg text-primary">
+                <FileCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground text-base">Resolution Document</h3>
+                <p className="text-xs text-muted-foreground">Final approved resolutions</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                onClick={() => handleGenerate('resolution', 'Resolution', 'pdf')}
+                disabled={!!generating}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {generating === 'resolution-pdf' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileCheck className="w-3.5 h-3.5" />}
+                PDF
+              </button>
+              <button
+                onClick={() => handleGenerate('resolution', 'Resolution', 'docx')}
+                disabled={!!generating}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {generating === 'resolution-docx' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Word (.docx)
+              </button>
+            </div>
+          </div>
 
-        {/* Generate Attendance Sheet */}
-        <div 
-          onClick={() => !generating && setIsAttendanceModalOpen(true)}
-          className={`bg-card border-2 border-border hover:border-primary cursor-pointer p-6 rounded-xl flex flex-col items-center justify-center gap-3 transition-all hover:shadow-md ${generating?.startsWith('attendance') ? 'opacity-70 pointer-events-none' : ''}`}
-        >
-          {generating?.startsWith('attendance') ? (
-            <Loader2 className="w-10 h-10 text-primary animate-spin" />
-          ) : (
-            <Users className="w-10 h-10 text-foreground group-hover:text-primary transition-colors" />
-          )}
-          <h3 className="text-foreground font-semibold text-center text-sm">Generate Attendance Sheet</h3>
-        </div>
+          {/* Resolution Status Card */}
+          <div className="bg-card border border-border p-5 rounded-xl shadow-sm flex flex-col justify-between gap-4 hover:border-emerald-500/50 transition-all">
+            <div className="flex items-center gap-3">
+              <div className="bg-emerald-500/10 p-3 rounded-lg text-emerald-500">
+                <FileCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground text-base">Resolution Status</h3>
+                <p className="text-xs text-muted-foreground">Implementation tracking</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                onClick={() => handleGenerate('resolution-status', 'Resolution_Status', 'pdf')}
+                disabled={!!generating}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {generating === 'resolution-status-pdf' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileCheck className="w-3.5 h-3.5" />}
+                PDF
+              </button>
+              <button
+                onClick={() => handleGenerate('resolution-status', 'Resolution_Status', 'docx')}
+                disabled={!!generating}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {generating === 'resolution-status-docx' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Word (.docx)
+              </button>
+            </div>
+          </div>
 
+          {/* Attendance Sheet Card */}
+          <div className="bg-card border border-border p-5 rounded-xl shadow-sm flex flex-col justify-between gap-4 hover:border-primary/50 transition-all">
+            <div className="flex items-center gap-3">
+              <div className="bg-primary/10 p-3 rounded-lg text-primary">
+                <Users className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground text-base">Attendance Sheet</h3>
+                <p className="text-xs text-muted-foreground">Member attendance lists</p>
+              </div>
+            </div>
+            <div className="mt-1">
+              <button
+                onClick={() => !generating && setIsAttendanceModalOpen(true)}
+                disabled={!!generating}
+                className="w-full flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                {generating?.startsWith('attendance') ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users className="w-3.5 h-3.5" />}
+                Configure & Export (PDF / Word)
+              </button>
+            </div>
+          </div>
+
+        </div>
       </div>
-      </div>
 
+      {/* Section 2: Upload & View Signed PDFs */}
       <div className="mb-10">
         <h3 className="text-lg font-semibold mb-4 border-b border-border pb-2">Upload & View Signed PDFs</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -216,9 +316,21 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
               <h3 className="font-semibold">Signed Agenda</h3>
             </div>
             {meeting.agenda_pdf_link ? (
-              <a href={`/storage/${meeting.agenda_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
-                <Eye className="w-4 h-4" /> View Current PDF
-              </a>
+              <div className="flex items-center gap-2">
+                <a href={`/storage/${meeting.agenda_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex-1 flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-2.5 rounded-md font-medium">
+                  <Eye className="w-4 h-4" /> View Current PDF
+                </a>
+                {!readOnly && (
+                  <button
+                    onClick={() => handleDeleteMaterial('agenda')}
+                    disabled={deleting === 'agenda'}
+                    title="Delete Signed PDF"
+                    className="p-2.5 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md transition-colors disabled:opacity-50"
+                  >
+                    {deleting === 'agenda' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
             )}
@@ -244,9 +356,21 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
                 <h3 className="font-semibold">Signed Supplementary Agenda</h3>
               </div>
               {meeting.suppli_agenda_pdf_link ? (
-                <a href={`/storage/${meeting.suppli_agenda_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
-                  <Eye className="w-4 h-4" /> View Current PDF
-                </a>
+                <div className="flex items-center gap-2">
+                  <a href={`/storage/${meeting.suppli_agenda_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex-1 flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-2.5 rounded-md font-medium">
+                    <Eye className="w-4 h-4" /> View Current PDF
+                  </a>
+                  {!readOnly && (
+                    <button
+                      onClick={() => handleDeleteMaterial('suppli-agenda')}
+                      disabled={deleting === 'suppli-agenda'}
+                      title="Delete Signed PDF"
+                      className="p-2.5 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md transition-colors disabled:opacity-50"
+                    >
+                      {deleting === 'suppli-agenda' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
               )}
@@ -272,9 +396,21 @@ export default function MaterialsView({ meeting }: { meeting: any }) {
               <h3 className="font-semibold">Signed Resolution</h3>
             </div>
             {meeting.resolution_pdf_link ? (
-              <a href={`/storage/${meeting.resolution_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-3 rounded-md">
-                <Eye className="w-4 h-4" /> View Current PDF
-              </a>
+              <div className="flex items-center gap-2">
+                <a href={`/storage/${meeting.resolution_pdf_link}${token ? `?token=${token}` : ''}`} target="_blank" rel="noreferrer" className="flex-1 flex items-center gap-2 text-sm text-blue-600 hover:underline bg-blue-50 p-2.5 rounded-md font-medium">
+                  <Eye className="w-4 h-4" /> View Current PDF
+                </a>
+                {!readOnly && (
+                  <button
+                    onClick={() => handleDeleteMaterial('resolution')}
+                    disabled={deleting === 'resolution'}
+                    title="Delete Signed PDF"
+                    className="p-2.5 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-md transition-colors disabled:opacity-50"
+                  >
+                    {deleting === 'resolution' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="text-sm text-muted-foreground italic bg-muted/50 p-3 rounded-md">No PDF uploaded yet</div>
             )}

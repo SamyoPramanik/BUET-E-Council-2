@@ -2,7 +2,7 @@ const CustomError = require('../errors/CustomError');
 const db = require('../db');
 const bcrypt = require('bcryptjs');
 const axios = require('axios');
-const { generatePdf: generateMeetingPdf, generateAttendanceSheet } = require('../utils/pdfGenerator');
+const { generatePdf: generateMeetingPdf, generateMeetingDocx, generateAttendanceSheet, generateAttendanceDocxSheet } = require('../utils/pdfGenerator');
 const storageService = require('../utils/storageService');
 const meetingFileSystem = require('../utils/meetingFileSystem');
 const { sendMail } = require('../utils/mailer');
@@ -1474,6 +1474,56 @@ const generatePdf = async (req, res, next) => {
     }
 };
 
+const generateDocx = async (req, res, next) => {
+    try {
+        const { id, type } = req.params; // type = agenda, suppli-agenda, resolution, attendance, resolution-status
+        const { group } = req.query;
+        let docxBuffer;
+
+        const meetingCheck = await db.query('SELECT id, status, type FROM meetings WHERE id = $1', [id]);
+        if (meetingCheck.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        const meeting = meetingCheck.rows[0];
+
+        if (req.user?.role === 'viewer') {
+            if (meeting.status === 'draft') {
+                return next(new CustomError('Meeting not found', 404));
+            }
+            const restrictedType = viewerTypeRestriction(req.user);
+            if (restrictedType && meeting.type !== restrictedType) {
+                return next(new CustomError('Meeting not found', 404));
+            }
+        }
+
+        if (type === 'agenda') {
+            docxBuffer = await generateMeetingDocx(id, false);
+        } else if (type === 'suppli-agenda' || type === 'suppli_agenda') {
+            docxBuffer = await generateMeetingDocx(id, false, 'suppli-agenda');
+        } else if (type === 'resolution') {
+            docxBuffer = await generateMeetingDocx(id, true);
+        } else if (type === 'attendance') {
+            docxBuffer = await generateAttendanceDocxSheet(id, group || null);
+        } else if (type === 'resolution-status') {
+            docxBuffer = await generateMeetingDocx(id, true, 'resolution-status');
+        } else {
+            return next(new CustomError('Invalid document type requested', 400));
+        }
+
+        const sanitize = (str) => str.replace(/[^\x00-\x7F]/g, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+        const filename = group
+            ? `${type}-${sanitize(group)}-${id}.docx`
+            : `${type}-${id}.docx`;
+
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+        res.send(docxBuffer);
+    } catch (error) {
+        next(error);
+    }
+};
+
 const uploadMaterial = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -1512,6 +1562,44 @@ const uploadMaterial = async (req, res, next) => {
         );
 
         res.status(200).json({ success: true, message: 'Material uploaded successfully', data: result.rows[0] });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const deleteMaterial = async (req, res, next) => {
+    try {
+        const { id, type } = req.params;
+
+        const validTypes = ['agenda', 'suppli-agenda', 'resolution', 'resolution-status'];
+        if (!validTypes.includes(type)) {
+            return next(new CustomError('Invalid material type', 400));
+        }
+
+        let column = '';
+        if (type === 'agenda') column = 'agenda_pdf_link';
+        else if (type === 'suppli-agenda') column = 'suppli_agenda_pdf_link';
+        else if (type === 'resolution') column = 'resolution_pdf_link';
+        else if (type === 'resolution-status') column = 'resolution_status_pdf_link';
+
+        const meetingRes = await db.query(`SELECT ${column} FROM meetings WHERE id = $1`, [id]);
+        if (meetingRes.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+
+        const existingFileKey = meetingRes.rows[0][column];
+        if (existingFileKey) {
+            try {
+                await storageService.deleteFile(existingFileKey);
+            } catch (err) {
+                console.error(`Failed to delete material file ${existingFileKey} from storage:`, err.message);
+            }
+        }
+
+        const result = await db.query(
+            `UPDATE meetings SET ${column} = NULL WHERE id = $1 RETURNING *`,
+            [id]
+        );
+
+        res.status(200).json({ success: true, message: 'Material deleted successfully', data: result.rows[0] });
     } catch (error) {
         next(error);
     }
@@ -3000,8 +3088,10 @@ module.exports = {
     removePresentee,
     saveAttendance,
     generatePdf,
+    generateDocx,
     getAttendanceGroups,
     uploadMaterial,
+    deleteMaterial,
     bulkImportMeeting,
     getInviteesEmails,
     sendAgendaEmail,

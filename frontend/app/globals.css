@@ -216,6 +216,53 @@ input:focus, select:focus, textarea:focus {
   background-color: var(--muted);
 }
 
+/* Border Style Options */
+.prose table[data-border="none"],
+.prose table.border-none {
+  border: none !important;
+}
+.prose table[data-border="none"] td,
+.prose table[data-border="none"] th,
+.prose table.border-none td,
+.prose table.border-none th {
+  border: 1px dashed rgba(160, 160, 160, 0.3) !important;
+}
+
+.prose table[data-border="horizontal"],
+.prose table.border-horizontal {
+  border-top: 2px solid var(--foreground) !important;
+  border-bottom: 2px solid var(--foreground) !important;
+  border-left: none !important;
+  border-right: none !important;
+}
+.prose table[data-border="horizontal"] td,
+.prose table[data-border="horizontal"] th,
+.prose table.border-horizontal td,
+.prose table.border-horizontal th {
+  border-left: none !important;
+  border-right: none !important;
+  border-top: 1px solid var(--border) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.prose table[data-border="dashed"] td,
+.prose table[data-border="dashed"] th,
+.prose table.border-dashed td,
+.prose table.border-dashed th {
+  border: 1px dashed var(--border) !important;
+}
+
+.prose table[data-border="thick"],
+.prose table.border-thick {
+  border: 2px solid var(--foreground) !important;
+}
+.prose table[data-border="thick"] td,
+.prose table[data-border="thick"] th,
+.prose table.border-thick td,
+.prose table.border-thick th {
+  border: 2px solid var(--foreground) !important;
+}
+
 .prose table .selectedCell:after {
   z-index: 2;
   position: absolute;

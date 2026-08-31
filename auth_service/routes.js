@@ -1170,7 +1170,7 @@ router.put('/settings', requireAuth, async (req, res) => {
             return res.status(403).json({ success: false, message: 'Forbidden. Admin or editor level access required.' });
         }
 
-        const { min_completed_level, min_email_level } = req.body;
+        const { min_completed_level, min_email_level, min_archive_level } = req.body;
         if (min_completed_level !== undefined && min_completed_level !== null) {
             await db.query(
                 `INSERT INTO system_settings (key, value, updated_at) VALUES ('min_completed_level', $1, CURRENT_TIMESTAMP)
@@ -1183,6 +1183,13 @@ router.put('/settings', requireAuth, async (req, res) => {
                 `INSERT INTO system_settings (key, value, updated_at) VALUES ('min_email_level', $1, CURRENT_TIMESTAMP)
                  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
                 [String(min_email_level)]
+            );
+        }
+        if (min_archive_level !== undefined && min_archive_level !== null) {
+            await db.query(
+                `INSERT INTO system_settings (key, value, updated_at) VALUES ('min_archive_level', $1, CURRENT_TIMESTAMP)
+                 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+                [String(min_archive_level)]
             );
         }
 

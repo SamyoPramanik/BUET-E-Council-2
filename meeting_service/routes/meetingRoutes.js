@@ -73,6 +73,7 @@ router.delete('/:id/presentees/:presenteeId', requirePresenteesEditor, meetingCo
 router.put('/:id/attendance', requirePresenteesEditor, meetingController.saveAttendance);
 
 router.get('/:id/pdf/:type', meetingController.generatePdf);
+router.get('/:id/docx/:type', meetingController.generateDocx);
 
 // Send agenda (or any ad-hoc message) via email to selected invitees
 router.post('/:id/send-email', requireEmailSender, meetingController.sendAgendaEmail);
@@ -88,5 +89,6 @@ router.post('/:id/send-resolution-email', requireCompletedMeetingEmailSender, me
 
 // Endpoint for uploading material PDFs
 router.post('/:id/materials/upload', requireMeetingOperator, upload.single('file'), meetingController.uploadMaterial);
+router.delete('/:id/materials/:type', requireMeetingOperator, meetingController.deleteMaterial);
 
 module.exports = router;

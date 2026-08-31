@@ -389,7 +389,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
           <RichTextEditor
             content={newContent}
             onChange={setNewContent}
-            className="p-4 min-h-[200px]"
+            className="p-4 min-h-[380px]"
           />
 
           <div className="bg-muted p-3 flex justify-between items-center gap-4 border-t border-border rounded-md">
@@ -692,7 +692,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                         <RichTextEditor
                           content={editContent}
                           onChange={setEditContent}
-                          className="p-4 min-h-[200px]"
+                          className="p-4 min-h-[380px]"
                         />
 
                         <div className="bg-muted p-2 px-3 flex justify-between items-center gap-4 border-t border-border rounded-md">

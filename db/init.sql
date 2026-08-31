@@ -187,6 +187,7 @@ CREATE TABLE meetings (
     max_annexure_size_mb INTEGER DEFAULT 50,
     is_suppli_visible_to_viewers BOOLEAN DEFAULT FALSE,
     is_regular BOOLEAN DEFAULT TRUE,
+    archive_locked_level INTEGER DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -208,6 +209,7 @@ CREATE TABLE agenda (
     legacy_agenda_id VARCHAR(20) UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     is_suppli BOOLEAN DEFAULT false,
+    is_archived BOOLEAN DEFAULT false,
     -- Generated full-text search vectors. 'simple' config (no stemming) is
     -- used because it tokenizes Bangla and English equally well without an
     -- English-specific stemmer distorting Bangla tokens.

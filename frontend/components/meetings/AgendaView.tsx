@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree, Layers } from "lucide-react";
+import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree, Layers, Archive, Loader2 } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import AnnexureList from "./AnnexureList";
 import RevisionHistory from "./RevisionHistory";
@@ -12,9 +12,10 @@ import { sanitizeHtml } from "../../lib/sanitize";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
-import { canEditAgenda, canEditSuppliAgenda } from "../../lib/meetingAccess";
+import { canEditAgenda, canEditSuppliAgenda, canArchiveAgenda } from "../../lib/meetingAccess";
 import { toBanglaDigits, getSerialWidth } from "../../lib/banglaNumerals";
 import TemplateDrawer from "../TemplateDrawer";
+import ArchivedAgendasModal from "./ArchivedAgendasModal";
 
 export default function AgendaView({ meeting, type }: { meeting: any, type: string }) {
   const { user } = useAuth();
@@ -70,6 +71,25 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   const [newTagIds, setNewTagIds] = useState<string[]>([]);
   const [newCategoryId, setNewCategoryId] = useState<string>("");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const userCanArchive = canArchiveAgenda(user, meeting);
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
+  const [isArchivingId, setIsArchivingId] = useState<string | null>(null);
+
+  const handleArchive = (id: string) => {
+    confirm("Archive Agendum", "Are you sure you want to move this agenda item to the Archive Box?", async () => {
+      setIsArchivingId(id);
+      try {
+        await api.put(`/agendas/${id}/archive`);
+        toast.success("Agenda moved to Archive Box");
+        mutate();
+      } catch (err: any) {
+        toast.error(err.response?.data?.message || "Failed to archive agenda");
+      } finally {
+        setIsArchivingId(null);
+      }
+    });
+  };
 
   useEffect(() => {
     setCreateAtIndex(null);
@@ -470,6 +490,15 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
       <div className={`flex-1 ${!readOnly ? 'w-[70%] max-w-4xl' : 'w-full max-w-5xl'} pb-32`}>
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">{title}</h2>
+          {meeting.status === 'draft' && userCanArchive && (
+            <button
+              onClick={() => setIsArchiveModalOpen(true)}
+              className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+            >
+              <Archive className="w-4 h-4" />
+              <span>+ Add from Archive Box</span>
+            </button>
+          )}
         </div>
 
         {!hasCustomAgendas && createAtIndex === null ? (
@@ -604,6 +633,20 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                                 >
                                   <Edit3 className="w-4 h-4" />
                                 </button>
+                                {meeting.status === 'draft' && userCanArchive && (
+                                  <button
+                                    onClick={() => handleArchive(agenda.id)}
+                                    disabled={isArchivingId === agenda.id}
+                                    className="text-amber-600 dark:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-amber-500/10 rounded-md hover:bg-amber-500/20 disabled:opacity-50"
+                                    title="Archive Agendum"
+                                  >
+                                    {isArchivingId === agenda.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Archive className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                )}
                               </>
                             )}
                             <button
@@ -843,6 +886,14 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             }
           }
         }}
+      />
+
+      <ArchivedAgendasModal
+        isOpen={isArchiveModalOpen}
+        onClose={() => setIsArchiveModalOpen(false)}
+        currentMeetingId={meeting.id}
+        isSuppli={isSuppliView}
+        onRestored={() => mutate()}
       />
     </div>
   );

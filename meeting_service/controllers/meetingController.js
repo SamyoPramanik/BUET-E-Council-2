@@ -280,7 +280,7 @@ const updateMeeting = async (req, res, next) => {
     const client = await db.pool.connect();
     try {
         const { id } = req.params;
-        let { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, max_annexure_size_mb, is_suppli_visible_to_viewers, is_regular } = req.body;
+        let { title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, max_annexure_size_mb, is_suppli_visible_to_viewers, is_regular, archive_locked_level } = req.body;
 
         const meeting = await loadMeeting(req);
         if (!meeting) return next(new CustomError('Meeting not found', 404));
@@ -344,6 +344,14 @@ const updateMeeting = async (req, res, next) => {
             }
         }
 
+        let parsedArchiveLockLevel = null;
+        let isArchiveLockExplicitNull = false;
+        if (archive_locked_level === null || archive_locked_level === 'null' || archive_locked_level === '') {
+            isArchiveLockExplicitNull = true;
+        } else if (archive_locked_level !== undefined) {
+            parsedArchiveLockLevel = parseInt(archive_locked_level, 10);
+        }
+
         const result = await client.query(
             `UPDATE meetings SET
                 title = COALESCE($1, title),
@@ -360,9 +368,10 @@ const updateMeeting = async (req, res, next) => {
                 agenda_prefix = COALESCE($12, agenda_prefix),
                 max_annexure_size_mb = COALESCE($13, max_annexure_size_mb),
                 is_suppli_visible_to_viewers = COALESCE($14, is_suppli_visible_to_viewers),
-                is_regular = COALESCE($15, is_regular)
-             WHERE id = $16 RETURNING *`,
-            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, validMaxAnnexureSize, is_suppli_visible_to_viewers !== undefined ? !!is_suppli_visible_to_viewers : null, is_regular !== undefined ? !!is_regular : null, id]
+                is_regular = COALESCE($15, is_regular),
+                archive_locked_level = CASE WHEN $17 = true THEN NULL ELSE COALESCE($16, archive_locked_level) END
+             WHERE id = $18 RETURNING *`,
+            [title, meeting_title, description, conclusion, meeting_date, type, status, meeting_link, agenda_pdf_link, resolution_pdf_link, transcript, agenda_prefix, validMaxAnnexureSize, is_suppli_visible_to_viewers !== undefined ? !!is_suppli_visible_to_viewers : null, is_regular !== undefined ? !!is_regular : null, parsedArchiveLockLevel, isArchiveLockExplicitNull, id]
         );
 
         if (is_regular === false) {

@@ -68,6 +68,36 @@ const viewerTypeRestriction = (user) => {
     return 'academic';
 };
 
+const reindexAgendas = async (meetingId, isSuppli) => {
+    if (!meetingId) return;
+    const targetSuppli = isSuppli === true || isSuppli === 'true';
+    const res = await db.query(
+        `SELECT id, content FROM agenda 
+         WHERE meeting_id = $1 AND is_suppli = $2 AND (is_archived = false OR is_archived IS NULL) 
+         ORDER BY agenda_serial ASC, created_at ASC`,
+        [meetingId, targetSuppli]
+    );
+    const activeAgendas = res.rows;
+
+    if (!targetSuppli) {
+        const bibidhaIndex = activeAgendas.findIndex(a => a.content && a.content.trim().startsWith('বিবিধ'));
+        let bibidha = null;
+        if (bibidhaIndex !== -1) {
+            bibidha = activeAgendas.splice(bibidhaIndex, 1)[0];
+        }
+        for (let i = 0; i < activeAgendas.length; i++) {
+            await db.query('UPDATE agenda SET agenda_serial = $1 WHERE id = $2', [i + 1, activeAgendas[i].id]);
+        }
+        if (bibidha) {
+            await db.query('UPDATE agenda SET agenda_serial = $1 WHERE id = $2', [activeAgendas.length + 1, bibidha.id]);
+        }
+    } else {
+        for (let i = 0; i < activeAgendas.length; i++) {
+            await db.query('UPDATE agenda SET agenda_serial = $1 WHERE id = $2', [i + 1, activeAgendas[i].id]);
+        }
+    }
+};
+
 const getAgendams = async (req, res, next) => {
     try {
         const meeting_id = req.query.meeting_id;
@@ -106,7 +136,7 @@ const getAgendams = async (req, res, next) => {
         let params = [];
 
         if (meeting_id) {
-            query += ' WHERE a.meeting_id = $1';
+            query += ' WHERE a.meeting_id = $1 AND (a.is_archived = false OR a.is_archived IS NULL)';
             params.push(meeting_id);
 
             if (is_suppli !== undefined) {
@@ -119,14 +149,14 @@ const getAgendams = async (req, res, next) => {
             query += ' ORDER BY a.is_suppli ASC, a.agenda_serial ASC';
         } else if (req.user?.role === 'viewer') {
             const restrictedType = viewerTypeRestriction(req.user);
-            query += ' JOIN meetings m ON m.id = a.meeting_id WHERE m.status != \'draft\'';
+            query += ' JOIN meetings m ON m.id = a.meeting_id WHERE m.status != \'draft\' AND (a.is_archived = false OR a.is_archived IS NULL)';
             if (restrictedType) {
                 params.push(restrictedType);
                 query += ` AND m.type = $${params.length}`;
             }
             query += ' ORDER BY a.created_at DESC';
         } else {
-            query += ' ORDER BY a.created_at DESC';
+            query += ' WHERE (a.is_archived = false OR a.is_archived IS NULL) ORDER BY a.created_at DESC';
         }
 
         const result = await db.query(query, params);
@@ -833,6 +863,140 @@ const reorderAnnexures = async (req, res, next) => {
     }
 };
 
+const getArchivedAgendams = async (req, res, next) => {
+    try {
+        const query = `
+            SELECT a.*, 
+                   m.title AS meeting_title, 
+                   m.meeting_title AS meeting_display_title,
+                   m.legacy_meeting_no AS meeting_number,
+                   c.name AS category_name,
+                   COALESCE(
+                       (SELECT json_agg(json_build_object('id', t.id, 'name', t.name) ORDER BY t.name)
+                        FROM agenda_tags at2 JOIN tags t ON t.id = at2.tag_id WHERE at2.agenda_id = a.id),
+                       '[]'
+                   ) as tags
+            FROM agenda a
+            LEFT JOIN meetings m ON m.id = a.meeting_id
+            LEFT JOIN categories c ON c.id = a.category_id
+            WHERE a.is_archived = true
+            ORDER BY a.created_at DESC`;
+        
+        const result = await db.query(query);
+        res.status(200).json({ success: true, data: result.rows });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const archiveAgendam = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const agendaRes = await db.query(
+            'SELECT a.id, a.meeting_id, a.is_suppli, m.status, m.archive_locked_level FROM agenda a JOIN meetings m ON m.id = a.meeting_id WHERE a.id = $1',
+            [id]
+        );
+        if (agendaRes.rows.length === 0) {
+            return next(new CustomError('Agenda not found', 404));
+        }
+        const { meeting_id, is_suppli, status, archive_locked_level } = agendaRes.rows[0];
+
+        if (status !== 'draft') {
+            return next(new CustomError('Agendas can only be archived when the meeting is in draft status.', 400));
+        }
+
+        if (archive_locked_level !== null && archive_locked_level !== undefined) {
+            const userRoleLevel = req.user?.role_level ?? 99;
+            const isSuperOrAdmin = req.user?.role === 'admin' || req.user?.role === 'superadmin';
+            if (!isSuperOrAdmin && userRoleLevel > archive_locked_level) {
+                return next(new CustomError('You do not have permission to archive agendas for this meeting.', 403));
+            }
+        }
+
+        await db.query('UPDATE agenda SET is_archived = true WHERE id = $1', [id]);
+
+        await reindexAgendas(meeting_id, is_suppli);
+        await ensureBibidhaAgenda(meeting_id);
+
+        res.status(200).json({ success: true, message: 'Agendam archived successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const restoreArchivedAgendams = async (req, res, next) => {
+    try {
+        const { meetingId } = req.params;
+        const { agenda_ids, is_suppli } = req.body;
+
+        if (!Array.isArray(agenda_ids) || agenda_ids.length === 0) {
+            return next(new CustomError('No agenda IDs provided for restoration', 400));
+        }
+
+        const meetingRes = await db.query(
+            'SELECT status, archive_locked_level FROM meetings WHERE id = $1',
+            [meetingId]
+        );
+        if (meetingRes.rows.length === 0) {
+            return next(new CustomError('Target meeting not found', 404));
+        }
+        const { status, archive_locked_level } = meetingRes.rows[0];
+
+        if (status !== 'draft') {
+            return next(new CustomError('Agendas can only be added/restored to draft meetings.', 400));
+        }
+
+        if (archive_locked_level !== null && archive_locked_level !== undefined) {
+            const userRoleLevel = req.user?.role_level ?? 99;
+            const isSuperOrAdmin = req.user?.role === 'admin' || req.user?.role === 'superadmin';
+            if (!isSuperOrAdmin && userRoleLevel > archive_locked_level) {
+                return next(new CustomError('You do not have permission to restore agendas into this meeting.', 403));
+            }
+        }
+
+        const targetSuppli = is_suppli === true || is_suppli === 'true';
+
+        for (const agendaId of agenda_ids) {
+            await db.query(
+                'UPDATE agenda SET meeting_id = $1, is_archived = false, is_suppli = $2 WHERE id = $3',
+                [meetingId, targetSuppli, agendaId]
+            );
+        }
+
+        await reindexAgendas(meetingId, targetSuppli);
+        await ensureBibidhaAgenda(meetingId);
+
+        res.status(200).json({ success: true, message: `${agenda_ids.length} agenda(s) added from archive box successfully` });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const deleteArchivedAgendam = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const agendaRes = await db.query('SELECT id, is_archived FROM agenda WHERE id = $1', [id]);
+        if (agendaRes.rows.length === 0) {
+            return next(new CustomError('Archived agenda not found', 404));
+        }
+        if (!agendaRes.rows[0].is_archived) {
+            return next(new CustomError('Agenda is not archived', 400));
+        }
+
+        const annexuresRes = await db.query('SELECT file_url FROM annexures WHERE content_id = $1', [id]);
+        for (const row of annexuresRes.rows) {
+            if (row.file_url) {
+                await storageService.deleteFile(row.file_url).catch(() => {});
+            }
+        }
+
+        await db.query('DELETE FROM agenda WHERE id = $1', [id]);
+        res.status(200).json({ success: true, message: 'Archived agenda deleted permanently' });
+    } catch (error) {
+        next(error);
+    }
+};
+
 module.exports = {
     getAgendams,
     createAgendam,
@@ -849,5 +1013,9 @@ module.exports = {
     toggleAnnexureExclusion,
     reorderAnnexures,
     getRevisions,
-    restoreRevision
+    restoreRevision,
+    getArchivedAgendams,
+    archiveAgendam,
+    restoreArchivedAgendams,
+    deleteArchivedAgendam
 };

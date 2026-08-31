@@ -5,29 +5,24 @@
 
 import {
   convertBijoyToUnicode as pkgConvertBijoyToUnicode,
-  looksLikeBijoy as pkgLooksLikeBijoy,
+  shouldConvertAsBijoy as pkgShouldConvertAsBijoy,
   hasBengaliUnicode as pkgHasBengaliUnicode
 } from 'bijoy2unicode';
 
 /**
  * Detects if a text string is Bijoy ANSI formatted.
+ * Ignores English acronyms (like SME, BUET, CSE) and standard English sentences.
  */
 export function isBijoyText(text: string): boolean {
   if (!text || typeof text !== "string") return false;
   if (pkgHasBengaliUnicode(text)) return false;
-
-  // Use package detection logic + custom fallback regex for BUET terms
-  if (pkgLooksLikeBijoy(text)) return true;
-
-  const bijoyCharRegex = /[‡‰ˆÂÃÄÅÁÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþ®©]/;
-  if (bijoyCharRegex.test(text)) return true;
-
-  const bijoyPattern = /(wmwÛ|‡KU|GKv|‡WwgK|evsjv|ey‡qU|KvDÝil|wgwis)/;
-  return bijoyPattern.test(text);
+  
+  // Use package detection logic which accurately filters out English acronyms/words
+  return pkgShouldConvertAsBijoy(text);
 }
 
 /**
- * Converts Bijoy 52 ANSI (SutonnyMJ) text to Unicode Bangla text using the official engine.
+ * Converts Bijoy 52 ANSI (SutonnyMJ) text to Unicode Bangla text.
  */
 export function convertBijoyToUnicode(text: string): string {
   if (!text) return "";
@@ -54,7 +49,10 @@ export function convertHtmlBijoyToUnicode(html: string): string {
     const walkTextNodes = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         if (node.nodeValue && node.nodeValue.trim()) {
-          node.nodeValue = convertBijoyToUnicode(node.nodeValue);
+          // Only convert text nodes if they match Bijoy pattern
+          if (isBijoyText(node.nodeValue)) {
+            node.nodeValue = convertBijoyToUnicode(node.nodeValue);
+          }
         }
       } else {
         node.childNodes.forEach(walkTextNodes);

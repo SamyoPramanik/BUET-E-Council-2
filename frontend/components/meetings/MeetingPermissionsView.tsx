@@ -37,13 +37,15 @@ export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermi
 
   const [formData, setFormData] = useState({
     max_annexure_size_mb: String(meeting.max_annexure_size_mb || 50),
-    is_suppli_visible_to_viewers: !!meeting.is_suppli_visible_to_viewers
+    is_suppli_visible_to_viewers: !!meeting.is_suppli_visible_to_viewers,
+    archive_locked_level: meeting.archive_locked_level !== null && meeting.archive_locked_level !== undefined ? String(meeting.archive_locked_level) : "none"
   });
 
   useEffect(() => {
     setFormData({
       max_annexure_size_mb: String(meeting.max_annexure_size_mb || 50),
-      is_suppli_visible_to_viewers: !!meeting.is_suppli_visible_to_viewers
+      is_suppli_visible_to_viewers: !!meeting.is_suppli_visible_to_viewers,
+      archive_locked_level: meeting.archive_locked_level !== null && meeting.archive_locked_level !== undefined ? String(meeting.archive_locked_level) : "none"
     });
   }, [meeting]);
 
@@ -51,7 +53,8 @@ export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermi
 
   const isDirty =
     String(formData.max_annexure_size_mb) !== String(meeting.max_annexure_size_mb || 50) ||
-    !!formData.is_suppli_visible_to_viewers !== !!meeting.is_suppli_visible_to_viewers;
+    !!formData.is_suppli_visible_to_viewers !== !!meeting.is_suppli_visible_to_viewers ||
+    String(formData.archive_locked_level) !== (meeting.archive_locked_level !== null && meeting.archive_locked_level !== undefined ? String(meeting.archive_locked_level) : "none");
 
   const canManageAnnexureSize = (() => {
     if (isAdmin) return true;
@@ -73,7 +76,8 @@ export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermi
     try {
       await api.put(`/meetings/${meeting.id}`, {
         max_annexure_size_mb: parseInt(formData.max_annexure_size_mb, 10),
-        is_suppli_visible_to_viewers: formData.is_suppli_visible_to_viewers
+        is_suppli_visible_to_viewers: formData.is_suppli_visible_to_viewers,
+        archive_locked_level: formData.archive_locked_level === "none" ? null : parseInt(formData.archive_locked_level, 10)
       });
       await mutate();
       toast.success("Meeting permissions updated successfully.");
@@ -83,6 +87,14 @@ export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermi
       setSavingPermissions(false);
     }
   };
+
+  const roleLockOptions = [
+    { value: "none", label: "Unlocked (All Authorized Roles Can Archive)" },
+    ...allRoles.map((r: any) => ({
+      value: String(r.level),
+      label: `Level ${r.level}: ${r.level_title || r.role_name}`
+    }))
+  ];
 
   if (!canManageAnnexureSize) {
     return (
@@ -150,6 +162,27 @@ export default function MeetingPermissionsView({ meeting, mutate }: MeetingPermi
               {meeting.is_regular === false
                 ? "Immediate meetings do not support supplementary agendas."
                 : "When enabled, users with the viewer role can select and view supplementary agenda items for this ongoing meeting."}
+            </p>
+          </div>
+
+          {/* ARCHIVE AGENDA PERMISSION LOCK */}
+          <div className="space-y-2 pt-4 border-t border-border">
+            <label className="text-sm font-semibold flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-primary" /> Archive Agenda Lock Level
+            </label>
+            {readOnly ? (
+              <div className="w-full px-3 py-2.5 bg-input/20 border border-input rounded-md text-sm opacity-50 cursor-not-allowed">
+                {roleLockOptions.find(o => o.value === String(formData.archive_locked_level))?.label || "Unlocked"}
+              </div>
+            ) : (
+              <CustomSelect
+                options={roleLockOptions}
+                value={String(formData.archive_locked_level)}
+                onChange={(val) => setFormData({ ...formData, archive_locked_level: val })}
+              />
+            )}
+            <p className="text-xs text-muted-foreground">
+              Specifies the minimum role level required to archive agenda items or restore/delete items from the Archive Box for this meeting.
             </p>
           </div>
 

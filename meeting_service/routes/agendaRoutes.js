@@ -24,6 +24,10 @@ router.use(auditLog('agenda'));
 // Agenda *content* is the file the initiator prepares and submits, so it is
 // editable only by its owner while the file is in draft/sent_back (or by admin).
 router.get('/', agendaController.getAgendams);
+router.get('/archived', agendaController.getArchivedAgendams);
+router.put('/:id/archive', requireMeetingAuthor, agendaController.archiveAgendam);
+router.post('/meeting/:meetingId/restore-archived', requireMeetingAuthor, agendaController.restoreArchivedAgendams);
+router.delete('/archived/:id', requireMeetingAuthor, agendaController.deleteArchivedAgendam);
 router.post('/', requireMeetingAuthor, agendaController.createAgendam);
 router.put('/:id', requireMeetingAuthor, agendaController.updateAgendam);
 router.delete('/:id', requireMeetingAuthor, agendaController.deleteAgendam);

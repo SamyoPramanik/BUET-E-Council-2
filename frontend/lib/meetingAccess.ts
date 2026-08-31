@@ -28,6 +28,9 @@ export interface WorkflowMeeting {
   email_locked_level?: number | null;
   email_locked_by_username?: string | null;
   email_locked_by_role?: string | null;
+  archive_locked_level?: number | null;
+  archive_locked_by_username?: string | null;
+  archive_locked_by_role?: string | null;
   is_completed?: boolean;
   completed_at?: string | null;
   completed_by?: string | null;
@@ -170,6 +173,19 @@ export const canEditSuppliAgenda = (user?: WorkflowUser | null, meeting?: Workfl
   }
   if (meeting.suppli_agenda_locked_level !== null && meeting.suppli_agenda_locked_level !== undefined) {
     if (userLevel < Number(meeting.suppli_agenda_locked_level)) return false;
+  }
+  return true;
+};
+
+export const canArchiveAgenda = (user?: WorkflowUser | null, meeting?: WorkflowMeeting | null): boolean => {
+  if (!user || !meeting) return false;
+  if (isAdminRole(user)) return true;
+  if (user.role === 'viewer') return false;
+  if (user.role_level === null || user.role_level === undefined) return false;
+
+  const userLevel = Number(user.role_level);
+  if (meeting.archive_locked_level !== null && meeting.archive_locked_level !== undefined) {
+    return userLevel >= Number(meeting.archive_locked_level);
   }
   return true;
 };

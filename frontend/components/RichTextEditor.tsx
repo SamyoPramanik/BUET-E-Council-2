@@ -14,10 +14,12 @@ import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, 
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Quote, Undo, Redo,
-  Table as TableIcon, LayoutTemplate, Trash2, Columns, Rows, Settings
+  Table as TableIcon, LayoutTemplate, Trash2, Columns, Rows, Settings, Languages
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import CustomSelect from './CustomSelect';
+import { isBijoyText, convertBijoyToUnicode, convertHtmlBijoyToUnicode } from '../lib/bijoyToUnicode';
+import { toast } from 'sonner';
 
 const MenuBar = ({ editor }: { editor: any }) => {
   if (!editor) return null;
@@ -144,6 +146,33 @@ const MenuBar = ({ editor }: { editor: any }) => {
       >
         <TableIcon className="w-4 h-4" />
       </button>
+
+      <div className="w-px h-6 bg-border mx-1" />
+
+      {/* Bijoy (SutonnyMJ) to Unicode Converter Button */}
+      <button
+        onClick={() => {
+          const { from, to, empty } = editor.state.selection;
+          if (!empty) {
+            const selectedText = editor.state.doc.textBetween(from, to, ' ');
+            if (selectedText) {
+              const converted = convertBijoyToUnicode(selectedText);
+              editor.chain().focus().insertContentAt({ from, to }, converted).run();
+              toast.success("Selected text converted from Bijoy to Unicode Bangla");
+            }
+          } else {
+            const htmlContent = editor.getHTML();
+            const convertedHtml = convertHtmlBijoyToUnicode(htmlContent);
+            editor.commands.setContent(convertedHtml, { emitUpdate: true });
+            toast.success("Editor content converted from Bijoy to Unicode Bangla");
+          }
+        }}
+        className="p-2 rounded hover:bg-primary/10 text-primary flex items-center gap-1 text-xs font-semibold border border-primary/20 bg-primary/5 hover:border-primary/40 transition-colors"
+        title="Convert Bijoy (SutonnyMJ) font text to Unicode Bangla"
+      >
+        <Languages className="w-4 h-4" />
+        <span>Bijoy ➔ Unicode</span>
+      </button>
       </div>
 
       {/* Secondary Table Management Toolbar (conditionally rendered) */}
@@ -220,6 +249,16 @@ export default function RichTextEditor({
     editorProps: {
       attributes: {
         class: `prose prose-sm dark:prose-invert max-w-none focus:outline-none h-full ${className}`,
+      },
+      handlePaste: (view, event) => {
+        const pastedText = event.clipboardData?.getData('text/plain');
+        if (pastedText && isBijoyText(pastedText)) {
+          const converted = convertBijoyToUnicode(pastedText);
+          view.dispatch(view.state.tr.replaceSelectionWith(view.state.schema.text(converted)));
+          toast.info("Bijoy text auto-converted to Unicode Bangla");
+          return true;
+        }
+        return false;
       },
     },
   });

@@ -548,7 +548,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       {isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`}
                     </h3>
                     <div className="flex items-center gap-2">
-                      {!readOnly && (
+                      {!readOnly && !isBibidha && (
                         <button
                           onClick={() => handleDelete(agenda.id)}
                           className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
@@ -621,33 +621,29 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        {!readOnly && (
+                        {!readOnly && !isBibidha && (
                           <>
-                            {!isBibidha && (
-                              <>
-                                <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} canRestore={canEdit} />
-                                <button
-                                  onClick={() => handleEditClick(agenda)}
-                                  className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
-                                  title="Edit Agendum"
-                                >
-                                  <Edit3 className="w-4 h-4" />
-                                </button>
-                                {meeting.status === 'draft' && userCanArchive && (
-                                  <button
-                                    onClick={() => handleArchive(agenda.id)}
-                                    disabled={isArchivingId === agenda.id}
-                                    className="text-amber-600 dark:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-amber-500/10 rounded-md hover:bg-amber-500/20 disabled:opacity-50"
-                                    title="Archive Agendum"
-                                  >
-                                    {isArchivingId === agenda.id ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      <Archive className="w-4 h-4" />
-                                    )}
-                                  </button>
+                            <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} canRestore={canEdit} />
+                            <button
+                              onClick={() => handleEditClick(agenda)}
+                              className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
+                              title="Edit Agendum"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            {meeting.status === 'draft' && userCanArchive && (
+                              <button
+                                onClick={() => handleArchive(agenda.id)}
+                                disabled={isArchivingId === agenda.id}
+                                className="text-amber-600 dark:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-amber-500/10 rounded-md hover:bg-amber-500/20 disabled:opacity-50"
+                                title="Archive Agendum"
+                              >
+                                {isArchivingId === agenda.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Archive className="w-4 h-4" />
                                 )}
-                              </>
+                              </button>
                             )}
                             <button
                               onClick={() => handleDelete(agenda.id)}

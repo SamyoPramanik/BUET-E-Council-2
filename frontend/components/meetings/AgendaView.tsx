@@ -623,14 +623,18 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       <div className="flex items-center gap-2">
                         {!readOnly && (
                           <>
-                            <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} canRestore={canEdit} />
-                            <button
-                              onClick={() => handleEditClick(agenda)}
-                              className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
-                              title="Edit Agendum"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
+                            {(!isBibidha || !isOnlyBibidhaTitle) && (
+                              <>
+                                <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} canRestore={canEdit} />
+                                <button
+                                  onClick={() => handleEditClick(agenda)}
+                                  className="text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-primary/10 rounded-md hover:bg-primary/20"
+                                  title="Edit Agendum"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
                             {!isBibidha && (
                               <>
                                 {meeting.status === 'draft' && userCanArchive && (

@@ -23,6 +23,7 @@ export default function ManageMeetingsPage() {
   const [typeFilter, setTypeFilter] = useState<'all' | 'academic' | 'syndicate'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isJsonModalOpen, setIsJsonModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const [newMeeting, setNewMeeting] = useState({
     title: "",
@@ -74,6 +75,8 @@ export default function ManageMeetingsPage() {
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCreating) return;
+    setIsCreating(true);
     try {
       const payload = {
         ...newMeeting,
@@ -88,6 +91,8 @@ export default function ManageMeetingsPage() {
       toast.success('Meeting created successfully');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save meeting');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -229,8 +234,10 @@ export default function ManageMeetingsPage() {
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80">Cancel</button>
-                <button type="submit" className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Create Meeting</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} disabled={isCreating} className="px-4 py-2 text-sm bg-muted text-muted-foreground rounded-md hover:bg-muted/80 disabled:opacity-50">Cancel</button>
+                <button type="submit" disabled={isCreating} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50">
+                  {isCreating ? 'Creating...' : 'Create Meeting'}
+                </button>
               </div>
 
             </form>

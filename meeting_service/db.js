@@ -33,6 +33,7 @@ const ensureLockingColumns = `
   ALTER TABLE meetings ADD COLUMN IF NOT EXISTS secretary_signature TEXT;
   ALTER TABLE meetings ADD COLUMN IF NOT EXISTS president_signature_image TEXT;
   ALTER TABLE meetings ADD COLUMN IF NOT EXISTS secretary_signature_image TEXT;
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS archive_locked_level INTEGER DEFAULT NULL;
 `;
 pool.query(ensureLockingColumns).catch(() => {});
 

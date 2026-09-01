@@ -36,7 +36,11 @@ const ensureBibidhaAgenda = async (meetingId) => {
         [meetingId]
     );
     const mainAgendas = res.rows;
-    let bibidhaIndex = mainAgendas.findIndex(a => a.content && a.content.trim().startsWith('বিবিধ'));
+    let bibidhaIndex = mainAgendas.findIndex(a => {
+        if (!a.content) return false;
+        const clean = a.content.replace(/<[^>]*>/g, '').trim();
+        return clean.startsWith('বিবিধ');
+    });
 
     if (bibidhaIndex === -1) {
         const nextSerial = mainAgendas.length + 1;
@@ -80,7 +84,11 @@ const reindexAgendas = async (meetingId, isSuppli) => {
     const activeAgendas = res.rows;
 
     if (!targetSuppli) {
-        const bibidhaIndex = activeAgendas.findIndex(a => a.content && a.content.trim().startsWith('বিবিধ'));
+        const bibidhaIndex = activeAgendas.findIndex(a => {
+            if (!a.content) return false;
+            const clean = a.content.replace(/<[^>]*>/g, '').trim();
+            return clean.startsWith('বিবিধ');
+        });
         let bibidha = null;
         if (bibidhaIndex !== -1) {
             bibidha = activeAgendas.splice(bibidhaIndex, 1)[0];
@@ -102,7 +110,7 @@ const getAgendams = async (req, res, next) => {
     try {
         const meeting_id = req.query.meeting_id;
         const is_suppli = req.query.is_suppli;
-        const isOperator = req.user?.role === 'admin' || req.user?.role === 'editor';
+        const isOperator = req.user?.role !== 'viewer';
         let meeting = null;
 
         if (meeting_id) {

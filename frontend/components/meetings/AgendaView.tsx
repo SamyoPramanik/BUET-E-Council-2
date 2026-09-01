@@ -621,7 +621,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                         )}
                       </div>
                       <div className="flex items-center gap-2">
-                        {!readOnly && !isBibidha && (
+                        {!readOnly && (
                           <>
                             <RevisionHistory contentId={agenda.id} contentType="agendaItem" onRestored={() => mutate()} canRestore={canEdit} />
                             <button
@@ -631,27 +631,31 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                             >
                               <Edit3 className="w-4 h-4" />
                             </button>
-                            {meeting.status === 'draft' && userCanArchive && (
-                              <button
-                                onClick={() => handleArchive(agenda.id)}
-                                disabled={isArchivingId === agenda.id}
-                                className="text-amber-600 dark:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-amber-500/10 rounded-md hover:bg-amber-500/20 disabled:opacity-50"
-                                title="Archive Agendum"
-                              >
-                                {isArchivingId === agenda.id ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Archive className="w-4 h-4" />
+                            {!isBibidha && (
+                              <>
+                                {meeting.status === 'draft' && userCanArchive && (
+                                  <button
+                                    onClick={() => handleArchive(agenda.id)}
+                                    disabled={isArchivingId === agenda.id}
+                                    className="text-amber-600 dark:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-amber-500/10 rounded-md hover:bg-amber-500/20 disabled:opacity-50"
+                                    title="Archive Agendum"
+                                  >
+                                    {isArchivingId === agenda.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Archive className="w-4 h-4" />
+                                    )}
+                                  </button>
                                 )}
-                              </button>
+                                <button
+                                  onClick={() => handleDelete(agenda.id)}
+                                  className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
+                                  title="Delete Agendum"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
                             )}
-                            <button
-                              onClick={() => handleDelete(agenda.id)}
-                              className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-destructive/10 rounded-md hover:bg-destructive/20"
-                              title="Delete Agendum"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
                           </>
                         )}
                       </div>
@@ -667,7 +671,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       </div>
                     )}
 
-                    {editingId === agenda.id && !isBibidha ? (
+                    {editingId === agenda.id ? (
                       <div className="border border-primary/50 rounded-md overflow-hidden ring-2 ring-primary/20 p-4 space-y-4 bg-background">
                         <div className="space-y-1">
                           <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Category (Optional)</label>

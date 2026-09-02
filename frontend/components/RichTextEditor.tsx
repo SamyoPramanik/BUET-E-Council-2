@@ -251,6 +251,29 @@ export const CustomTableCell = TableCell.extend({
   },
 });
 
+// Custom TableHeader with Text Orientation / Rotation Attribute
+export const CustomTableHeader = TableHeader.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      'data-text-direction': {
+        default: 'horizontal',
+        parseHTML: element => element.getAttribute('data-text-direction') || 'horizontal',
+        renderHTML: attributes => {
+          const dir = attributes['data-text-direction'] || 'horizontal';
+          if (dir === 'vertical-rl') {
+            return {
+              'data-text-direction': 'vertical-rl',
+              style: 'writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; vertical-align: middle;',
+            };
+          }
+          return { 'data-text-direction': 'horizontal' };
+        },
+      },
+    };
+  },
+});
+
 // Custom Table with Tab Keyboard Shortcut & Border options
 export const CustomTable = Table.extend({
   addAttributes() {
@@ -478,6 +501,27 @@ const KEYBOARD_SHORTCUTS_DATA = [
   }
 ];
 
+const BANGLA_KEYBOARD_DATA = {
+  vowels: ['অ', 'আ', 'ই', 'ঈ', 'উ', 'ঊ', 'ঋ', 'এ', 'ঐ', 'ও', 'ঔ'],
+  matras: ['া', 'ি', 'ী', 'ু', 'ূ', 'ৃ', 'ে', 'ৈ', 'ো', 'ৌ', '্', 'ং', 'ঃ', 'ঁ'],
+  consonants: [
+    'ক', 'খ', 'গ', 'ঘ', 'ঙ',
+    'চ', 'ছ', 'জ', 'ঝ', 'ঞ',
+    'ট', 'ঠ', 'ড', 'ঢ', 'ণ',
+    'ত', 'থ', 'দ', 'ধ', 'ন',
+    'প', 'ফ', 'ব', 'ভ', 'ম',
+    'য', 'র', 'ল', 'শ', 'ষ',
+    'স', 'হ', 'ড়', 'ঢ়', 'য়', 'ৎ'
+  ],
+  digits: ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'],
+  quickPhrases: [
+    '১.', '২.', '৩.', '৪.', '৫.',
+    'ক.', 'খ.', 'গ.', 'ঘ.', 'ঙ.',
+    '(১)', '(২)', '(৩)', '(ক)', '(খ)',
+    'তারিখ:', 'স্মারক নং:', 'বিষয়:', 'অনুলিপি:', 'ধন্যবাদান্তে,'
+  ]
+};
+
 const PRESET_TEXT_COLORS = [
   { label: 'Default', color: '' },
   { label: 'Black', color: '#000000' },
@@ -632,6 +676,7 @@ const MenuBar = ({
   const [isSymbolModalOpen, setIsSymbolModalOpen] = useState(false);
   const [isEquationModalOpen, setIsEquationModalOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isBanglaKeyboardOpen, setIsBanglaKeyboardOpen] = useState(false);
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
@@ -665,6 +710,7 @@ const MenuBar = ({
         if (isSymbolModalOpen) setIsSymbolModalOpen(false);
         if (isEquationModalOpen) setIsEquationModalOpen(false);
         if (isShortcutsModalOpen) setIsShortcutsModalOpen(false);
+        if (isBanglaKeyboardOpen) setIsBanglaKeyboardOpen(false);
         if (isLinkModalOpen) setIsLinkModalOpen(false);
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === '/' || e.key === '?')) {
@@ -674,7 +720,7 @@ const MenuBar = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isTableModalOpen, isSymbolModalOpen, isEquationModalOpen, isShortcutsModalOpen, isLinkModalOpen]);
+  }, [isTableModalOpen, isSymbolModalOpen, isEquationModalOpen, isShortcutsModalOpen, isBanglaKeyboardOpen, isLinkModalOpen]);
 
   if (!editor) return null;
 
@@ -1281,12 +1327,18 @@ const MenuBar = ({
                         const currentStyle = editor.getAttributes('orderedList').style || '';
                         if (currentStyle.includes('bengali')) {
                           editor.chain().focus().toggleOrderedList().run();
+                          toast.info("Removed list");
                         } else {
                           editor.chain().focus().updateAttributes('orderedList', { style: 'list-style-type: bengali;' }).run();
                           toast.success("Set to Bangla Numerals (১, ২, ৩)");
                         }
                       } else {
-                        editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { style: 'list-style-type: bengali;' }).run();
+                        editor.chain().focus().toggleOrderedList().run();
+                        setTimeout(() => {
+                          if (editor.isActive('orderedList')) {
+                            editor.chain().focus().updateAttributes('orderedList', { style: 'list-style-type: bengali;' }).run();
+                          }
+                        }, 15);
                         toast.success("Bangla Numbered List (১, ২, ৩)");
                       }
                     }}
@@ -1298,6 +1350,17 @@ const MenuBar = ({
                     title="Bangla Numbered List (১. ২. ৩.)"
                   >
                     <span>১.২.</span>
+                  </button>
+
+                  {/* Bangla Virtual Keyboard Trigger Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsBanglaKeyboardOpen(true)}
+                    className="px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 text-xs font-bold cursor-pointer flex items-center gap-1"
+                    title="On-Screen Bangla Virtual Keyboard (Click to type Bangla characters)"
+                  >
+                    <Keyboard className="w-3.5 h-3.5 text-primary" />
+                    <span>বাংলা</span>
                   </button>
 
                   <button
@@ -1651,9 +1714,11 @@ const MenuBar = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const currentDir = editor.getAttributes('tableCell')['data-text-direction'];
+                      const cellAttrs = editor.getAttributes('tableCell') || {};
+                      const headerAttrs = editor.getAttributes('tableHeader') || {};
+                      const currentDir = cellAttrs['data-text-direction'] || headerAttrs['data-text-direction'] || 'horizontal';
                       const nextDir = currentDir === 'vertical-rl' ? 'horizontal' : 'vertical-rl';
-                      editor.chain().focus().updateAttributes('tableCell', { 'data-text-direction': nextDir }).run();
+                      editor.chain().focus().setCellAttribute('data-text-direction', nextDir).run();
                       toast.success(`Cell rotation: ${nextDir === 'vertical-rl' ? 'Vertical 90°' : 'Horizontal'}`);
                     }}
                     className="my-auto px-2.5 py-1 rounded bg-muted text-foreground text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-border"
@@ -2280,6 +2345,151 @@ const MenuBar = ({
         </div>,
         document.body
       )}
+
+      {/* MODAL PORTAL 6: BANGLA VIRTUAL KEYBOARD MODAL */}
+      {mounted && isBanglaKeyboardOpen && createPortal(
+        <div 
+          className="fixed inset-0 z-[100010] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          onClick={() => setIsBanglaKeyboardOpen(false)}
+        >
+          <div 
+            className="bg-popover text-popover-foreground border border-border rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] overflow-hidden select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/30">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary font-bold text-lg">
+                  বাংলা
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Bangla On-Screen Virtual Keyboard</h3>
+                  <p className="text-xs text-muted-foreground">Click any character or phrase to insert into your document</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBanglaKeyboardOpen(false)}
+                className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-5 flex-1 bg-background/50">
+              {/* Vowels */}
+              <div>
+                <h4 className="text-xs uppercase font-bold text-muted-foreground tracking-wider mb-2">স্বরাক্ষর (Vowels)</h4>
+                <div className="flex flex-wrap gap-2">
+                  {BANGLA_KEYBOARD_DATA.vowels.map(char => (
+                    <button
+                      key={char}
+                      type="button"
+                      onClick={() => {
+                        editor.chain().focus().insertContent(char).run();
+                        toast.success(`Inserted: ${char}`);
+                      }}
+                      className="w-10 h-10 rounded-xl bg-card hover:bg-primary hover:text-primary-foreground border border-border text-lg font-bold flex items-center justify-center shadow-2xs transition-all cursor-pointer"
+                    >
+                      {char}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Matras & Signs */}
+              <div>
+                <h4 className="text-xs uppercase font-bold text-muted-foreground tracking-wider mb-2">কার ও চিহ্নাদী (Matras & Symbols)</h4>
+                <div className="flex flex-wrap gap-2">
+                  {BANGLA_KEYBOARD_DATA.matras.map(char => (
+                    <button
+                      key={char}
+                      type="button"
+                      onClick={() => {
+                        editor.chain().focus().insertContent(char).run();
+                        toast.success(`Inserted: ${char}`);
+                      }}
+                      className="w-10 h-10 rounded-xl bg-card hover:bg-primary hover:text-primary-foreground border border-border text-lg font-bold flex items-center justify-center shadow-2xs transition-all cursor-pointer"
+                    >
+                      {char}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Consonants */}
+              <div>
+                <h4 className="text-xs uppercase font-bold text-muted-foreground tracking-wider mb-2">ব্যঞ্জনবর্ণ (Consonants)</h4>
+                <div className="grid grid-cols-7 sm:grid-cols-10 gap-2">
+                  {BANGLA_KEYBOARD_DATA.consonants.map(char => (
+                    <button
+                      key={char}
+                      type="button"
+                      onClick={() => {
+                        editor.chain().focus().insertContent(char).run();
+                        toast.success(`Inserted: ${char}`);
+                      }}
+                      className="w-10 h-10 rounded-xl bg-card hover:bg-primary hover:text-primary-foreground border border-border text-lg font-bold flex items-center justify-center shadow-2xs transition-all cursor-pointer"
+                    >
+                      {char}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Digits & Numbers */}
+              <div>
+                <h4 className="text-xs uppercase font-bold text-muted-foreground tracking-wider mb-2">সংখ্যা (Digits)</h4>
+                <div className="flex flex-wrap gap-2">
+                  {BANGLA_KEYBOARD_DATA.digits.map(char => (
+                    <button
+                      key={char}
+                      type="button"
+                      onClick={() => {
+                        editor.chain().focus().insertContent(char).run();
+                        toast.success(`Inserted: ${char}`);
+                      }}
+                      className="w-10 h-10 rounded-xl bg-card hover:bg-primary hover:text-primary-foreground border border-border text-lg font-bold flex items-center justify-center shadow-2xs transition-all cursor-pointer"
+                    >
+                      {char}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quick List Bullet Prefixes & Phrases */}
+              <div>
+                <h4 className="text-xs uppercase font-bold text-muted-foreground tracking-wider mb-2">তালিকা ও বাক্য খণ্ড (List Prefixes & Phrases)</h4>
+                <div className="flex flex-wrap gap-2">
+                  {BANGLA_KEYBOARD_DATA.quickPhrases.map(phrase => (
+                    <button
+                      key={phrase}
+                      type="button"
+                      onClick={() => {
+                        editor.chain().focus().insertContent(`${phrase} `).run();
+                        toast.success(`Inserted: ${phrase}`);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-card hover:bg-primary hover:text-primary-foreground border border-border text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                    >
+                      {phrase}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-3 border-t border-border bg-muted/20 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsBanglaKeyboardOpen(false)}
+                className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold rounded-lg cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
@@ -2457,7 +2667,7 @@ export default function RichTextEditor({
       }),
       CustomTable.configure({ resizable: true }),
       TableRow,
-      TableHeader,
+      CustomTableHeader,
       CustomTableCell,
       TextAlign.configure({
         types: ['heading', 'paragraph'],

@@ -656,6 +656,8 @@ interface MenuBarProps {
   setShowParagraphMarks: (val: boolean) => void;
   showRuler: boolean;
   setShowRuler: (val: boolean) => void;
+  pageColumns: 1 | 2 | 3;
+  setPageColumns: (cols: 1 | 2 | 3) => void;
 }
 
 const MenuBar = ({ 
@@ -670,7 +672,9 @@ const MenuBar = ({
   showParagraphMarks,
   setShowParagraphMarks,
   showRuler,
-  setShowRuler
+  setShowRuler,
+  pageColumns,
+  setPageColumns
 }: MenuBarProps) => {
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'table' | 'layout' | 'tools' | 'view'>('home');
   const [isSymbolModalOpen, setIsSymbolModalOpen] = useState(false);
@@ -1673,6 +1677,57 @@ const MenuBar = ({
               </div>
               <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Page Setup</span>
             </div>
+
+            {/* GROUP 2: COLUMNS LAYOUT */}
+            <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
+              <div className="flex items-center gap-1.5 my-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPageColumns(1);
+                    toast.info("Single Column Layout");
+                  }}
+                  className={`px-2.5 py-1.5 rounded text-xs font-bold flex items-center gap-1 border cursor-pointer ${
+                    pageColumns === 1 ? 'bg-primary text-primary-foreground border-primary shadow-xs' : 'bg-muted hover:bg-muted/80 text-foreground border-border'
+                  }`}
+                  title="Standard 1 Column Full Width Layout"
+                >
+                  <Layout className="w-3.5 h-3.5" />
+                  <span>One</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPageColumns(2);
+                    toast.success("2-Column Side-by-Side Newspaper Layout Enabled");
+                  }}
+                  className={`px-2.5 py-1.5 rounded text-xs font-bold flex items-center gap-1 border cursor-pointer ${
+                    pageColumns === 2 ? 'bg-primary text-primary-foreground border-primary shadow-xs' : 'bg-muted hover:bg-muted/80 text-foreground border-border'
+                  }`}
+                  title="Split Document into 2 Newspaper Columns"
+                >
+                  <Columns className="w-3.5 h-3.5" />
+                  <span>Two</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPageColumns(3);
+                    toast.success("3-Column Article Layout Enabled");
+                  }}
+                  className={`px-2.5 py-1.5 rounded text-xs font-bold flex items-center gap-1 border cursor-pointer ${
+                    pageColumns === 3 ? 'bg-primary text-primary-foreground border-primary shadow-xs' : 'bg-muted hover:bg-muted/80 text-foreground border-border'
+                  }`}
+                  title="Split Document into 3 Columns"
+                >
+                  <Columns className="w-3.5 h-3.5" />
+                  <span>Three</span>
+                </button>
+              </div>
+              <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Page Columns</span>
+            </div>
           </div>
         )}
 
@@ -2633,6 +2688,7 @@ export default function RichTextEditor({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showParagraphMarks, setShowParagraphMarks] = useState(false);
   const [showRuler, setShowRuler] = useState(true);
+  const [pageColumns, setPageColumns] = useState<1 | 2 | 3>(1);
 
   useEffect(() => {
     const handleEscKey = (e: KeyboardEvent) => {
@@ -2734,6 +2790,8 @@ export default function RichTextEditor({
             setShowParagraphMarks={setShowParagraphMarks}
             showRuler={showRuler}
             setShowRuler={setShowRuler}
+            pageColumns={pageColumns}
+            setPageColumns={setPageColumns}
           />
           <FindReplaceDrawer
             isOpen={isFindReplaceOpen}
@@ -2754,7 +2812,7 @@ export default function RichTextEditor({
             ? "w-full max-w-[210mm] min-h-[297mm] h-auto bg-card p-[20mm] shadow-2xl border border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 rounded-sm relative my-2 flex flex-col transition-all"
             : "w-full min-h-full h-auto bg-card p-6 border border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 rounded-xl flex flex-col transition-all"
         }>
-          <EditorContent editor={editor} className="min-h-full cursor-text flex-1 flex flex-col" />
+          <EditorContent editor={editor} className={`min-h-full cursor-text flex-1 flex flex-col prose-columns-${pageColumns}`} />
         </div>
       </div>
 

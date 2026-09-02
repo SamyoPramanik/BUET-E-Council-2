@@ -229,6 +229,28 @@ input:focus, select:focus, textarea:focus {
   outline: none !important;
 }
 
+/* Multi-Column Document Layout Styles */
+.prose-columns-1 {
+  column-count: 1 !important;
+}
+
+.prose-columns-2 {
+  column-count: 2 !important;
+  column-gap: 2.25rem !important;
+  column-rule: 1px dashed var(--border) !important;
+}
+
+.prose-columns-3 {
+  column-count: 3 !important;
+  column-gap: 1.5rem !important;
+  column-rule: 1px dashed var(--border) !important;
+}
+
+.prose-columns-2 h1, .prose-columns-2 h2, .prose-columns-2 table, .prose-columns-2 blockquote,
+.prose-columns-3 h1, .prose-columns-3 h2, .prose-columns-3 table, .prose-columns-3 blockquote {
+  break-inside: avoid !important;
+}
+
 .prose ol[style*="bengali"],
 .prose ol[style*="list-style-type: bengali"],
 .prose ol.bengali-list {

@@ -28,7 +28,7 @@ import {
   ZoomIn, ZoomOut, RotateCw, Eye, SplitSquareVertical, AlertCircle, Info,
   CheckSquare, ArrowLeftRight, Check, Maximize2, Minimize2, Sparkles, Sliders,
   Scissors, Copy, Clipboard, Paintbrush, ArrowDownAZ, Pilcrow, PaintBucket,
-  ChevronDown, Grid, Sparkle, Layout, Ruler, Sigma
+  ChevronDown, Grid, Sparkle, Layout, Ruler, Sigma, Keyboard, HelpCircle
 } from 'lucide-react';
 import { useEffect, useState, useCallback, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -434,6 +434,50 @@ const EQUATION_PRESETS = [
   }
 ];
 
+const KEYBOARD_SHORTCUTS_DATA = [
+  {
+    category: "Indentation & Paragraphs",
+    shortcuts: [
+      { key: "Tab", desc: "Increase Paragraph / List Indent (Shift Right)" },
+      { key: "Shift + Tab", desc: "Decrease Paragraph / List Indent (Shift Left)" },
+      { key: "Ctrl + L", desc: "Align Text Left" },
+      { key: "Ctrl + E", desc: "Align Text Center" },
+      { key: "Ctrl + R", desc: "Align Text Right" },
+      { key: "Ctrl + J", desc: "Justify Paragraph Alignment" }
+    ]
+  },
+  {
+    category: "Text Formatting & Styles",
+    shortcuts: [
+      { key: "Ctrl + B", desc: "Toggle Bold Styling" },
+      { key: "Ctrl + I", desc: "Toggle Italic Styling" },
+      { key: "Ctrl + U", desc: "Toggle Underline Styling" },
+      { key: "Ctrl + Shift + X", desc: "Toggle Strikethrough Text" },
+      { key: "Ctrl + Shift + +", desc: "Toggle Superscript (x²)" },
+      { key: "Ctrl + +", desc: "Toggle Subscript (x₂)" }
+    ]
+  },
+  {
+    category: "Clipboard & Editing",
+    shortcuts: [
+      { key: "Ctrl + C", desc: "Copy Selected Text / Content" },
+      { key: "Ctrl + X", desc: "Cut Selected Text" },
+      { key: "Ctrl + V", desc: "Paste (Auto-converts Bijoy text to Unicode)" },
+      { key: "Ctrl + Z", desc: "Undo Last Action" },
+      { key: "Ctrl + Y", desc: "Redo Last Action" },
+      { key: "Ctrl + F", desc: "Open Find & Replace Tool" },
+      { key: "Ctrl + K", desc: "Insert / Edit Hyperlink" }
+    ]
+  },
+  {
+    category: "View & Navigation",
+    shortcuts: [
+      { key: "Ctrl + /", desc: "Open Keyboard Shortcuts Guide" },
+      { key: "Esc", desc: "Exit Fullscreen Mode or Close Open Modals" }
+    ]
+  }
+];
+
 const PRESET_TEXT_COLORS = [
   { label: 'Default', color: '' },
   { label: 'Black', color: '#000000' },
@@ -587,6 +631,7 @@ const MenuBar = ({
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'table' | 'layout' | 'tools' | 'view'>('home');
   const [isSymbolModalOpen, setIsSymbolModalOpen] = useState(false);
   const [isEquationModalOpen, setIsEquationModalOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
@@ -595,6 +640,7 @@ const MenuBar = ({
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const [symbolSearch, setSymbolSearch] = useState('');
   const [equationSearch, setEquationSearch] = useState('');
+  const [shortcutsSearch, setShortcutsSearch] = useState('');
   const [customEquationInput, setCustomEquationInput] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [hoverRows, setHoverRows] = useState(0);
@@ -618,12 +664,17 @@ const MenuBar = ({
         if (isTableModalOpen) setIsTableModalOpen(false);
         if (isSymbolModalOpen) setIsSymbolModalOpen(false);
         if (isEquationModalOpen) setIsEquationModalOpen(false);
+        if (isShortcutsModalOpen) setIsShortcutsModalOpen(false);
         if (isLinkModalOpen) setIsLinkModalOpen(false);
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === '/' || e.key === '?')) {
+        e.preventDefault();
+        setIsShortcutsModalOpen(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isTableModalOpen, isSymbolModalOpen, isEquationModalOpen, isLinkModalOpen]);
+  }, [isTableModalOpen, isSymbolModalOpen, isEquationModalOpen, isShortcutsModalOpen, isLinkModalOpen]);
 
   if (!editor) return null;
 
@@ -1426,7 +1477,17 @@ const MenuBar = ({
                   className="px-2.5 py-1 rounded hover:bg-muted text-muted-foreground text-xs font-medium flex items-center gap-1.5 cursor-pointer"
                 >
                   <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Select All</span>
+                  <span>Ruler Bar</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsShortcutsModalOpen(true)}
+                  className="px-3 py-1.5 rounded bg-muted hover:bg-muted/80 text-foreground flex items-center gap-1.5 text-xs font-semibold border border-border cursor-pointer"
+                  title="View Keyboard Shortcuts Guide (Ctrl+/)"
+                >
+                  <Keyboard className="w-4 h-4 text-primary" />
+                  <span>Shortcuts Documentation</span>
                 </button>
               </div>
               <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Editing</span>
@@ -1660,6 +1721,20 @@ const MenuBar = ({
                 </button>
               </div>
               <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Bangla Conversion</span>
+            </div>
+
+            {/* GROUP 3: HELP & SHORTCUTS */}
+            <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
+              <button
+                type="button"
+                onClick={() => setIsShortcutsModalOpen(true)}
+                className="px-3.5 py-1.5 rounded bg-primary/10 text-primary flex items-center gap-1.5 text-xs font-bold border border-primary/30 hover:bg-primary/20 transition-all cursor-pointer my-auto"
+                title="View Keyboard Shortcuts Guide (Ctrl+/)"
+              >
+                <Keyboard className="w-4 h-4 text-primary" />
+                <span>Keyboard Shortcuts</span>
+              </button>
+              <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Help & Info</span>
             </div>
           </div>
         )}
@@ -2090,6 +2165,98 @@ const MenuBar = ({
                 className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold rounded-lg cursor-pointer"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL PORTAL 5: KEYBOARD SHORTCUTS GUIDE MODAL */}
+      {mounted && isShortcutsModalOpen && createPortal(
+        <div 
+          className="fixed inset-0 z-[100010] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          onClick={() => setIsShortcutsModalOpen(false)}
+        >
+          <div 
+            className="bg-popover text-popover-foreground border border-border rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[88vh] overflow-hidden select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/30">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Keyboard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Keyboard Shortcuts Documentation</h3>
+                  <p className="text-xs text-muted-foreground">Quick reference for MS Word ribbon & editor keyboard shortcuts</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsShortcutsModalOpen(false)}
+                className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="px-6 py-3 border-b border-border/60 bg-card">
+              <div className="relative w-full">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search shortcuts (e.g. indent, bold, align, copy, find)..."
+                  value={shortcutsSearch}
+                  onChange={(e) => setShortcutsSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+
+            {/* Shortcuts List Grid */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-background/50">
+              {KEYBOARD_SHORTCUTS_DATA.map((cat) => {
+                const filtered = cat.shortcuts.filter(s =>
+                  !shortcutsSearch ||
+                  s.key.toLowerCase().includes(shortcutsSearch.toLowerCase()) ||
+                  s.desc.toLowerCase().includes(shortcutsSearch.toLowerCase()) ||
+                  cat.category.toLowerCase().includes(shortcutsSearch.toLowerCase())
+                );
+                if (filtered.length === 0) return null;
+
+                return (
+                  <div key={cat.category}>
+                    <h4 className="text-xs uppercase font-bold text-muted-foreground tracking-wider mb-3 flex items-center gap-2">
+                      <span>{cat.category}</span>
+                      <div className="flex-1 h-px bg-border/60" />
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      {filtered.map((item) => (
+                        <div
+                          key={item.key + item.desc}
+                          className="p-3 rounded-xl bg-card border border-border flex items-center justify-between gap-3 shadow-2xs"
+                        >
+                          <span className="text-xs text-foreground font-medium">{item.desc}</span>
+                          <kbd className="px-2.5 py-1 text-[11px] font-mono font-bold bg-muted/80 text-primary rounded-md border border-border/80 shadow-2xs whitespace-nowrap">
+                            {item.key}
+                          </kbd>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="px-6 py-3 border-t border-border bg-muted/20 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsShortcutsModalOpen(false)}
+                className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold rounded-lg cursor-pointer"
+              >
+                Close (Esc)
               </button>
             </div>
           </div>

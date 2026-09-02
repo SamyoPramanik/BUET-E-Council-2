@@ -210,6 +210,22 @@ export const Indent = Extension.create({
       },
     };
   },
+  addKeyboardShortcuts() {
+    return {
+      'Tab': () => {
+        if (this.editor.isActive('table')) {
+          return false;
+        }
+        return this.editor.commands.indent();
+      },
+      'Shift-Tab': () => {
+        if (this.editor.isActive('table')) {
+          return false;
+        }
+        return this.editor.commands.outdent();
+      },
+    };
+  },
 });
 
 // Custom TableCell with Text Orientation / Rotation Attribute

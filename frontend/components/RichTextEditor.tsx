@@ -1510,7 +1510,7 @@ const MenuBar = ({
       {/* MODAL PORTAL 1: HYPERLINK MODAL */}
       {mounted && isLinkModalOpen && createPortal(
         <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
           onClick={() => setIsLinkModalOpen(false)}
         >
           <div 
@@ -1598,7 +1598,7 @@ const MenuBar = ({
       {/* MODAL PORTAL 2: TABLE SELECTION MODAL */}
       {mounted && isTableModalOpen && createPortal(
         <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
           onClick={() => setIsTableModalOpen(false)}
         >
           <div 
@@ -1707,7 +1707,7 @@ const MenuBar = ({
       {/* MODAL PORTAL 3: SYMBOL PICKER MODAL */}
       {mounted && isSymbolModalOpen && createPortal(
         <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
           onClick={() => setIsSymbolModalOpen(false)}
         >
           <div 

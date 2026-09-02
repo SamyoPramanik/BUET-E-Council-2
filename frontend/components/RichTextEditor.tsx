@@ -228,7 +228,7 @@ export const Indent = Extension.create({
   },
 });
 
-// Custom TableCell with Text Orientation / Rotation Attribute
+// Custom TableCell with Text Orientation / Rotation & Style/Height Attribute
 export const CustomTableCell = TableCell.extend({
   addAttributes() {
     return {
@@ -241,17 +241,25 @@ export const CustomTableCell = TableCell.extend({
           if (dir === 'vertical-rl') {
             return {
               'data-text-direction': 'vertical-rl',
-              style: 'writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; vertical-align: middle;',
+              style: `writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; vertical-align: middle; ${attributes.style || ''}`,
             };
           }
           return { 'data-text-direction': 'horizontal' };
+        },
+      },
+      'style': {
+        default: null,
+        parseHTML: element => element.getAttribute('style'),
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
         },
       },
     };
   },
 });
 
-// Custom TableHeader with Text Orientation / Rotation Attribute
+// Custom TableHeader with Text Orientation / Rotation & Style/Height Attribute
 export const CustomTableHeader = TableHeader.extend({
   addAttributes() {
     return {
@@ -264,10 +272,18 @@ export const CustomTableHeader = TableHeader.extend({
           if (dir === 'vertical-rl') {
             return {
               'data-text-direction': 'vertical-rl',
-              style: 'writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; vertical-align: middle;',
+              style: `writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; vertical-align: middle; ${attributes.style || ''}`,
             };
           }
           return { 'data-text-direction': 'horizontal' };
+        },
+      },
+      'style': {
+        default: null,
+        parseHTML: element => element.getAttribute('style'),
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
         },
       },
     };
@@ -1861,6 +1877,57 @@ const MenuBar = ({
                     <button type="button" onClick={() => editor.chain().focus().deleteRow().run()} className="px-2 py-1 rounded bg-destructive/10 text-destructive text-xs font-medium cursor-pointer">Del Row</button>
                   </div>
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Rows</span>
+                </div>
+
+                {/* ROW HEIGHT & RESIZING */}
+                <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
+                  <div className="flex items-center gap-1 my-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        editor.chain().focus().setCellAttribute('style', 'height: 30px; vertical-align: middle;').run();
+                        toast.success("Row Height: Compact (30px)");
+                      }}
+                      className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-medium cursor-pointer"
+                      title="Set Row Height to Compact (30px)"
+                    >
+                      Compact
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        editor.chain().focus().setCellAttribute('style', 'height: 50px; vertical-align: middle;').run();
+                        toast.success("Row Height: Medium (50px)");
+                      }}
+                      className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-medium cursor-pointer"
+                      title="Set Row Height to Medium (50px)"
+                    >
+                      Medium
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        editor.chain().focus().setCellAttribute('style', 'height: 80px; vertical-align: middle;').run();
+                        toast.success("Row Height: Tall (80px)");
+                      }}
+                      className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-medium cursor-pointer"
+                      title="Set Row Height to Tall (80px)"
+                    >
+                      Tall
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        editor.chain().focus().setCellAttribute('style', null).run();
+                        toast.info("Reset Row Height to Auto");
+                      }}
+                      className="px-1.5 py-1 rounded bg-muted/60 text-muted-foreground text-xs cursor-pointer"
+                      title="Reset Row Height to Default Auto"
+                    >
+                      Auto
+                    </button>
+                  </div>
+                  <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Row Height</span>
                 </div>
 
                 <div className="word-group-box p-1.5 flex flex-col justify-between items-center">

@@ -2026,6 +2026,92 @@ const MenuBar = ({
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Orientation</span>
                 </div>
 
+                {/* TABLE BORDER STYLE DROPDOWN */}
+                <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
+                  <div className="relative group my-auto">
+                    <button
+                      type="button"
+                      className="px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-border"
+                      title="Set Table Border Style"
+                    >
+                      <Grid className="w-3.5 h-3.5 text-primary" />
+                      <span>Table Borders</span>
+                      <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                    </button>
+
+                    <div className="absolute top-full left-0 mt-1 hidden group-hover:flex group-focus-within:flex flex-col bg-popover text-popover-foreground border border-border rounded-xl shadow-xl p-2 z-[100005] w-48 animate-in fade-in duration-100">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Table Border Options</span>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().updateAttributes('table', { 'data-border': 'full' }).run();
+                          toast.success("All Grid Borders Enabled");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>田 All Grid Borders</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().updateAttributes('table', { 'data-border': 'outer' }).run();
+                          toast.success("Outer Box Border Only Enabled");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>▢ Outer Box Border</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().updateAttributes('table', { 'data-border': 'header' }).run();
+                          toast.success("Header Row Border Only Enabled");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>▔ Header Row Border</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().updateAttributes('table', { 'data-border': 'dashed' }).run();
+                          toast.success("Dashed Grid Lines Enabled");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>╍ Dashed Grid Lines</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().updateAttributes('table', { 'data-border': 'thick' }).run();
+                          toast.success("Thick Solid Border Enabled");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>⬛ Heavy Thick Border</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().updateAttributes('table', { 'data-border': 'none' }).run();
+                          toast.info("Invisible No-Border Mode Enabled");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer text-muted-foreground"
+                      >
+                        <span>🚫 No Borders (Invisible)</span>
+                      </button>
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Borders</span>
+                </div>
+
                 {/* DRAW TABLE */}
                 <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
                   <button

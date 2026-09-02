@@ -286,6 +286,43 @@ input:focus, select:focus, textarea:focus {
   overflow: hidden;
 }
 
+/* Table Border Variations */
+.prose table.border-full td,
+.prose table.border-full th {
+  border: 1px solid var(--border) !important;
+}
+
+.prose table.border-outer {
+  border: 2px solid var(--border) !important;
+}
+.prose table.border-outer td,
+.prose table.border-outer th {
+  border: none !important;
+}
+
+.prose table.border-header td {
+  border: none !important;
+}
+.prose table.border-header th {
+  border: none !important;
+  border-bottom: 2px solid var(--border) !important;
+}
+
+.prose table.border-dashed td,
+.prose table.border-dashed th {
+  border: 1px dashed var(--border) !important;
+}
+
+.prose table.border-thick td,
+.prose table.border-thick th {
+  border: 2px solid var(--foreground) !important;
+}
+
+.prose table.border-none td,
+.prose table.border-none th {
+  border: 1px dashed rgba(148, 163, 184, 0.25) !important;
+}
+
 .prose table td,
 .prose table th {
   min-width: 1em;

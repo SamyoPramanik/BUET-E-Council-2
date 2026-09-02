@@ -257,6 +257,26 @@ input:focus, select:focus, textarea:focus {
   list-style-type: bengali !important;
 }
 
+.prose ul[style*="list-style-type: circle"] {
+  list-style-type: circle !important;
+}
+
+.prose ul[style*="list-style-type: square"] {
+  list-style-type: square !important;
+}
+
+.prose ul[style*="list-style-type: disc"] {
+  list-style-type: disc !important;
+}
+
+.prose ol[style*="list-style-type: upper-roman"] {
+  list-style-type: upper-roman !important;
+}
+
+.prose ol[style*="list-style-type: lower-alpha"] {
+  list-style-type: lower-alpha !important;
+}
+
 /* Tiptap Table Styles */
 .prose table {
   border-collapse: collapse;

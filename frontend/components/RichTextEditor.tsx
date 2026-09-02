@@ -1306,14 +1306,112 @@ const MenuBar = ({
               <div className="flex flex-col gap-1 my-auto">
                 {/* Row 1: Bullets, Numbers, Bangla Numbers, Multilevel, Indent, Sort, Show/Hide Marks */}
                 <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => editor.chain().focus().toggleBulletList().run()}
-                    className={`p-1.5 rounded hover:bg-muted cursor-pointer ${editor.isActive('bulletList') ? 'bg-primary/20 text-primary font-bold border border-primary/30' : 'text-muted-foreground'}`}
-                    title="Bullet List"
-                  >
-                    <List className="w-4 h-4" />
-                  </button>
+                  {/* Bullet Library / Style Alignment Dropdown */}
+                  <div className="relative group">
+                    <button
+                      type="button"
+                      onClick={() => editor.chain().focus().toggleBulletList().run()}
+                      className={`p-1 rounded hover:bg-muted cursor-pointer flex items-center gap-0.5 ${
+                        editor.isActive('bulletList') ? 'bg-primary/20 text-primary font-bold border border-primary/30' : 'text-muted-foreground'
+                      }`}
+                      title="Bullet List & Alignment Options"
+                    >
+                      <List className="w-4 h-4" />
+                      <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                    </button>
+
+                    {/* Bullet Style Picker Flyout */}
+                    <div className="absolute top-full left-0 mt-1 hidden group-hover:flex group-focus-within:flex flex-col bg-popover text-popover-foreground border border-border rounded-xl shadow-xl p-2 z-[100005] w-52 animate-in fade-in duration-100">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Bullet Alignment Styles</span>
+                      
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().toggleBulletList().updateAttributes('bulletList', { style: 'list-style-type: disc;' }).run();
+                          toast.success("Disc Bullet (•)");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>• Solid Disc Bullet</span>
+                        <span className="text-muted-foreground font-mono">•</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().toggleBulletList().updateAttributes('bulletList', { style: 'list-style-type: circle;' }).run();
+                          toast.success("Circle Bullet (◦)");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>◦ Circle Bullet</span>
+                        <span className="text-muted-foreground font-mono">◦</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().toggleBulletList().updateAttributes('bulletList', { style: 'list-style-type: square;' }).run();
+                          toast.success("Square Bullet (▪)");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>▪ Square Bullet</span>
+                        <span className="text-muted-foreground font-mono">▪</span>
+                      </button>
+
+                      <div className="h-px bg-border my-1" />
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Numbering & Bangla</span>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { style: 'list-style-type: decimal;' }).run();
+                          toast.success("English Numerals (1, 2, 3)");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>1. 2. 3. English Digits</span>
+                        <span className="text-muted-foreground font-mono">1.</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { style: 'list-style-type: bengali;' }).run();
+                          toast.success("Bangla Numerals (১, ২, ৩)");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>১. ২. ৩. Bangla Digits</span>
+                        <span className="text-muted-foreground font-mono">১.</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { style: 'list-style-type: upper-roman;' }).run();
+                          toast.success("Roman Numerals (I, II, III)");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>I. II. III. Roman Numerals</span>
+                        <span className="text-muted-foreground font-mono">I.</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { style: 'list-style-type: lower-alpha;' }).run();
+                          toast.success("Alphabet (a, b, c)");
+                        }}
+                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                      >
+                        <span>a. b. c. Lower Alphabetic</span>
+                        <span className="text-muted-foreground font-mono">a.</span>
+                      </button>
+                    </div>
+                  </div>
 
                   <button
                     type="button"
@@ -2726,7 +2824,7 @@ export default function RichTextEditor({
       CustomTableHeader,
       CustomTableCell,
       TextAlign.configure({
-        types: ['heading', 'paragraph'],
+        types: ['heading', 'paragraph', 'listItem', 'bulletList', 'orderedList'],
       }),
     ],
     content,

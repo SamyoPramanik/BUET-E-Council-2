@@ -1663,6 +1663,23 @@ const MenuBar = ({
                   </button>
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Orientation</span>
                 </div>
+
+                {/* DELETE TABLE */}
+                <div className="word-group-box p-1.5 flex flex-col justify-between items-center border-l border-destructive/30 pl-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      editor.chain().focus().deleteTable().run();
+                      toast.success("Deleted entire table");
+                    }}
+                    className="my-auto px-3 py-1.5 rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Delete Entire Table"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete Table</span>
+                  </button>
+                  <span className="text-[9px] font-bold text-destructive tracking-wider uppercase mt-auto">Table Removal</span>
+                </div>
               </>
             )}
           </div>

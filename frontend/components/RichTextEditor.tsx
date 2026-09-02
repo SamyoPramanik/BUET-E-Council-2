@@ -2751,10 +2751,10 @@ export default function RichTextEditor({
       >
         <div className={
           viewMode === 'pageView'
-            ? "w-full max-w-[210mm] min-h-[297mm] bg-card p-[20mm] shadow-2xl border border-border rounded-sm relative my-2 flex flex-col"
-            : "h-full w-full"
+            ? "w-full max-w-[210mm] min-h-[297mm] h-auto bg-card p-[20mm] shadow-2xl border border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 rounded-sm relative my-2 flex flex-col transition-all"
+            : "w-full min-h-full h-auto bg-card p-6 border border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 rounded-xl flex flex-col transition-all"
         }>
-          <EditorContent editor={editor} className="h-full cursor-text flex-1" />
+          <EditorContent editor={editor} className="min-h-full cursor-text flex-1 flex flex-col" />
         </div>
       </div>
 

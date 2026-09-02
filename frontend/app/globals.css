@@ -219,6 +219,16 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 1px 0 0 var(--ring);
 }
 
+/* Tiptap ProseMirror Dynamic Editor Focus & Container Styles */
+.ProseMirror {
+  min-height: 100%;
+  outline: none !important;
+}
+
+.ProseMirror-focused {
+  outline: none !important;
+}
+
 .prose ol[style*="bengali"],
 .prose ol[style*="list-style-type: bengali"],
 .prose ol.bengali-list {

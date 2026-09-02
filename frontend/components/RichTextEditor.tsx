@@ -28,7 +28,7 @@ import {
   ZoomIn, ZoomOut, RotateCw, Eye, SplitSquareVertical, AlertCircle, Info,
   CheckSquare, ArrowLeftRight, Check, Maximize2, Minimize2, Sparkles, Sliders,
   Scissors, Copy, Clipboard, Paintbrush, ArrowDownAZ, Pilcrow, PaintBucket,
-  ChevronDown, Grid, Sparkle, Layout, Ruler, Sigma, Keyboard, HelpCircle
+  ChevronDown, Grid, Sparkle, Layout, Ruler, Sigma, Keyboard, HelpCircle, Combine, Split
 } from 'lucide-react';
 import { useEffect, useState, useCallback, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -1928,6 +1928,50 @@ const MenuBar = ({
                     </button>
                   </div>
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Row Height</span>
+                </div>
+
+                {/* MERGE & SPLIT CELLS */}
+                <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
+                  <div className="flex items-center gap-1 my-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editor.can().mergeCells()) {
+                          editor.chain().focus().mergeCells().run();
+                          toast.success("Merged selected cells");
+                        } else {
+                          toast.info("Highlight/select multiple cells first to merge");
+                        }
+                      }}
+                      className={`px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer border border-border ${
+                        editor.can().mergeCells() ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                      title="Merge selected table cells into a single cell"
+                    >
+                      <Combine className="w-3.5 h-3.5" />
+                      <span>Merge Cells</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editor.can().splitCell()) {
+                          editor.chain().focus().splitCell().run();
+                          toast.success("Split cell");
+                        } else {
+                          toast.info("Place cursor inside a merged cell to split");
+                        }
+                      }}
+                      className={`px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer border border-border ${
+                        editor.can().splitCell() ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                      title="Split merged cell into individual cells"
+                    >
+                      <Split className="w-3.5 h-3.5" />
+                      <span>Split Cell</span>
+                    </button>
+                  </div>
+                  <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Merge & Split</span>
                 </div>
 
                 <div className="word-group-box p-1.5 flex flex-col justify-between items-center">

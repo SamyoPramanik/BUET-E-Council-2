@@ -1682,15 +1682,47 @@ const MenuBar = ({
           <div className="flex items-stretch gap-2.5 w-full py-0.5 min-h-[82px]">
             {/* TABLES */}
             <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
-              <button
-                type="button"
-                onClick={() => setIsTableModalOpen(true)}
-                className="my-auto p-2 rounded hover:bg-muted/80 flex flex-col items-center gap-1 text-xs font-semibold cursor-pointer"
-              >
-                <Grid className="w-6 h-6 text-primary" />
-                <span className="text-[11px]">Table Grid</span>
-              </button>
-              <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Tables</span>
+              <div className="flex items-center gap-1.5 my-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsTableModalOpen(true)}
+                  className="px-2.5 py-1.5 rounded bg-muted/60 hover:bg-muted text-foreground flex items-center gap-1.5 text-xs font-semibold cursor-pointer border border-border"
+                  title="Insert interactive Table Grid"
+                >
+                  <Grid className="w-4 h-4 text-primary" />
+                  <span>Table Grid</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsTableModalOpen(true)}
+                  className="px-2.5 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 text-xs font-bold cursor-pointer shadow-xs"
+                  title="Draw & customize table with specific dimensions and borders"
+                >
+                  <TableIcon className="w-4 h-4" />
+                  <span>Draw Table</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (editor.can().mergeCells()) {
+                      editor.chain().focus().mergeCells().run();
+                      toast.success("Merged selected cells");
+                    } else {
+                      toast.info("Highlight/select multiple table cells to merge");
+                    }
+                  }}
+                  className={`px-2.5 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer border border-border ${
+                    editor.can().mergeCells() ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'bg-muted/60 hover:bg-muted text-foreground'
+                  }`}
+                  title="Merge selected table cells into a single cell"
+                >
+                  <Combine className="w-4 h-4 text-primary" />
+                  <span>Merge Cells</span>
+                </button>
+              </div>
+              <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Tables & Merging</span>
             </div>
 
             {/* PAGES & BREAKS */}
@@ -1974,6 +2006,7 @@ const MenuBar = ({
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Merge & Split</span>
                 </div>
 
+                {/* ORIENTATION */}
                 <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
                   <button
                     type="button"
@@ -1991,6 +2024,20 @@ const MenuBar = ({
                     <span>Rotate Text (90°)</span>
                   </button>
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Orientation</span>
+                </div>
+
+                {/* DRAW TABLE */}
+                <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
+                  <button
+                    type="button"
+                    onClick={() => setIsTableModalOpen(true)}
+                    className="my-auto px-2.5 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Draw or Insert a Custom Table with specified dimensions and borders"
+                  >
+                    <Grid className="w-3.5 h-3.5" />
+                    <span>Draw Table</span>
+                  </button>
+                  <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Table Grid</span>
                 </div>
 
                 {/* DELETE TABLE */}

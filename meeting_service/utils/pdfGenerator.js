@@ -825,10 +825,10 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
             ${cacheVariant === 'suppli-agenda' ? `
             <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
             ` : (isImmediate ? `
-            <div class="text-center header-title" style="text-align: center; font-size: 19px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
             <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${dateShort} তারিখে অনুষ্ঠিতব্য ${formattedSerial} নং জরুরী (Immediate) সভার ${docLabel}</div>
             ` : `
-            <div class="text-center header-title" style="text-align: center; font-size: 19px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
             <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
             `)}
 
@@ -1371,7 +1371,7 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
             </style>
         </head>
         <body>
-            <div class="text-center header-title" style="text-align: center; font-size: 19px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
             <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${attendanceSubTitle}</div>
             ${sections}
         </body>

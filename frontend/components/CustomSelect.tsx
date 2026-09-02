@@ -41,7 +41,7 @@ export default function CustomSelect({
         top: rect.bottom + 4,
         left: rect.left,
         width: rect.width,
-        zIndex: 99999,
+        zIndex: 100005,
       });
     }
   };

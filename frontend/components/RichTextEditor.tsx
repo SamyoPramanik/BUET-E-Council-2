@@ -28,7 +28,7 @@ import {
   ZoomIn, ZoomOut, RotateCw, Eye, SplitSquareVertical, AlertCircle, Info,
   CheckSquare, ArrowLeftRight, Check, Maximize2, Minimize2, Sparkles, Sliders,
   Scissors, Copy, Clipboard, Paintbrush, ArrowDownAZ, Pilcrow, PaintBucket,
-  ChevronDown, Grid, Sparkle, Layout, Ruler
+  ChevronDown, Grid, Sparkle, Layout, Ruler, Sigma
 } from 'lucide-react';
 import { useEffect, useState, useCallback, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -349,6 +349,75 @@ const SYMBOL_CATEGORIES = [
   }
 ];
 
+const EQUATION_PRESETS = [
+  {
+    name: "Quadratic Formula",
+    category: "Algebra",
+    formula: "x = (-b ± √(b² - 4ac)) / 2a",
+    html: `<span class="math-equation font-mono bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">x = <sup>-b ± &radic;(b<sup>2</sup> - 4ac)</sup>&frasl;<sub>2a</sub></span>`
+  },
+  {
+    name: "Area of a Circle",
+    category: "Geometry",
+    formula: "A = πr²",
+    html: `<span class="math-equation font-mono bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">A = &pi;r<sup>2</sup></span>`
+  },
+  {
+    name: "Pythagorean Theorem",
+    category: "Geometry",
+    formula: "a² + b² = c²",
+    html: `<span class="math-equation font-mono bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">a<sup>2</sup> + b<sup>2</sup> = c<sup>2</sup></span>`
+  },
+  {
+    name: "Binomial Theorem",
+    category: "Algebra",
+    formula: "(x + a)ⁿ = ∑ₖ (ⁿₖ) xⁿ⁻ᵏ aᵏ",
+    html: `<span class="math-equation font-mono bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">(x + a)<sup>n</sup> = &sum;<sub>k=0</sub><sup>n</sup> (<sup>n</sup><sub>k</sub>) x<sup>n-k</sup>a<sup>k</sup></span>`
+  },
+  {
+    name: "Mass-Energy Equivalence",
+    category: "Physics",
+    formula: "E = mc²",
+    html: `<span class="math-equation font-mono bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">E = mc<sup>2</sup></span>`
+  },
+  {
+    name: "Definite Integral",
+    category: "Calculus",
+    formula: "∫ₐᵇ f(x) dx",
+    html: `<span class="math-equation font-mono bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">&int;<sub>a</sub><sup>b</sup> f(x) dx</span>`
+  },
+  {
+    name: "Summation Series",
+    category: "Calculus",
+    formula: "∑ᵢ₌₁ⁿ xᵢ",
+    html: `<span class="math-equation font-mono bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">&sum;<sub>i=1</sub><sup>n</sup> x<sub>i</sub></span>`
+  },
+  {
+    name: "Fraction Preset",
+    category: "Basic Math",
+    formula: "a / b",
+    html: `<span class="math-equation font-mono bg-muted/40 px-2.5 py-1 rounded border border-border inline-block"><sup>a</sup>&frasl;<sub>b</sub></span>`
+  },
+  {
+    name: "Square Root / Radical",
+    category: "Basic Math",
+    formula: "√(x² + y²)",
+    html: `<span class="math-equation font-mono bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">&radic;(x<sup>2</sup> + y<sup>2</sup>)</span>`
+  },
+  {
+    name: "Bangla Triangle Area",
+    category: "বাংলা গণিত",
+    formula: "ক্ষেত্রফল = (১/২) × ভূমি × উচ্চতা",
+    html: `<span class="math-equation bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">ক্ষেত্রফল = &frac12; &times; ভূমি &times; উচ্চতা</span>`
+  },
+  {
+    name: "Bangla Circle Perimeter",
+    category: "বাংলা গণিত",
+    formula: "পরিধি = ২πr",
+    html: `<span class="math-equation bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">পরিধি = ২&pi;r</span>`
+  }
+];
+
 const PRESET_TEXT_COLORS = [
   { label: 'Default', color: '' },
   { label: 'Black', color: '#000000' },
@@ -380,13 +449,91 @@ const PRESET_SHADING_COLORS = [
 ];
 
 const WORD_QUICK_STYLES = [
-  { id: 'normal', name: 'Normal', preview: 'AaBbCc', desc: 'Default Text', action: (e: any) => e.chain().focus().setParagraph().unsetFontSize().unsetBold().unsetItalic().run() },
-  { id: 'no_spacing', name: 'No Spacing', preview: 'AaBbCc', desc: 'Compact Lines', action: (e: any) => e.chain().focus().setParagraph().setLineHeight('1.0').run() },
-  { id: 'heading1', name: 'Heading 1', preview: 'Heading 1', desc: 'Title 26px Bold', action: (e: any) => e.chain().focus().unsetFontSize().toggleHeading({ level: 1 }).run() },
-  { id: 'heading2', name: 'Heading 2', preview: 'Heading 2', desc: 'Section 20px Bold', action: (e: any) => e.chain().focus().unsetFontSize().toggleHeading({ level: 2 }).run() },
-  { id: 'heading3', name: 'Heading 3', preview: 'Heading 3', desc: 'Subsection 17px', action: (e: any) => e.chain().focus().unsetFontSize().toggleHeading({ level: 3 }).run() },
-  { id: 'title', name: 'Title', preview: 'TITLE', desc: 'Main Doc Title', action: (e: any) => e.chain().focus().setFontSize('32px').setBold().setTextAlign('center').run() },
-  { id: 'subtitle', name: 'Subtitle', preview: 'Subtitle', desc: 'Italic Subtitle', action: (e: any) => e.chain().focus().setFontSize('18px').setItalic().setTextAlign('center').run() },
+  { 
+    id: 'normal', 
+    name: 'Normal', 
+    preview: 'AaBbCc', 
+    desc: 'Default Text', 
+    action: (e: any) => {
+      if (!e.state.selection.empty) {
+        e.chain().focus().unsetFontSize().unsetBold().unsetItalic().unsetColor().run();
+      } else {
+        e.chain().focus().setParagraph().unsetFontSize().unsetBold().unsetItalic().run();
+      }
+    } 
+  },
+  { 
+    id: 'no_spacing', 
+    name: 'No Spacing', 
+    preview: 'AaBbCc', 
+    desc: 'Compact Lines', 
+    action: (e: any) => e.chain().focus().setLineHeight('1.0').run() 
+  },
+  { 
+    id: 'heading1', 
+    name: 'Heading 1', 
+    preview: 'Heading 1', 
+    desc: 'Title 26px Bold', 
+    action: (e: any) => {
+      if (!e.state.selection.empty) {
+        e.chain().focus().setFontSize('26px').setBold().run();
+      } else {
+        e.chain().focus().unsetFontSize().toggleHeading({ level: 1 }).run();
+      }
+    } 
+  },
+  { 
+    id: 'heading2', 
+    name: 'Heading 2', 
+    preview: 'Heading 2', 
+    desc: 'Section 20px Bold', 
+    action: (e: any) => {
+      if (!e.state.selection.empty) {
+        e.chain().focus().setFontSize('20px').setBold().run();
+      } else {
+        e.chain().focus().unsetFontSize().toggleHeading({ level: 2 }).run();
+      }
+    } 
+  },
+  { 
+    id: 'heading3', 
+    name: 'Heading 3', 
+    preview: 'Heading 3', 
+    desc: 'Subsection 17px', 
+    action: (e: any) => {
+      if (!e.state.selection.empty) {
+        e.chain().focus().setFontSize('17px').setBold().run();
+      } else {
+        e.chain().focus().unsetFontSize().toggleHeading({ level: 3 }).run();
+      }
+    } 
+  },
+  { 
+    id: 'title', 
+    name: 'Title', 
+    preview: 'TITLE', 
+    desc: 'Main Doc Title', 
+    action: (e: any) => {
+      if (!e.state.selection.empty) {
+        e.chain().focus().setFontSize('32px').setBold().run();
+      } else {
+        e.chain().focus().setFontSize('32px').setBold().setTextAlign('center').run();
+      }
+    } 
+  },
+  { 
+    id: 'subtitle', 
+    name: 'Subtitle', 
+    preview: 'Subtitle', 
+    desc: 'Italic Subtitle', 
+    action: (e: any) => {
+      if (!e.state.selection.empty) {
+        e.chain().focus().setFontSize('18px').setItalic().run();
+      } else {
+        e.chain().focus().setFontSize('18px').setItalic().setTextAlign('center').run();
+      }
+    } 
+  },
   { id: 'subtle_emphasis', name: 'Subtle Emphasis', preview: 'Emphasis', desc: 'Italic Soft Text', action: (e: any) => e.chain().focus().setItalic().setColor('#6b5c58').run() },
   { id: 'intense_emphasis', name: 'Intense Emphasis', preview: 'Emphasis!', desc: 'Bold Crimson Accent', action: (e: any) => e.chain().focus().setBold().setItalic().setColor('#800000').run() },
   { id: 'quote', name: 'Quote', preview: '“ Quote ”', desc: 'Blockquote Style', action: (e: any) => e.chain().focus().toggleBlockquote().run() }
@@ -423,6 +570,7 @@ const MenuBar = ({
 }: MenuBarProps) => {
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'table' | 'layout' | 'tools' | 'view'>('home');
   const [isSymbolModalOpen, setIsSymbolModalOpen] = useState(false);
+  const [isEquationModalOpen, setIsEquationModalOpen] = useState(false);
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
@@ -430,6 +578,8 @@ const MenuBar = ({
   const [tableBorderOption, setTableBorderOption] = useState<string>('full');
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const [symbolSearch, setSymbolSearch] = useState('');
+  const [equationSearch, setEquationSearch] = useState('');
+  const [customEquationInput, setCustomEquationInput] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [hoverRows, setHoverRows] = useState(0);
   const [hoverCols, setHoverCols] = useState(0);
@@ -451,12 +601,13 @@ const MenuBar = ({
       if (e.key === 'Escape') {
         if (isTableModalOpen) setIsTableModalOpen(false);
         if (isSymbolModalOpen) setIsSymbolModalOpen(false);
+        if (isEquationModalOpen) setIsEquationModalOpen(false);
         if (isLinkModalOpen) setIsLinkModalOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isTableModalOpen, isSymbolModalOpen, isLinkModalOpen]);
+  }, [isTableModalOpen, isSymbolModalOpen, isEquationModalOpen, isLinkModalOpen]);
 
   if (!editor) return null;
 
@@ -470,6 +621,16 @@ const MenuBar = ({
   };
 
   const handleHeadingChange = (val: string) => {
+    const { empty } = editor.state.selection;
+    if (!empty) {
+      if (val === 'h1') editor.chain().focus().setFontSize('26px').setBold().run();
+      else if (val === 'h2') editor.chain().focus().setFontSize('20px').setBold().run();
+      else if (val === 'h3') editor.chain().focus().setFontSize('17px').setBold().run();
+      else editor.chain().focus().unsetFontSize().unsetBold().run();
+      toast.success("Applied style to highlighted selection");
+      return;
+    }
+
     if (val === 'h1') editor.chain().focus().unsetFontSize().toggleHeading({ level: 1 }).run();
     else if (val === 'h2') editor.chain().focus().unsetFontSize().toggleHeading({ level: 2 }).run();
     else if (val === 'h3') editor.chain().focus().unsetFontSize().toggleHeading({ level: 3 }).run();
@@ -958,7 +1119,7 @@ const MenuBar = ({
                     </button>
 
                     {showHighlightPicker && (
-                      <div className="absolute top-full left-0 mt-1 z-50 p-2.5 bg-popover border border-border rounded-xl shadow-xl flex flex-col gap-2 w-48">
+                      <div className="absolute top-full left-0 mt-1 z-[100005] p-2.5 bg-popover border border-border rounded-xl shadow-xl flex flex-col gap-2 w-48">
                         <span className="text-[10px] font-bold uppercase text-muted-foreground">Highlight Color</span>
                         <div className="grid grid-cols-3 gap-1.5">
                           {PRESET_HIGHLIGHT_COLORS.map(c => (
@@ -995,7 +1156,7 @@ const MenuBar = ({
                     </button>
 
                     {showColorPicker && (
-                      <div className="absolute top-full left-0 mt-1 z-50 p-2.5 bg-popover border border-border rounded-xl shadow-xl flex flex-col gap-2 w-48">
+                      <div className="absolute top-full left-0 mt-1 z-[100005] p-2.5 bg-popover border border-border rounded-xl shadow-xl flex flex-col gap-2 w-48">
                         <span className="text-[10px] font-bold uppercase text-muted-foreground">Text Color</span>
                         <div className="grid grid-cols-4 gap-1.5">
                           {PRESET_TEXT_COLORS.map(c => (
@@ -1180,7 +1341,7 @@ const MenuBar = ({
                     </button>
 
                     {showShadingPicker && (
-                      <div className="absolute top-full left-0 mt-1 z-50 p-2.5 bg-popover border border-border rounded-xl shadow-xl flex flex-col gap-2 w-48">
+                      <div className="absolute top-full left-0 mt-1 z-[100005] p-2.5 bg-popover border border-border rounded-xl shadow-xl flex flex-col gap-2 w-48">
                         <span className="text-[10px] font-bold uppercase text-muted-foreground">Paragraph Shading</span>
                         <div className="grid grid-cols-3 gap-1.5">
                           {PRESET_SHADING_COLORS.map(c => (
@@ -1321,11 +1482,22 @@ const MenuBar = ({
 
                 <button
                   type="button"
+                  onClick={() => setIsEquationModalOpen(true)}
+                  className="px-3 py-1.5 rounded bg-muted/60 hover:bg-muted text-foreground flex items-center gap-1.5 text-xs font-semibold cursor-pointer border border-border"
+                  title="Insert Mathematical Equations & Formulas"
+                >
+                  <Sigma className="w-4 h-4 text-primary" />
+                  <span>Equation</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setIsSymbolModalOpen(true)}
                   className="px-3 py-1.5 rounded bg-muted/60 hover:bg-muted text-foreground flex items-center gap-1.5 text-xs font-semibold cursor-pointer border border-border"
+                  title="Insert Special Symbols"
                 >
                   <Omega className="w-4 h-4 text-primary" />
-                  <span>Symbol Picker</span>
+                  <span>Symbol</span>
                 </button>
               </div>
               <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Symbols & Boxes</span>
@@ -1510,7 +1682,7 @@ const MenuBar = ({
       {/* MODAL PORTAL 1: HYPERLINK MODAL */}
       {mounted && isLinkModalOpen && createPortal(
         <div 
-          className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[100010] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
           onClick={() => setIsLinkModalOpen(false)}
         >
           <div 
@@ -1598,7 +1770,7 @@ const MenuBar = ({
       {/* MODAL PORTAL 2: TABLE SELECTION MODAL */}
       {mounted && isTableModalOpen && createPortal(
         <div 
-          className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[100010] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
           onClick={() => setIsTableModalOpen(false)}
         >
           <div 
@@ -1707,7 +1879,7 @@ const MenuBar = ({
       {/* MODAL PORTAL 3: SYMBOL PICKER MODAL */}
       {mounted && isSymbolModalOpen && createPortal(
         <div 
-          className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[100010] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
           onClick={() => setIsSymbolModalOpen(false)}
         >
           <div 
@@ -1791,6 +1963,117 @@ const MenuBar = ({
                 className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold rounded-lg cursor-pointer"
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL PORTAL 4: EQUATION PICKER MODAL */}
+      {mounted && isEquationModalOpen && createPortal(
+        <div 
+          className="fixed inset-0 z-[100010] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          onClick={() => setIsEquationModalOpen(false)}
+        >
+          <div 
+            className="bg-popover text-popover-foreground border border-border rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[88vh] overflow-hidden select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/30">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Sigma className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Insert Mathematical Equation</h3>
+                  <p className="text-xs text-muted-foreground">Select a formula preset or type a custom math expression</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEquationModalOpen(false)}
+                className="p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Search & Custom Input */}
+            <div className="px-6 py-3 border-b border-border/60 bg-card flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search equations..."
+                    value={equationSearch}
+                    onChange={(e) => setEquationSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+
+                {/* Quick Insert Custom Equation */}
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="text"
+                    placeholder="Custom equation (e.g. E = mc²)..."
+                    value={customEquationInput}
+                    onChange={(e) => setCustomEquationInput(e.target.value)}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary flex-1 sm:w-64"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!customEquationInput.trim()) return;
+                      editor.chain().focus().insertContent(`<span class="math-equation font-mono bg-muted/40 px-2.5 py-1 rounded border border-border inline-block">${customEquationInput}</span> `).run();
+                      toast.success("Inserted custom equation");
+                      setCustomEquationInput('');
+                      setIsEquationModalOpen(false);
+                    }}
+                    className="px-3.5 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 cursor-pointer shadow-2xs whitespace-nowrap"
+                  >
+                    Insert Custom
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Equation Presets Grid */}
+            <div className="p-6 overflow-y-auto space-y-4 flex-1 bg-background/50">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {EQUATION_PRESETS.filter(eq => 
+                  !equationSearch || 
+                  eq.name.toLowerCase().includes(equationSearch.toLowerCase()) || 
+                  eq.formula.toLowerCase().includes(equationSearch.toLowerCase()) ||
+                  eq.category.toLowerCase().includes(equationSearch.toLowerCase())
+                ).map((eq) => (
+                  <div
+                    key={eq.name}
+                    onClick={() => {
+                      editor.chain().focus().insertContent(`${eq.html} `).run();
+                      toast.success(`Inserted ${eq.name}`);
+                      setIsEquationModalOpen(false);
+                    }}
+                    className="p-4 rounded-xl bg-card hover:bg-muted/60 border border-border hover:border-primary/50 transition-all cursor-pointer flex flex-col justify-between gap-3 group shadow-2xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">{eq.name}</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">{eq.category}</span>
+                    </div>
+                    <div className="p-3 bg-muted/40 rounded-lg border border-border/80 flex items-center justify-center font-mono text-sm overflow-x-auto" dangerouslySetInnerHTML={{ __html: eq.html }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-6 py-3 border-t border-border bg-muted/20 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsEquationModalOpen(false)}
+                className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold rounded-lg cursor-pointer"
+              >
+                Cancel
               </button>
             </div>
           </div>

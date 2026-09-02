@@ -1,9 +1,24 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Noto_Sans_Bengali, Tiro_Bangla } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+
+const notoSansBengali = Noto_Sans_Bengali({
+  subsets: ["bengali"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-noto-bengali",
+  display: "swap",
+});
+
+const tiroBangla = Tiro_Bangla({
+  subsets: ["bengali"],
+  weight: ["400"],
+  variable: "--font-tiro-bangla",
+  display: "swap",
+  style: "normal",
+});
 
 export const metadata: Metadata = {
   title: "BUET E-COUNCIL",
@@ -20,7 +35,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${notoSansBengali.variable} ${tiroBangla.variable} font-sans antialiased`}>
         <ThemeProvider>
           <BijoyGlobalPasteProvider>
             {children}

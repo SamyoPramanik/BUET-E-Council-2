@@ -213,9 +213,16 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
     );
 
     // Ordered lists
-    str = str.replace(/<ol(\s[^>]*)?>/gi, (match) =>
-        injectStyle(match, { 'margin': '8px 0', 'padding-left': `${indentPx + 20}px`, 'font-size': '14px', 'line-height': '1.6' })
-    );
+    str = str.replace(/<ol(\s[^>]*)?>/gi, (match) => {
+        const isBengali = /bengali/i.test(match);
+        return injectStyle(match, {
+            'margin': '8px 0',
+            'padding-left': `${indentPx + 20}px`,
+            'font-size': '14px',
+            'line-height': '1.6',
+            ...(isBengali ? { 'list-style-type': 'bengali' } : {})
+        });
+    });
 
     // List items
     str = str.replace(/<li(\s[^>]*)?>/gi, (match) =>
@@ -240,16 +247,43 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
         return styled;
     });
 
-    // Table headers
+    // Subscript & Superscript
+    str = str.replace(/<sub(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'font-size': '0.75em', 'vertical-align': 'sub' }));
+    str = str.replace(/<sup(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'font-size': '0.75em', 'vertical-align': 'super' }));
+
+    // Marks / Highlight
+    str = str.replace(/<mark(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'background-color': '#fef08a', 'color': '#000', 'padding': '0 2px' }));
+
+    // Links
+    str = str.replace(/<a(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'color': '#2563eb', 'text-decoration': 'underline' }));
+
+    // Page Break HR
+    str = str.replace(/<hr\s+class="page-break"[^>]*\/?>/gi, '<div style="page-break-after: always; break-after: page; height: 0; margin: 0; padding: 0;"></div>');
+
+    // Table headers with text direction
     str = str.replace(/<th(\s[^>]*)?>/gi, (match) => {
-        if (match.includes('font-weight')) return match;
-        return injectStyle(match, { 'border': '1px solid #000', 'padding': '6px', 'background-color': '#f2f4f7', 'font-weight': 'bold', 'text-align': 'left', 'font-size': '14px' });
+        const hasDir = /data-text-direction="vertical-rl"/i.test(match);
+        const additions = { 'border': '1px solid #000', 'padding': '6px', 'background-color': '#f2f4f7', 'font-weight': 'bold', 'text-align': 'left', 'font-size': '14px' };
+        if (hasDir) {
+            additions['writing-mode'] = 'vertical-rl';
+            additions['transform'] = 'rotate(180deg)';
+            additions['text-align'] = 'center';
+            additions['vertical-align'] = 'middle';
+        }
+        return injectStyle(match, additions);
     });
 
-    // Table cells
+    // Table cells with text direction
     str = str.replace(/<td(\s[^>]*)?>/gi, (match) => {
-        if (match.includes('font-size')) return match;
-        return injectStyle(match, { 'border': '1px solid #000', 'padding': '6px', 'text-align': 'left', 'font-size': '14px', 'vertical-align': 'top' });
+        const hasDir = /data-text-direction="vertical-rl"/i.test(match);
+        const additions = { 'border': '1px solid #000', 'padding': '6px', 'text-align': 'left', 'font-size': '14px', 'vertical-align': 'top' };
+        if (hasDir) {
+            additions['writing-mode'] = 'vertical-rl';
+            additions['transform'] = 'rotate(180deg)';
+            additions['text-align'] = 'center';
+            additions['vertical-align'] = 'middle';
+        }
+        return injectStyle(match, additions);
     });
 
     return str;
@@ -1141,10 +1175,55 @@ const generatePdf = async (meetingId, isResolution, cacheVariant) => {
     }
 };
 
+function prepareHtmlForDocx(htmlContent) {
+    if (!htmlContent) return '';
+    let str = String(htmlContent);
+
+    // Remove DOCTYPE, html, head, style tags that pollute XML generation in Word 2007
+    str = str.replace(/<!DOCTYPE[^>]*>/gi, '');
+    str = str.replace(/<head[\s\S]*?<\/head>/gi, '');
+    str = str.replace(/<style[\s\S]*?<\/style>/gi, '');
+    str = str.replace(/<html[^>]*>/gi, '');
+    str = str.replace(/<\/html>/gi, '');
+    str = str.replace(/<body[^>]*>/gi, '<div>');
+    str = str.replace(/<\/body>/gi, '</div>');
+
+    // Remove any embedded font base64 strings or style attributes containing base64
+    str = str.replace(/url\(['"]?data:font\/[^;]+;base64,[^'"]+['"]?\)/gi, '');
+
+    // Replace display: flex, column-count CSS with standard tables or block elements compatible with Word 2007
+    str = str.replace(/display:\s*flex;?/gi, '');
+    str = str.replace(/column-count:\s*\d+;?/gi, '');
+    str = str.replace(/column-gap:\s*[^;]+;?/gi, '');
+    str = str.replace(/break-inside:\s*avoid;?/gi, '');
+    str = str.replace(/page-break-inside:\s*avoid;?/gi, '');
+
+    // Clean up img src: ensure images have explicit attributes for Word 2007
+    str = str.replace(/<img([^>]*)\/?>/gi, (match, attrs) => {
+        if (attrs.includes('src="data:image')) {
+            if (!attrs.includes('width=') && !attrs.includes('height=')) {
+                return `<img${attrs} width="120" height="40" />`;
+            }
+        }
+        return match;
+    });
+
+    // Ensure all tables have border, cellpadding, and cellspacing attributes for MS Word 2007
+    str = str.replace(/<table(\s[^>]*)?>/gi, (match) => {
+        if (!match.includes('border=')) {
+            return match.replace('<table', '<table border="1" cellpadding="6" cellspacing="0"');
+        }
+        return match;
+    });
+
+    return str.trim();
+}
+
 const generateMeetingDocx = async (meetingId, isResolution, cacheVariant) => {
     try {
         const { html } = await buildMeetingHtml(meetingId, isResolution, cacheVariant);
-        const docxBuffer = await HTMLtoDOCX(html, null, {
+        const cleanDocxHtml = prepareHtmlForDocx(html);
+        const docxBuffer = await HTMLtoDOCX(cleanDocxHtml, null, {
             table: { row: { cantSplit: true } },
             footer: true,
             pageNumber: true,
@@ -1401,7 +1480,8 @@ const generateAttendanceSheet = async (meetingId, groupFilter = null) => {
 const generateAttendanceDocxSheet = async (meetingId, groupFilter = null) => {
     try {
         const { html } = await buildAttendanceHtml(meetingId, groupFilter);
-        const docxBuffer = await HTMLtoDOCX(html, null, {
+        const cleanDocxHtml = prepareHtmlForDocx(html);
+        const docxBuffer = await HTMLtoDOCX(cleanDocxHtml, null, {
             table: { row: { cantSplit: true } },
             footer: true,
             pageNumber: true,

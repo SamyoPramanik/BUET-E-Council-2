@@ -129,7 +129,14 @@ export function sanitizeHtml(html: string | null | undefined): string {
 
   const converted = convertMarkdownTablesToHtml(unescaped);
   return DOMPurify.sanitize(converted, {
-    ADD_TAGS: ["table", "thead", "tbody", "tr", "th", "td", "br", "p", "strong", "em", "b", "i", "u", "span"],
-    ADD_ATTR: ["class", "border", "cellpadding", "cellspacing", "style", "data-border"]
+    ADD_TAGS: [
+      "table", "thead", "tbody", "tr", "th", "td", "br", "p", "strong", "em", "b", "i", "u", "s",
+      "sub", "sup", "span", "hr", "a", "div", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6",
+      "ul", "ol", "li", "mark"
+    ],
+    ADD_ATTR: [
+      "class", "border", "cellpadding", "cellspacing", "style", "data-border",
+      "data-text-direction", "href", "target", "rel", "title"
+    ]
   });
 }

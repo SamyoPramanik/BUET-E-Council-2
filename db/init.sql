@@ -210,6 +210,7 @@ CREATE TABLE agenda (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     is_suppli BOOLEAN DEFAULT false,
     is_archived BOOLEAN DEFAULT false,
+    is_submitted_for_next_meeting BOOLEAN DEFAULT false,
     -- Generated full-text search vectors. 'simple' config (no stemming) is
     -- used because it tokenizes Bangla and English equally well without an
     -- English-specific stemmer distorting Bangla tokens.

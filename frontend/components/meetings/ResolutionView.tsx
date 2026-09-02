@@ -65,6 +65,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [targetAgendaId, setTargetAgendaId] = useState<string | null>(null);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [executionContent, setExecutionContent] = useState("");
   const [isSavingExecution, setIsSavingExecution] = useState(false);
@@ -113,33 +114,21 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
     });
   };
 
-  const handleToggleExecuted = async (agenda: any) => {
+  const handleToggleSubmitForNextMeeting = async (agenda: any) => {
+    setArchivingId(agenda.id);
     try {
-      await api.put(`/agendas/resolutions/${agenda.id}/execution`, {
-        is_executed: !agenda.is_executed,
-        execution_status: agenda.execution_status || ""
-      });
+      if (agenda.is_submitted_for_next_meeting) {
+        await api.put(`/agendas/${agenda.id}/remove-from-archive`);
+        toast.success("Removed from next meeting archive");
+      } else {
+        await api.put(`/agendas/${agenda.id}/copy-to-archive`);
+        toast.success("Submitted for next meeting");
+      }
       mutate();
-      toast.success("Execution status updated");
-    } catch (err) {
-      toast.error("Failed to update execution status");
-    }
-  };
-
-  const handleSaveExecution = async (agendaId: string) => {
-    setIsSavingExecution(true);
-    try {
-      await api.put(`/agendas/resolutions/${agendaId}/execution`, {
-        is_executed: true,
-        execution_status: executionContent
-      });
-      mutate();
-      setExecutingId(null);
-      toast.success("Execution details saved");
-    } catch (err) {
-      toast.error("Failed to save execution details");
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message || "Failed to update");
     } finally {
-      setIsSavingExecution(false);
+      setArchivingId(null);
     }
   };
 
@@ -377,58 +366,123 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                       Execution Status
                     </h4>
 
-                    <div className="flex items-center gap-3 mb-4">
+                    <div className="space-y-4">
+                      {/* Radio buttons: Not Executed / Executed */}
+                      <div className="flex items-center gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`execution-${agenda.id}`}
+                            disabled={readOnly}
+                            className="w-4 h-4 border-input text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
+                            checked={!agenda.is_executed}
+                            onChange={async () => {
+                              try {
+                                await api.put(`/agendas/resolutions/${agenda.id}/execution`, {
+                                  is_executed: false,
+                                  execution_status: ""
+                                });
+                                mutate();
+                                toast.success("Execution status updated");
+                              } catch (err) {
+                                toast.error("Failed to update execution status");
+                              }
+                            }}
+                          />
+                          <span className="text-sm font-medium">Not Executed</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`execution-${agenda.id}`}
+                            disabled={readOnly}
+                            className="w-4 h-4 border-input text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
+                            checked={agenda.is_executed === true || agenda.is_executed === 'yes'}
+                            onChange={async () => {
+                              try {
+                                await api.put(`/agendas/resolutions/${agenda.id}/execution`, {
+                                  is_executed: true,
+                                  execution_status: ""
+                                });
+                                mutate();
+                                toast.success("Execution status updated");
+                              } catch (err) {
+                                toast.error("Failed to update execution status");
+                              }
+                            }}
+                          />
+                          <span className="text-sm font-medium">Executed</span>
+                        </label>
+                      </div>
+
+                      {/* Checkbox: Submit to Next Meeting */}
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
-                          disabled={readOnly}
-                          className="w-4 h-4 rounded border-input text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-                          checked={agenda.is_executed || false}
-                          onChange={() => handleToggleExecuted(agenda)}
+                          disabled={readOnly || archivingId === agenda.id}
+                          className="w-4 h-4 rounded border-input text-amber-600 focus:ring-amber-500 disabled:opacity-50"
+                          checked={agenda.is_submitted_for_next_meeting || false}
+                          onChange={() => handleToggleSubmitForNextMeeting(agenda)}
                         />
-                        <span className="text-sm font-medium">Resolution Executed</span>
+                        <span className="text-sm font-medium">
+                          {archivingId === agenda.id ? "Updating..." : "Submit to Next Meeting"}
+                        </span>
                       </label>
-                    </div>
 
-                    <div>
-                      {executingId === agenda.id ? (
-                        <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10 mb-4">
-                          <RichTextEditor
-                            content={executionContent}
-                            onChange={setExecutionContent}
-                            className="p-4 min-h-[100px]"
-                          />
-                          <div className="bg-muted p-2 flex justify-end gap-2 border-t border-border">
-                            <button onClick={() => setExecutingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
-                            <button onClick={() => handleSaveExecution(agenda.id)} disabled={isSavingExecution} className="px-3 py-1 text-xs bg-emerald-600 text-white hover:bg-emerald-700 rounded-md disabled:opacity-50 transition-colors">
-                              {isSavingExecution ? "Saving..." : "Save Details"}
-                            </button>
-                          </div>
-                        </div>
-                      ) : agenda.execution_status ? (
-                        <div className="relative group mb-4">
-                          {!readOnly && (
+                      {/* Custom Status */}
+                      {!readOnly && (
+                        <div>
+                          {executingId === agenda.id ? (
+                            <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10">
+                              <RichTextEditor
+                                content={executionContent}
+                                onChange={setExecutionContent}
+                                className="p-4 min-h-[100px]"
+                              />
+                              <div className="bg-muted p-2 flex justify-end gap-2 border-t border-border">
+                                <button onClick={() => setExecutingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
+                                <button onClick={async () => {
+                                  setIsSavingExecution(true);
+                                  try {
+                                    await api.put(`/agendas/resolutions/${agenda.id}/execution`, {
+                                      is_executed: agenda.is_executed,
+                                      execution_status: executionContent
+                                    });
+                                    mutate();
+                                    setExecutingId(null);
+                                    toast.success("Custom status saved");
+                                  } catch (err) {
+                                    toast.error("Failed to save custom status");
+                                  } finally {
+                                    setIsSavingExecution(false);
+                                  }
+                                }} disabled={isSavingExecution} className="px-3 py-1 text-xs bg-emerald-600 text-white hover:bg-emerald-700 rounded-md disabled:opacity-50 transition-colors">
+                                  {isSavingExecution ? "Saving..." : "Save"}
+                                </button>
+                              </div>
+                            </div>
+                          ) : agenda.execution_status ? (
+                            <div className="relative group">
+                              <button
+                                onClick={() => { setExecutingId(agenda.id); setExecutionContent(agenda.execution_status); }}
+                                className="absolute top-0 right-0 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-emerald-50 rounded-md hover:bg-emerald-100 flex items-center gap-2 text-xs font-medium z-10"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" /> Edit
+                              </button>
+                              <div
+                                className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-emerald-200/30 border border-emerald-100 p-4 rounded-md shadow-sm"
+                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.execution_status) }}
+                              />
+                            </div>
+                          ) : (
                             <button
-                              onClick={() => { setExecutingId(agenda.id); setExecutionContent(agenda.execution_status); }}
-                              className="absolute top-0 right-0 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-emerald-50 rounded-md hover:bg-emerald-100 flex items-center gap-2 text-xs font-medium z-10"
+                              onClick={() => { setExecutingId(agenda.id); setExecutionContent(""); }}
+                              className="bg-background border border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors"
                             >
-                              <Edit3 className="w-3.5 h-3.5" /> Edit Details
+                              <Edit3 className="w-4 h-4" /> Add Custom Status
                             </button>
                           )}
-                          <div
-                            className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-emerald-200/30 border border-emerald-100 p-4 rounded-md shadow-sm"
-                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.execution_status) }}
-                          />
                         </div>
-                      ) : (
-                        !readOnly && (
-                          <button
-                            onClick={() => { setExecutingId(agenda.id); setExecutionContent(""); }}
-                            className="bg-background border border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors mb-4"
-                          >
-                            <Edit3 className="w-4 h-4" /> Add Execution Details
-                          </button>
-                        )
                       )}
                     </div>
                   </div>

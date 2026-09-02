@@ -350,7 +350,7 @@ const renderPdf = async (html) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v49';
+const PDF_TEMPLATE_VERSION = 'v50';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -413,6 +413,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
                 a.is_executed,
                 a.execution_status,
                 a.is_suppli,
+                a.is_submitted_for_next_meeting,
                 a.category_id,
                 c.name AS category_name,
                 COALESCE(
@@ -446,7 +447,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
                 ) AS annexures
             FROM agenda a
             LEFT JOIN categories c ON c.id = a.category_id
-            WHERE a.meeting_id = $1
+            WHERE a.meeting_id = $1 AND (a.is_archived = false OR a.is_archived IS NULL)
             ORDER BY a.is_suppli ASC, a.agenda_serial ASC
         `;
 
@@ -992,8 +993,13 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
                         if (cleanExecText.length > 0) {
                             statusColHtml = convertMarkdownTablesToHtml(ag.execution_status);
                         } else {
+                            const isSubmitted = ag.is_submitted_for_next_meeting === true || ag.is_submitted_for_next_meeting === 'true' || ag.is_submitted_for_next_meeting === 't';
                             const isExec = ag.is_executed === 'yes' || ag.is_executed === true;
-                            statusColHtml = isExec ? 'বাস্তবায়িত' : 'অবাস্তবায়িত';
+                            if (isSubmitted) {
+                                statusColHtml = 'পরবর্তী মিটিং এ উপস্থাপন এর জন্য আবেদন করা হল';
+                            } else {
+                                statusColHtml = isExec ? 'বাস্তবায়িত' : 'অবাস্তবায়িত';
+                            }
                         }
 
                         tableRows += `

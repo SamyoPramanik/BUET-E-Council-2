@@ -132,6 +132,10 @@ CREATE TYPE account_status AS ENUM ('active', 'inactive');
                                | meeting_id (FK)  |
                                | content, plain   |
                                | resolution, plain|
+                               | is_executed      |
+                               | execution_status |
+                               | is_archived      |
+                               | is_submitted_for_next_meeting |
                                | content_tsv      |
                                | resolution_tsv   |
                                +------------------+
@@ -595,8 +599,15 @@ export const DEPARTMENT_MERGE_RULES = [
 | `PUT` | `/api/agendas/:id` | Update agenda item content or resolution |
 | `DELETE` | `/api/agendas/:id` | Remove agenda item |
 | `POST` | `/api/agendas/reorder` | Reorder agenda items within a meeting |
+| `PUT` | `/api/agendas/:id/archive` | Archive an agenda item (move to archive box) |
+| `PUT` | `/api/agendas/:id/copy-to-archive` | Copy agenda to archive for next meeting (resolution status) |
+| `PUT` | `/api/agendas/:id/remove-from-archive` | Remove archived copy and unset submitted flag |
+| `GET` | `/api/agendas/archived` | List archived agenda items |
+| `POST` | `/api/agendas/meeting/:meetingId/restore-archived` | Restore archived items to meeting |
+| `DELETE` | `/api/agendas/archived/:id` | Permanently delete archived item |
 | `GET` | `/api/agendas/:id/revisions` | View revision history for an agenda item |
 | `POST` | `/api/agendas/:id/annexures` | Upload annexure attachment to an agenda item |
+| `PUT` | `/api/agendas/resolutions/:resId/execution` | Update execution status (`is_executed`, `execution_status`) |
 | `GET` | `/api/members` | List university council members |
 | `POST` | `/api/members` | Add a new member |
 | `PUT` | `/api/members/:id` | Update member information |

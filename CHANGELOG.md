@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-09-02 — Resolution Status & Archive Features
+
+### New Features
+
+**Resolution Status Section (ResolutionView.tsx)**
+- Added execution status tracking for past meetings with resolution text:
+  - Radio buttons: "Not Executed" (default) / "Executed" — toggles `is_executed` via `PUT /api/agendas/resolutions/:resId/execution`
+  - Checkbox: "Submit to Next Meeting" — copies agenda to archive (`is_archived=true`) and sets `is_submitted_for_next_meeting=true` on original
+  - Custom status: Rich text editor for detailed execution notes, saved to `execution_status`
+
+**Archive for Next Meeting**
+- New `is_submitted_for_next_meeting` column on `agenda` table (`db/migrations/2026_09_add_is_submitted_for_next_meeting.sql`)
+- Backend endpoint `PUT /api/agendas/:id/copy-to-archive` — creates a copy of the agenda in archive (`agendaController.copyToArchive`)
+- Backend endpoint `PUT /api/agendas/:id/remove-from-archive` — deletes archived copy and unsets `is_submitted_for_next_meeting` (`agendaController.removeFromArchive`)
+- Archiving does NOT change agenda serial numbers (removed `reindexAgendas` and `ensureBibidhaAgenda` from `archiveAgendam`)
+- `ensureBibidhaAgenda` now filters out archived copies to prevent serial renumbering
+
+**Resolution Status PDF**
+- Bengali status text in resolution-status PDF: executed → বাস্তবায়িত, not executed → অবাস্তবায়িত, submitted → পরবর্তী মিটিং এ উপস্থাপন এর জন্য আবেদন করা হল
+- PDF template version bumped from `v49` to `v50`
+
+### API Endpoints Added
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `PUT` | `/api/agendas/:id/copy-to-archive` | Copy agenda to archive for next meeting |
+| `PUT` | `/api/agendas/:id/remove-from-archive` | Remove archived copy and unset submitted flag |
+
+### Database Changes
+- New column: `agenda.is_submitted_for_next_meeting BOOLEAN DEFAULT false`
+
+---
+
 ## 2026-07-16 — Session Summary
 
 A large batch of features, security fixes, and infrastructure hardening across `frontend`, `meeting_service`, `auth_service`, `nginx`, and `db`.

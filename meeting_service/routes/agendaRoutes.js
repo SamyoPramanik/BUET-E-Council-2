@@ -26,6 +26,8 @@ router.use(auditLog('agenda'));
 router.get('/', agendaController.getAgendams);
 router.get('/archived', agendaController.getArchivedAgendams);
 router.put('/:id/archive', requireMeetingAuthor, agendaController.archiveAgendam);
+router.put('/:id/copy-to-archive', requireResolutionEditor, agendaController.copyToArchive);
+router.put('/:id/remove-from-archive', requireResolutionEditor, agendaController.removeFromArchive);
 router.post('/meeting/:meetingId/restore-archived', requireMeetingAuthor, agendaController.restoreArchivedAgendams);
 router.delete('/archived/:id', requireMeetingAuthor, agendaController.deleteArchivedAgendam);
 router.post('/', requireMeetingAuthor, agendaController.createAgendam);

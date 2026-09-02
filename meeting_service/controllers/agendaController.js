@@ -32,7 +32,7 @@ const ensureBibidhaAgenda = async (meetingId) => {
     }
 
     const res = await db.query(
-        'SELECT id, agenda_serial, content FROM agenda WHERE meeting_id = $1 AND is_suppli = false ORDER BY agenda_serial ASC',
+        'SELECT id, agenda_serial, content FROM agenda WHERE meeting_id = $1 AND is_suppli = false AND (is_archived = false OR is_archived IS NULL) ORDER BY agenda_serial ASC',
         [meetingId]
     );
     const mainAgendas = res.rows;
@@ -909,10 +909,6 @@ const archiveAgendam = async (req, res, next) => {
         }
         const { meeting_id, is_suppli, status, archive_locked_level } = agendaRes.rows[0];
 
-        if (status !== 'draft') {
-            return next(new CustomError('Agendas can only be archived when the meeting is in draft status.', 400));
-        }
-
         if (archive_locked_level !== null && archive_locked_level !== undefined) {
             const userRoleLevel = req.user?.role_level ?? 99;
             const isSuperOrAdmin = req.user?.role === 'admin' || req.user?.role === 'superadmin';
@@ -923,10 +919,110 @@ const archiveAgendam = async (req, res, next) => {
 
         await db.query('UPDATE agenda SET is_archived = true WHERE id = $1', [id]);
 
-        await reindexAgendas(meeting_id, is_suppli);
-        await ensureBibidhaAgenda(meeting_id);
-
         res.status(200).json({ success: true, message: 'Agendam archived successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const copyToArchive = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const agendaRes = await db.query(
+            `SELECT a.*, m.status
+             FROM agenda a JOIN meetings m ON m.id = a.meeting_id
+             WHERE a.id = $1`,
+            [id]
+        );
+        if (agendaRes.rows.length === 0) {
+            return next(new CustomError('Agenda not found', 404));
+        }
+        const agenda = agendaRes.rows[0];
+
+        if (agenda.is_submitted_for_next_meeting) {
+            return next(new CustomError('This resolution has already been submitted for next meeting.', 400));
+        }
+
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Create a copy of the agenda in the archive
+            await client.query(
+                `INSERT INTO agenda (content, content_plain, resolution, resolution_plain,
+                    is_executed, execution_status, agenda_serial, meeting_id,
+                    is_suppli, is_archived, category_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10)`,
+                [
+                    agenda.content, agenda.content_plain,
+                    agenda.resolution, agenda.resolution_plain,
+                    agenda.is_executed, agenda.execution_status,
+                    0, agenda.meeting_id,
+                    agenda.is_suppli, agenda.category_id
+                ]
+            );
+
+            // 2. Mark the original as submitted for next meeting
+            await client.query(
+                'UPDATE agenda SET is_submitted_for_next_meeting = true WHERE id = $1',
+                [id]
+            );
+
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+
+        res.status(200).json({ success: true, message: 'Resolution submitted for next meeting' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const removeFromArchive = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const agendaRes = await db.query(
+            'SELECT a.id, a.is_submitted_for_next_meeting, a.meeting_id, a.is_suppli FROM agenda a WHERE a.id = $1',
+            [id]
+        );
+        if (agendaRes.rows.length === 0) {
+            return next(new CustomError('Agenda not found', 404));
+        }
+        const agenda = agendaRes.rows[0];
+
+        if (!agenda.is_submitted_for_next_meeting) {
+            return next(new CustomError('This resolution is not submitted for next meeting.', 400));
+        }
+
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Delete the archived copy (is_archived=true, same meeting_id)
+            await client.query(
+                `DELETE FROM agenda WHERE meeting_id = $1 AND is_suppli = $2 AND is_archived = true AND content IS NOT DISTINCT FROM (SELECT content FROM agenda WHERE id = $3) AND resolution IS NOT DISTINCT FROM (SELECT resolution FROM agenda WHERE id = $3)`,
+                [agenda.meeting_id, agenda.is_suppli, id]
+            );
+
+            // 2. Unmark the original
+            await client.query(
+                'UPDATE agenda SET is_submitted_for_next_meeting = false WHERE id = $1',
+                [id]
+            );
+
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+
+        res.status(200).json({ success: true, message: 'Removed from archive for next meeting' });
     } catch (error) {
         next(error);
     }
@@ -1024,6 +1120,8 @@ module.exports = {
     restoreRevision,
     getArchivedAgendams,
     archiveAgendam,
+    copyToArchive,
+    removeFromArchive,
     restoreArchivedAgendams,
     deleteArchivedAgendam
 };

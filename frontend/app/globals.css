@@ -451,10 +451,18 @@ table[data-border="outer"],
 table.border-outer td,
 table.border-outer th,
 table[data-border="outer"] td,
-table[data-border="outer"] th,
+table[data-border="outer"] th {
+  border: none !important;
+}
+
 .ProseMirror table[data-border="outer"] td,
 .ProseMirror table[data-border="outer"] th {
-  border: none !important;
+  border: 1px dashed rgba(203, 213, 225, 0.7) !important;
+}
+
+.dark .ProseMirror table[data-border="outer"] td,
+.dark .ProseMirror table[data-border="outer"] th {
+  border: 1px dashed rgba(71, 85, 105, 0.7) !important;
 }
 table.border-outer tr:first-child td,
 table.border-outer tr:first-child th,
@@ -598,10 +606,18 @@ table[data-border="none"],
 table.border-none td,
 table.border-none th,
 table[data-border="none"] td,
-table[data-border="none"] th,
+table[data-border="none"] th {
+  border: none !important;
+}
+
 .ProseMirror table[data-border="none"] td,
 .ProseMirror table[data-border="none"] th {
-  border: none !important;
+  border: 1px dashed rgba(203, 213, 225, 0.7) !important;
+}
+
+.dark .ProseMirror table[data-border="none"] td,
+.dark .ProseMirror table[data-border="none"] th {
+  border: 1px dashed rgba(71, 85, 105, 0.7) !important;
 }
 
 /* Enable custom list types inside table cells */

@@ -5,7 +5,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
-import { Table } from '@tiptap/extension-table';
+import { Table, TableView } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableHeader } from '@tiptap/extension-table-header';
 import { TableCell } from '@tiptap/extension-table-cell';
@@ -371,13 +371,25 @@ export const CustomOrderedList = OrderedList.extend({
   },
 });
 
+export class CustomTableView extends TableView {
+  update(node: any) {
+    const result = super.update(node);
+    if (result && this.table) {
+      const borderStyle = node.attrs['data-border'] || 'full';
+      this.table.setAttribute('data-border', borderStyle);
+      this.table.className = `meeting-table border-${borderStyle}`;
+    }
+    return result;
+  }
+}
+
 // Custom Table with Tab Keyboard Shortcut, Shift-Enter Row Navigation & Border options
 export const CustomTable = Table.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
       'data-border': {
-        default: 'full',
+        default: null,
         parseHTML: element => {
           if (element.getAttribute('data-border')) {
             return element.getAttribute('data-border');
@@ -4008,7 +4020,7 @@ export default function RichTextEditor({
           class: 'text-primary underline cursor-pointer',
         },
       }),
-      CustomTable.configure({ resizable: true }),
+      CustomTable.configure({ resizable: true, View: CustomTableView }),
       TableRow,
       CustomTableHeader,
       CustomTableCell,
@@ -4122,36 +4134,7 @@ export default function RichTextEditor({
             ? "w-fit min-w-[210mm] max-w-none min-h-[297mm] h-auto bg-card p-[20mm] shadow-xl rounded-sm relative my-2 flex flex-col transition-all overflow-x-auto"
             : "w-full min-h-full h-auto bg-card p-6 rounded-xl flex flex-col transition-all overflow-x-auto"
         }>
-          <style dangerouslySetInnerHTML={{ __html: `
-            .ProseMirror table .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: -2px; width: 4px; z-index: 50; background-color: var(--primary, #3b82f6); pointer-events: none; }
-            .ProseMirror.resize-cursor { cursor: col-resize !important; }
-            .ProseMirror table td, .ProseMirror table th, .prose table td, .prose table th, .meeting-table td, .meeting-table th { border: 1px solid #cbd5e1; padding: 2px 4px !important; }
-            .dark .ProseMirror table td, .dark .ProseMirror table th, .dark .prose table td, .dark .prose table th, .dark .meeting-table td, .dark .meeting-table th { border: 1px solid #475569; }
-            table.border-full td, table.border-full th, table[data-border="full"] td, table[data-border="full"] th, .ProseMirror table[data-border="full"] td, .ProseMirror table[data-border="full"] th { border: 1px solid #000000 !important; }
-            .dark table.border-full td, .dark table.border-full th, .dark table[data-border="full"] td, .dark table[data-border="full"] th, .dark .ProseMirror table[data-border="full"] td, .dark .ProseMirror table[data-border="full"] th { border: 1px solid #94a3b8 !important; }
-            table.border-outer, table[data-border="outer"], .ProseMirror table[data-border="outer"] { border: 2px solid #000000 !important; }
-            .dark table.border-outer, .dark table[data-border="outer"], .dark .ProseMirror table[data-border="outer"] { border: 2px solid #94a3b8 !important; }
-            table.border-outer td, table.border-outer th, table[data-border="outer"] td, table[data-border="outer"] th, .ProseMirror table[data-border="outer"] td, .ProseMirror table[data-border="outer"] th { border: none !important; }
-            table.border-outer tr:first-child td, table.border-outer tr:first-child th, table[data-border="outer"] tr:first-child td, table[data-border="outer"] tr:first-child th, .ProseMirror table[data-border="outer"] tr:first-child td, .ProseMirror table[data-border="outer"] tr:first-child th { border-top: 2px solid #000000 !important; }
-            .dark table.border-outer tr:first-child td, .dark table.border-outer tr:first-child th, .dark table[data-border="outer"] tr:first-child td, .dark table[data-border="outer"] tr:first-child th, .dark .ProseMirror table[data-border="outer"] tr:first-child td, .dark .ProseMirror table[data-border="outer"] tr:first-child th { border-top: 2px solid #94a3b8 !important; }
-            table.border-outer tr:last-child td, table.border-outer tr:last-child th, table[data-border="outer"] tr:last-child td, table[data-border="outer"] tr:last-child th, .ProseMirror table[data-border="outer"] tr:last-child td, .ProseMirror table[data-border="outer"] tr:last-child th { border-bottom: 2px solid #000000 !important; }
-            .dark table.border-outer tr:last-child td, .dark table.border-outer tr:last-child th, .dark table[data-border="outer"] tr:last-child td, .dark table[data-border="outer"] tr:last-child th, .dark .ProseMirror table[data-border="outer"] tr:last-child td, .dark .ProseMirror table[data-border="outer"] tr:last-child th { border-bottom: 2px solid #94a3b8 !important; }
-            table.border-outer td:first-child, table.border-outer th:first-child, table[data-border="outer"] td:first-child, table[data-border="outer"] th:first-child, .ProseMirror table[data-border="outer"] td:first-child, .ProseMirror table[data-border="outer"] th:first-child { border-left: 2px solid #000000 !important; }
-            .dark table.border-outer td:first-child, .dark table.border-outer th:first-child, .dark table[data-border="outer"] td:first-child, .dark table[data-border="outer"] th:first-child, .dark .ProseMirror table[data-border="outer"] td:first-child, .dark .ProseMirror table[data-border="outer"] th:first-child { border-left: 2px solid #94a3b8 !important; }
-            table.border-outer td:last-child, table.border-outer th:last-child, table[data-border="outer"] td:last-child, table[data-border="outer"] th:last-child, .ProseMirror table[data-border="outer"] td:last-child, .ProseMirror table[data-border="outer"] th:last-child { border-right: 2px solid #000000 !important; }
-            .dark table.border-outer td:last-child, .dark table.border-outer th:last-child, .dark table[data-border="outer"] td:last-child, .dark table[data-border="outer"] th:last-child, .dark .ProseMirror table[data-border="outer"] td:last-child, .dark .ProseMirror table[data-border="outer"] th:last-child { border-right: 2px solid #94a3b8 !important; }
-            table.border-header td, table.border-header th, table[data-border="header"] td, table[data-border="header"] th, .ProseMirror table[data-border="header"] td, .ProseMirror table[data-border="header"] th { border: none !important; }
-            table.border-header th, table.border-header tr:first-child td, table[data-border="header"] th, table[data-border="header"] tr:first-child td, .ProseMirror table[data-border="header"] th, .ProseMirror table[data-border="header"] tr:first-child td { border-bottom: 2px solid #000000 !important; }
-            .dark table.border-header th, .dark table.border-header tr:first-child td, .dark table[data-border="header"] th, .dark table[data-border="header"] tr:first-child td, .dark .ProseMirror table[data-border="header"] th, .dark .ProseMirror table[data-border="header"] tr:first-child td { border-bottom: 2px solid #94a3b8 !important; }
-            table.border-dashed td, table.border-dashed th, table[data-border="dashed"] td, table[data-border="dashed"] th, .ProseMirror table[data-border="dashed"] td, .ProseMirror table[data-border="dashed"] th { border: 1px dashed #000000 !important; }
-            .dark table.border-dashed td, .dark table.border-dashed th, .dark table[data-border="dashed"] td, .dark table[data-border="dashed"] th, .dark .ProseMirror table[data-border="dashed"] td, .dark .ProseMirror table[data-border="dashed"] th { border: 1px dashed #94a3b8 !important; }
-            table.border-thick, table[data-border="thick"], .ProseMirror table[data-border="thick"] { border: 2px solid #000000 !important; }
-            .dark table.border-thick, .dark table[data-border="thick"], .dark .ProseMirror table[data-border="thick"] { border: 2px solid #94a3b8 !important; }
-            table.border-thick td, table.border-thick th, table[data-border="thick"] td, table[data-border="thick"] th, .ProseMirror table[data-border="thick"] td, .ProseMirror table[data-border="thick"] th { border: 2px solid #000000 !important; }
-            .dark table.border-thick td, .dark table.border-thick th, .dark table[data-border="thick"] td, .dark table[data-border="thick"] th, .dark .ProseMirror table[data-border="thick"] td, .dark .ProseMirror table[data-border="thick"] th { border: 2px solid #94a3b8 !important; }
-            table.border-none, table[data-border="none"], .ProseMirror table[data-border="none"] { border: none !important; }
-            table.border-none td, table.border-none th, table[data-border="none"] td, table[data-border="none"] th, .ProseMirror table[data-border="none"] td, .ProseMirror table[data-border="none"] th { border: none !important; }
-          `}} />
+
           <EditorContent editor={editor} className="min-h-full cursor-text flex-1 flex flex-col" />
         </div>
       </div>

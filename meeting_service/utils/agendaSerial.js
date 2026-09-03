@@ -1,5 +1,5 @@
 // Matches a leading official-proposal marker, e.g. "প্রস্তাব নং এ ২১০৬" or
-// "প্রস্তাবনা নং এ ২১০৬০১", and captures only the run of Bangla letters
+// "প্রস্তাব নং এ ২১০৬০১", and captures only the run of Bangla letters
 // (e.g. "এ") plus the first 4 Bangla digits (e.g. "২১০৬") as the stored
 // prefix. Any digits beyond those first 4 (e.g. the trailing "০১" in
 // "২১০৬০১") are actually that agendum's own serial number, not part of the
@@ -46,7 +46,7 @@ function stripProposalPrefix(content) {
 
 // Inspects agendum content/body for leading markers:
 // 1. "বিবিধ :" or "বিবিধ" -> returns { isBibidha: true, serial: 0, content }
-// 2. "প্রস্তাব নং * ২১০৩২৪ :" or "প্রস্তাবনা নং ২১০৩২৪ :" -> extracts proposal serial (e.g. 210324) and strips header
+// 2. "প্রস্তাব নং * ২১০৩২৪ :" or "প্রস্তাব নং ২১০৩২৪ :" -> extracts proposal serial (e.g. 210324) and strips header
 function parseAgendumBody(content, defaultSerial = null) {
     if (!content) return { isBibidha: false, serial: defaultSerial, content: '' };
 
@@ -56,7 +56,7 @@ function parseAgendumBody(content, defaultSerial = null) {
         return { isBibidha: true, serial: 0, content };
     }
 
-    // Check for proposal serial marker: e.g. "প্রস্তাব নং এ ২১০৩২৪ :", "প্রস্তাব নং সি ২১০৩২৪ :", or "প্রস্তাবনা নং ২১০৬০১ :"
+    // Check for proposal serial marker: e.g. "প্রস্তাব নং এ ২১০৩২৪ :", "প্রস্তাব নং সি ২১০৩২৪ :", or "প্রস্তাব নং ২১০৬০১ :"
     const propMatch = clean.match(/^\s*প্রস্তাব(?:না)?\s*নং\s*([ঀ-৥ৰ-৿\w*]*\s*)?([০-৯\d]+)\s*[:.\-]?\s*/);
     if (propMatch) {
         const extractedPrefix = propMatch[1] ? propMatch[1].replace(/[*]/g, '').trim() : null;

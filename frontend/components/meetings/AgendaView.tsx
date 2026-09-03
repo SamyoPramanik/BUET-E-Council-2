@@ -447,7 +447,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
           ? `${firstFull}`
           : `${firstFull} হতে ${lastFull}`;
 
-        const headerStr = `'${letter}' গ্রুপ (প্রস্তাবনা নং ${rangeText}): ${catName}`;
+        const headerStr = `'${letter}' গ্রুপ (প্রস্তাব নং ${rangeText}): ${catName}`;
         categoryHeaderMap.set(firstAg.id, headerStr);
         groupCount++;
       }
@@ -611,7 +611,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                         <h3 className="font-semibold text-lg text-primary flex items-center gap-2 flex-wrap">
                           {isBibidha
                             ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`)
-                            : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || index + 1, serialWidth))}`}
+                            : `প্রস্তাব নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || index + 1, serialWidth))}`}
                         </h3>
                         {agenda.category_name && !isBibidha && (
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
@@ -822,7 +822,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                               <span className="font-medium text-xs shrink-0">
                                 {isAgendaBibidha
                                   ? `বিবিধ : ${bibidhaSerial}`
-                                  : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1, serialWidth))}`}
+                                  : `প্রস্তাব নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1, serialWidth))}`}
                               </span>
                               <span className="text-xs text-muted-foreground truncate flex-1 opacity-70">
                                 {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...
@@ -851,7 +851,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       <span className="font-medium text-xs shrink-0 text-foreground">
                         {isAgendaBibidha
                           ? `বিবিধ : ${bibidhaSerial}`
-                          : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1, serialWidth))}`}
+                          : `প্রস্তাব নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1, serialWidth))}`}
                       </span>
                       <span className="text-xs text-muted-foreground truncate flex-1 opacity-80">
                         {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...

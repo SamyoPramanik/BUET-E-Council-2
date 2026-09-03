@@ -5,7 +5,7 @@ import SearchBar from './SearchBar';
 
 export default function Header({ hideSearch = false }: { hideSearch?: boolean }) {
   return (
-    <header className="sticky top-0 z-40 w-full backdrop-blur supports-[backdrop-filter]:bg-background/80 bg-card/90 border-b-2 border-primary/20" style={{ borderTop: '3px solid #800000' }}>
+    <header className="sticky top-0 z-40 w-full backdrop-blur supports-[backdrop-filter]:bg-background/80 bg-card/90 border-b-2 border-primary/20 border-t-3 border-t-primary">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
         <Link href="/" className="flex items-center space-x-2 shrink-0">
           <span className="font-bold tracking-wide text-primary text-xl">

@@ -92,7 +92,7 @@
   --color-sidebar-border: var(--sidebar-border);
 }
 
-:root {
+:root, .maroon {
   /* ── BUET Maroon Light Theme ── */
   --background: #faf7f5;
   --foreground: #1c1017;
@@ -130,6 +130,84 @@
   --sidebar-accent: #f0dfdb;
   --sidebar-accent-foreground: #1c1017;
   --sidebar-border: #e0d0ca;
+
+  --radius: 0.5rem;
+}
+
+.blue {
+  /* ── White & Ocean Blue Theme ── */
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+
+  --secondary: #eff6ff;
+  --secondary-foreground: #1e40af;
+
+  --muted: #f1f5f9;
+  --muted-foreground: #475569;
+
+  --accent: #e0f2fe;
+  --accent-foreground: #0369a1;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #fef2f2;
+
+  --border: #cbd5e1;
+  --input: #cbd5e1;
+  --ring: #2563eb;
+
+  --sidebar-background: #f1f5f9;
+  --sidebar-foreground: #1e293b;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e2e8f0;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #cbd5e1;
+
+  --radius: 0.5rem;
+}
+
+.monochrome {
+  /* ── White & Black Monochrome Theme ── */
+  --background: #ffffff;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --card-foreground: #09090b;
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+
+  --primary: #09090b;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+
+  --muted: #f4f4f5;
+  --muted-foreground: #52525b;
+
+  --accent: #e4e4e7;
+  --accent-foreground: #09090b;
+
+  --destructive: #991b1b;
+  --destructive-foreground: #fef2f2;
+
+  --border: #e4e4e7;
+  --input: #d4d4d8;
+  --ring: #09090b;
+
+  --sidebar-background: #fafafa;
+  --sidebar-foreground: #18181b;
+  --sidebar-primary: #09090b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #09090b;
+  --sidebar-border: #e4e4e7;
 
   --radius: 0.5rem;
 }
@@ -430,10 +508,10 @@ div[data-type="column-item"]>* {
 .meeting-table th,
 table thead th,
 table thead tr {
-  background: linear-gradient(180deg, rgba(128, 0, 0, 0.14) 0%, rgba(128, 0, 0, 0.06) 100%) !important;
-  color: #800000 !important;
+  background: color-mix(in srgb, var(--primary) 15%, var(--card) 85%) !important;
+  color: var(--primary) !important;
   font-weight: 700 !important;
-  border-bottom: 2px solid #800000 !important;
+  border-bottom: 2px solid var(--primary) !important;
   letter-spacing: 0.01em;
 }
 
@@ -442,9 +520,9 @@ table thead tr {
 .dark .meeting-table th,
 .dark table thead th,
 .dark table thead tr {
-  background: linear-gradient(180deg, rgba(196, 92, 92, 0.28) 0%, rgba(196, 92, 92, 0.12) 100%) !important;
-  color: #f5d8d8 !important;
-  border-bottom: 2px solid #c45c5c !important;
+  background: color-mix(in srgb, var(--primary) 28%, var(--card) 72%) !important;
+  color: var(--foreground) !important;
+  border-bottom: 2px solid var(--primary) !important;
 }
 
 .dark .ProseMirror table td,

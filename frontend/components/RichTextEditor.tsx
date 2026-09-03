@@ -1,5 +1,6 @@
 "use client";
 
+import React, { Fragment, useEffect, useState, useCallback, type CSSProperties } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -16,7 +17,10 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import CharacterCount from '@tiptap/extension-character-count';
 import Link from '@tiptap/extension-link';
-import { Extension } from '@tiptap/core';
+import OrderedList from '@tiptap/extension-ordered-list';
+import { goToNextCell, addRowAfter, TableMap } from '@tiptap/pm/tables';
+import { TextSelection } from '@tiptap/pm/state';
+import { Node, Extension, wrappingInputRule, mergeAttributes } from '@tiptap/core';
 import { 
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, 
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -30,10 +34,10 @@ import {
   Scissors, Copy, Clipboard, Paintbrush, ArrowDownAZ, Pilcrow, PaintBucket,
   ChevronDown, Grid, Sparkle, Layout, Ruler, Sigma, Keyboard, HelpCircle, Combine, Split
 } from 'lucide-react';
-import { useEffect, useState, useCallback, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import CustomSelect from './CustomSelect';
 import { isBijoyText, convertBijoyToUnicode, convertHtmlBijoyToUnicode } from '../lib/bijoyToUnicode';
+import { convertMarkdownTablesToHtml } from '../lib/sanitize';
 import { toast } from 'sonner';
 
 // Custom TipTap Extension for Font Size
@@ -255,6 +259,27 @@ export const CustomTableCell = TableCell.extend({
           return { style: attributes.style };
         },
       },
+      colspan: {
+        default: 1,
+        parseHTML: element => parseInt(element.getAttribute('colspan') || '1', 10) || 1,
+        renderHTML: attributes => (attributes.colspan > 1 ? { colspan: attributes.colspan } : {}),
+      },
+      rowspan: {
+        default: 1,
+        parseHTML: element => parseInt(element.getAttribute('rowspan') || '1', 10) || 1,
+        renderHTML: attributes => (attributes.rowspan > 1 ? { rowspan: attributes.rowspan } : {}),
+      },
+      colwidth: {
+        default: null,
+        parseHTML: element => {
+          const colwidth = element.getAttribute('colwidth');
+          return colwidth ? colwidth.split(',').map(item => parseInt(item, 10)) : null;
+        },
+        renderHTML: attributes => {
+          if (!attributes.colwidth) return {};
+          return { colwidth: attributes.colwidth.join(',') };
+        },
+      },
     };
   },
 });
@@ -286,18 +311,84 @@ export const CustomTableHeader = TableHeader.extend({
           return { style: attributes.style };
         },
       },
+      colspan: {
+        default: 1,
+        parseHTML: element => parseInt(element.getAttribute('colspan') || '1', 10) || 1,
+        renderHTML: attributes => (attributes.colspan > 1 ? { colspan: attributes.colspan } : {}),
+      },
+      rowspan: {
+        default: 1,
+        parseHTML: element => parseInt(element.getAttribute('rowspan') || '1', 10) || 1,
+        renderHTML: attributes => (attributes.rowspan > 1 ? { rowspan: attributes.rowspan } : {}),
+      },
+      colwidth: {
+        default: null,
+        parseHTML: element => {
+          const colwidth = element.getAttribute('colwidth');
+          return colwidth ? colwidth.split(',').map(item => parseInt(item, 10)) : null;
+        },
+        renderHTML: attributes => {
+          if (!attributes.colwidth) return {};
+          return { colwidth: attributes.colwidth.join(',') };
+        },
+      },
     };
   },
 });
 
-// Custom Table with Tab Keyboard Shortcut & Border options
+// Custom OrderedList extension with support for start attribute, inline style, and Bangla digit input rules
+export const CustomOrderedList = OrderedList.extend({
+  addAttributes() {
+    return {
+      ...(this.parent?.() || {}),
+      start: {
+        default: 1,
+        parseHTML: element => element.hasAttribute('start') ? parseInt(element.getAttribute('start') || '1', 10) : 1,
+        renderHTML: attributes => {
+          if (!attributes.start || attributes.start === 1) return {};
+          return { start: attributes.start };
+        },
+      },
+      style: {
+        default: null,
+        parseHTML: element => element.getAttribute('style') || null,
+        renderHTML: attributes => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+  addInputRules() {
+    return [
+      ...(this.parent?.() || []),
+      wrappingInputRule({
+        find: /^([০-৯]+)\.\s$/,
+        type: this.type,
+        getAttributes: () => ({ style: 'list-style-type: bengali;' }),
+      }),
+    ];
+  },
+});
+
+// Custom Table with Tab Keyboard Shortcut, Shift-Enter Row Navigation & Border options
 export const CustomTable = Table.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
       'data-border': {
         default: 'full',
-        parseHTML: element => element.getAttribute('data-border') || 'full',
+        parseHTML: element => {
+          if (element.getAttribute('data-border')) {
+            return element.getAttribute('data-border');
+          }
+          const className = element.getAttribute('class') || '';
+          const match = className.match(/border-(full|outer|header|dashed|thick|none)/);
+          if (match) {
+            return match[1];
+          }
+          return 'full';
+        },
         renderHTML: attributes => {
           const borderStyle = attributes['data-border'] || 'full';
           return {
@@ -313,31 +404,479 @@ export const CustomTable = Table.extend({
       ...this.parent?.(),
       Tab: ({ editor }) => {
         if (editor.isActive('table')) {
-          const { selection } = editor.state;
-          const pos = selection.$from;
-          let tableCellNode = null;
-          let tableNode = null;
-          for (let d = pos.depth; d > 0; d--) {
-            const node = pos.node(d);
-            if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') {
-              tableCellNode = node;
-            }
-            if (node.type.name === 'table') {
-              tableNode = node;
-              break;
-            }
-          }
-          if (tableNode && tableCellNode) {
-            const lastRow = tableNode.lastChild;
-            const lastCell = lastRow ? lastRow.lastChild : null;
-            if (lastCell && pos.pos >= pos.after() - 3) {
-              return editor.chain().addRowAfter().goToNextCell().run();
-            }
-          }
-          return editor.chain().goToNextCell().run();
+          return handleTableTabNavigationWithView(editor.view, false);
         }
         return false;
       },
+      'Shift-Tab': ({ editor }) => {
+        if (editor.isActive('table')) {
+          return handleTableTabNavigationWithView(editor.view, true);
+        }
+        return false;
+      },
+      'Shift-Enter': ({ editor }) => {
+        if (editor.isActive('table')) {
+          return handleTableShiftEnterNavigation(editor.view);
+        }
+        return false;
+      },
+    };
+  },
+});
+
+const handleTableTabNavigationWithView = (view: any, shiftKey: boolean): boolean => {
+  const { state } = view;
+  const pos = state.selection.$from;
+
+  let currentCellNode: any = null;
+  let currentCellIndex = -1;
+  let currentRowIndex = -1;
+  let tableNode: any = null;
+  let tableDepth = -1;
+
+  for (let d = pos.depth; d > 0; d--) {
+    const node = pos.node(d);
+    if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') {
+      currentCellNode = node;
+    }
+    if (node.type.name === 'table') {
+      tableNode = node;
+      tableDepth = d;
+      break;
+    }
+  }
+
+  if (tableNode && tableDepth > 0) {
+    currentRowIndex = pos.index(tableDepth);
+    for (let d = pos.depth; d > tableDepth; d--) {
+      if (pos.node(d).type.name === 'tableRow') {
+        currentCellIndex = pos.index(d);
+        break;
+      }
+    }
+  }
+
+  if (!currentCellNode || !tableNode || currentRowIndex < 0 || currentCellIndex < 0 || tableDepth < 1) return false;
+
+  // Extract current cell list attributes
+  let isBullet = false;
+  let isOrdered = false;
+  let listStyle = '';
+  let startVal = 1;
+  let itemCount = 0;
+
+  currentCellNode.descendants((node: any) => {
+    if (node.type.name === 'bulletList') {
+      isBullet = true;
+      if (node.attrs?.style) listStyle = node.attrs.style;
+    }
+    if (node.type.name === 'orderedList') {
+      isOrdered = true;
+      if (node.attrs?.style) listStyle = node.attrs.style;
+      if (node.attrs?.start) startVal = parseInt(node.attrs.start, 10) || 1;
+    }
+    if (node.type.name === 'listItem') {
+      itemCount++;
+    }
+  });
+
+  // Fallback text check for manually typed Bangla / English numbers
+  if (!isOrdered && !isBullet) {
+    const text = currentCellNode.textContent.trim();
+    const banglaMatch = text.match(/^([০-৯]+)[\.\)]/);
+    const englishMatch = text.match(/^([0-9]+)[\.\)]/);
+    if (banglaMatch) {
+      isOrdered = true;
+      listStyle = 'list-style-type: bengali;';
+      const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+      const numStr = banglaMatch[1].split('').map((d: string) => banglaDigits.indexOf(d)).join('');
+      startVal = parseInt(numStr, 10) || 1;
+      itemCount = 1;
+    } else if (englishMatch) {
+      isOrdered = true;
+      listStyle = 'list-style-type: decimal;';
+      startVal = parseInt(englishMatch[1], 10) || 1;
+      itemCount = 1;
+    }
+  }
+
+  if (shiftKey) {
+    return goToNextCell(-1)(view.state, view.dispatch);
+  }
+
+  const isLastRow = currentRowIndex === tableNode.childCount - 1;
+  const currentRowNode = tableNode.child(currentRowIndex);
+  const isLastCellInRow = currentCellIndex === currentRowNode.childCount - 1;
+
+  if (isLastRow && isLastCellInRow) {
+    addRowAfter(view.state, view.dispatch);
+    goToNextCell(1)(view.state, view.dispatch);
+  } else {
+    goToNextCell(1)(view.state, view.dispatch);
+  }
+
+  const curState = view.state;
+  const newPos = curState.selection.$from;
+  let targetCellNode: any = null;
+  let targetCellDepth = -1;
+  let newRowIndex = -1;
+
+  for (let d = newPos.depth; d > 0; d--) {
+    const n = newPos.node(d);
+    if (n.type.name === 'tableCell' || n.type.name === 'tableHeader') {
+      targetCellNode = n;
+      targetCellDepth = d;
+    }
+    if (n.type.name === 'table') {
+      newRowIndex = newPos.index(d);
+      break;
+    }
+  }
+
+  if (targetCellNode && targetCellDepth > 0) {
+    let hasText = false;
+    let hasList = false;
+    targetCellNode.descendants((child: any) => {
+      if (child.isText && child.text && child.text.trim().length > 0) hasText = true;
+      if (child.type.name === 'bulletList' || child.type.name === 'orderedList') hasList = true;
+    });
+
+    if (!hasText && !hasList && (isBullet || isOrdered)) {
+      // If Tab moves to a new row (newRowIndex > currentRowIndex), increment startVal by 1.
+      // If Tab moves within the same row (newRowIndex === currentRowIndex), preserve the same startVal.
+      const isNewRow = newRowIndex > currentRowIndex;
+      const targetStartVal = isNewRow ? startVal + (itemCount > 0 ? itemCount : 1) : startVal;
+
+      const tr = curState.tr;
+      const schema = curState.schema;
+      const cellStart = newPos.start(targetCellDepth);
+      const cellEnd = newPos.end(targetCellDepth);
+
+      if (isBullet && schema.nodes.bulletList && schema.nodes.listItem) {
+        const listNode = schema.nodes.bulletList.create(
+          { style: listStyle || 'list-style-type: disc;' },
+          schema.nodes.listItem.create(null, schema.nodes.paragraph.create())
+        );
+        tr.replaceWith(cellStart, cellEnd, listNode);
+        const cursorInsideList = cellStart + 2;
+        tr.setSelection(TextSelection.create(tr.doc, cursorInsideList));
+        view.dispatch(tr);
+      } else if (isOrdered && schema.nodes.orderedList && schema.nodes.listItem) {
+        const listNode = schema.nodes.orderedList.create(
+          { style: listStyle || 'list-style-type: decimal;', start: targetStartVal },
+          schema.nodes.listItem.create(null, schema.nodes.paragraph.create())
+        );
+        tr.replaceWith(cellStart, cellEnd, listNode);
+        const cursorInsideList = cellStart + 2;
+        tr.setSelection(TextSelection.create(tr.doc, cursorInsideList));
+        view.dispatch(tr);
+      }
+    }
+  }
+
+  return true;
+};
+
+const handleTableShiftEnterNavigation = (view: any): boolean => {
+  const { state } = view;
+  const pos = state.selection.$from;
+
+  let currentCellNode: any = null;
+  let currentCellIndex = -1;
+  let currentRowIndex = -1;
+  let tableNode: any = null;
+  let tableDepth = -1;
+
+  for (let d = pos.depth; d > 0; d--) {
+    const node = pos.node(d);
+    if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') {
+      currentCellNode = node;
+    }
+    if (node.type.name === 'table') {
+      tableNode = node;
+      tableDepth = d;
+      break;
+    }
+  }
+
+  if (tableNode && tableDepth > 0) {
+    currentRowIndex = pos.index(tableDepth);
+    for (let d = pos.depth; d > tableDepth; d--) {
+      if (pos.node(d).type.name === 'tableRow') {
+        currentCellIndex = pos.index(d);
+        break;
+      }
+    }
+  }
+
+  if (!currentCellNode || !tableNode || currentRowIndex < 0 || currentCellIndex < 0 || tableDepth < 1) return false;
+
+  // Extract list info from current cell
+  let isBullet = false;
+  let isOrdered = false;
+  let listStyle = '';
+  let startVal = 1;
+  let itemCount = 0;
+
+  currentCellNode.descendants((node: any) => {
+    if (node.type.name === 'bulletList') {
+      isBullet = true;
+      if (node.attrs?.style) listStyle = node.attrs.style;
+    }
+    if (node.type.name === 'orderedList') {
+      isOrdered = true;
+      if (node.attrs?.style) listStyle = node.attrs.style;
+      if (node.attrs?.start) startVal = parseInt(node.attrs.start, 10) || 1;
+    }
+    if (node.type.name === 'listItem') {
+      itemCount++;
+    }
+  });
+
+  // Fallback check for typed text like "1." or "১."
+  if (!isOrdered && !isBullet) {
+    const text = currentCellNode.textContent.trim();
+    const banglaMatch = text.match(/^([০-৯]+)[\.\)]/);
+    const englishMatch = text.match(/^([0-9]+)[\.\)]/);
+    if (banglaMatch) {
+      isOrdered = true;
+      listStyle = 'list-style-type: bengali;';
+      const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+      const numStr = banglaMatch[1].split('').map((d: string) => banglaDigits.indexOf(d)).join('');
+      startVal = parseInt(numStr, 10) || 1;
+      itemCount = 1;
+    } else if (englishMatch) {
+      isOrdered = true;
+      listStyle = 'list-style-type: decimal;';
+      startVal = parseInt(englishMatch[1], 10) || 1;
+      itemCount = 1;
+    }
+  }
+
+  const isLastRow = currentRowIndex === tableNode.childCount - 1;
+  if (isLastRow) {
+    addRowAfter(view.state, view.dispatch);
+  }
+
+  // Re-read fresh state from view
+  const curState = view.state;
+  const curPos = curState.selection.$from;
+  let freshTableNode: any = null;
+  let freshTableStartPos = -1;
+
+  for (let d = curPos.depth; d > 0; d--) {
+    if (curPos.node(d).type.name === 'table') {
+      freshTableNode = curPos.node(d);
+      freshTableStartPos = curPos.start(d);
+      break;
+    }
+  }
+
+  if (freshTableNode && freshTableStartPos > 0) {
+    const map = TableMap.get(freshTableNode);
+    const targetRowIndex = currentRowIndex + 1;
+    const targetColIndex = Math.min(currentCellIndex, map.width - 1);
+
+    if (targetRowIndex < map.height) {
+      const relativeCellPos = map.map[targetRowIndex * map.width + targetColIndex];
+      const targetCellDocPos = freshTableStartPos + relativeCellPos;
+      const targetCellNode = curState.doc.nodeAt(targetCellDocPos);
+
+      if (targetCellNode && (targetCellNode.type.name === 'tableCell' || targetCellNode.type.name === 'tableHeader')) {
+        const cellStart = targetCellDocPos + 1;
+        const cellEnd = targetCellDocPos + targetCellNode.nodeSize - 1;
+
+        let hasText = false;
+        let hasList = false;
+        targetCellNode.descendants((child: any) => {
+          if (child.isText && child.text && child.text.trim().length > 0) hasText = true;
+          if (child.type.name === 'bulletList' || child.type.name === 'orderedList') hasList = true;
+        });
+
+        const tr = curState.tr;
+        const schema = curState.schema;
+
+        if (!hasText && !hasList && (isBullet || isOrdered)) {
+          if (isBullet && schema.nodes.bulletList && schema.nodes.listItem) {
+            const listNode = schema.nodes.bulletList.create(
+              { style: listStyle || 'list-style-type: disc;' },
+              schema.nodes.listItem.create(null, schema.nodes.paragraph.create())
+            );
+            tr.replaceWith(cellStart, cellEnd, listNode);
+            tr.setSelection(TextSelection.create(tr.doc, cellStart + 2));
+            view.dispatch(tr);
+          } else if (isOrdered && schema.nodes.orderedList && schema.nodes.listItem) {
+            // Increment list label number by itemCount (or 1) when moving DOWN via Shift+Enter
+            const nextStart = startVal + (itemCount > 0 ? itemCount : 1);
+            const listNode = schema.nodes.orderedList.create(
+              { style: listStyle || 'list-style-type: decimal;', start: nextStart },
+              schema.nodes.listItem.create(null, schema.nodes.paragraph.create())
+            );
+            tr.replaceWith(cellStart, cellEnd, listNode);
+            tr.setSelection(TextSelection.create(tr.doc, cellStart + 2));
+            view.dispatch(tr);
+          }
+        } else {
+          tr.setSelection(TextSelection.create(tr.doc, cellStart + 1));
+          view.dispatch(tr);
+        }
+      }
+    }
+  }
+
+  return true;
+};
+
+const ColumnSection = Node.create({
+  name: 'columnSection',
+  group: 'block',
+  content: 'block+',
+  defining: true,
+  isolating: false,
+
+  addAttributes() {
+    return {
+      cols: {
+        default: 2,
+        parseHTML: (element: HTMLElement) => parseInt(element.getAttribute('data-cols') || '2', 10),
+        renderHTML: (attributes: Record<string, any>) => ({
+          'data-cols': attributes.cols,
+          class: `column-section cols-${attributes.cols}`,
+        }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [
+      {
+        tag: 'div.column-section',
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, any> }) {
+    return ['div', mergeAttributes(HTMLAttributes), 0];
+  },
+});
+
+const ColumnBreak = Node.create({
+  name: 'columnBreak',
+  group: 'block',
+  selectable: true,
+  draggable: true,
+
+  parseHTML() {
+    return [
+      { tag: 'div.column-break' },
+      { tag: 'p.column-break' },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, any> }) {
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, {
+        class: 'column-break text-[10px] font-mono text-amber-600 dark:text-amber-400 py-1 my-1 border-b border-dashed border-amber-500/40 select-none cursor-pointer flex items-center justify-center gap-1 bg-amber-500/10 rounded',
+        style: 'break-before: column; page-break-before: column;',
+      }),
+      '--- Column Break (Press Backspace to remove) ---',
+    ];
+  },
+
+  addCommands() {
+    return {
+      insertColumnBreak:
+        () =>
+        ({ chain }: { chain: any }) => {
+          return chain()
+            .insertContent([
+              {
+                type: 'columnBreak',
+              },
+              {
+                type: 'paragraph',
+              },
+            ])
+            .run();
+        },
+    };
+  },
+});
+
+const ColumnItem = Node.create({
+  name: 'columnItem',
+  content: 'block+',
+  group: 'columnItemGroup',
+  defining: true,
+  isolating: false,
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="column-item"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, any> }) {
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, {
+        'data-type': 'column-item',
+        style: 'flex: 1 1 0%; min-width: 0; min-height: 80px; padding: 12px; border: 1px dashed rgba(var(--primary-rgb,99,102,241),0.4); border-radius: 8px; box-sizing: border-box; transition: border-color 0.15s;',
+      }),
+      0,
+    ];
+  },
+});
+
+const ColumnGroup = Node.create({
+  name: 'columnGroup',
+  group: 'block',
+  content: 'columnItem+',
+  defining: true,
+  isolating: false,
+
+  addAttributes() {
+    return {
+      cols: {
+        default: 2,
+        parseHTML: (element: HTMLElement) => parseInt(element.getAttribute('data-cols') || '2', 10),
+        renderHTML: (attributes: Record<string, any>) => ({
+          'data-cols': attributes.cols,
+          'data-type': 'column-group',
+          style: `display: grid; grid-template-columns: repeat(${attributes.cols}, minmax(0, 1fr)); gap: 1.5rem; margin: 1rem 0; width: 100%; box-sizing: border-box;`,
+        }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="column-group"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, any> }) {
+    return ['div', mergeAttributes(HTMLAttributes), 0];
+  },
+
+  addCommands() {
+    return {
+      insertColumnGroup:
+        (cols: 2 | 3) =>
+        ({ chain }: { chain: any }) => {
+          const items = Array.from({ length: cols }).map(() => ({
+            type: 'columnItem',
+            content: [{ type: 'paragraph' }],
+          }));
+          return chain()
+            .insertContent([
+              {
+                type: 'columnGroup',
+                attrs: { cols },
+                content: items,
+              },
+              // Insert a paragraph after so cursor can exit the group
+              { type: 'paragraph' },
+            ])
+            .run();
+        },
     };
   },
 });
@@ -355,6 +894,12 @@ declare module '@tiptap/core' {
     indent: {
       indent: () => ReturnType;
       outdent: () => ReturnType;
+    };
+    columnBreak: {
+      insertColumnBreak: () => ReturnType;
+    };
+    columnGroup: {
+      insertColumnGroup: (cols: 2 | 3) => ReturnType;
     };
     paragraphShading: {
       setParagraphShading: (color: string) => ReturnType;
@@ -659,6 +1204,16 @@ const WORD_QUICK_STYLES = [
   { id: 'quote', name: 'Quote', preview: '“ Quote ”', desc: 'Blockquote Style', action: (e: any) => e.chain().focus().toggleBlockquote().run() }
 ];
 
+const BULLET_LIST_OPTIONS = [
+  { id: 'disc', name: 'Disc Bullet', prefix: '•', type: 'bullet', style: 'disc' },
+  { id: 'circle', name: 'Circle Bullet', prefix: '◦', type: 'bullet', style: 'circle' },
+  { id: 'square', name: 'Square Bullet', prefix: '▪', type: 'bullet', style: 'square' },
+  { id: 'decimal', name: 'English Numbers (1, 2, 3)', prefix: '1.', type: 'ordered', style: 'decimal' },
+  { id: 'bengali', name: 'Bangla Numbers (১, ২, ৩)', prefix: '১.', type: 'ordered', style: 'bengali' },
+  { id: 'upper-roman', name: 'Roman Numerals (I, II, III)', prefix: 'I.', type: 'ordered', style: 'upper-roman' },
+  { id: 'lower-alpha', name: 'Alphabetic (a, b, c)', prefix: 'a.', type: 'ordered', style: 'lower-alpha' },
+];
+
 interface MenuBarProps {
   editor: any;
   viewMode: 'fluid' | 'pageView';
@@ -672,8 +1227,6 @@ interface MenuBarProps {
   setShowParagraphMarks: (val: boolean) => void;
   showRuler: boolean;
   setShowRuler: (val: boolean) => void;
-  pageColumns: 1 | 2 | 3;
-  setPageColumns: (cols: 1 | 2 | 3) => void;
 }
 
 const MenuBar = ({ 
@@ -688,9 +1241,7 @@ const MenuBar = ({
   showParagraphMarks,
   setShowParagraphMarks,
   showRuler,
-  setShowRuler,
-  pageColumns,
-  setPageColumns
+  setShowRuler
 }: MenuBarProps) => {
   const [activeTab, setActiveTab] = useState<'home' | 'insert' | 'table' | 'layout' | 'tools' | 'view'>('home');
   const [isSymbolModalOpen, setIsSymbolModalOpen] = useState(false);
@@ -742,9 +1293,327 @@ const MenuBar = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isTableModalOpen, isSymbolModalOpen, isEquationModalOpen, isShortcutsModalOpen, isBanglaKeyboardOpen, isLinkModalOpen]);
 
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [isRibbonEnlarged, setIsRibbonEnlarged] = useState(false);
+
+  useEffect(() => {
+    if (!openDropdown) return;
+    const handleClickOutside = () => setOpenDropdown(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [openDropdown]);
+
+  const [selectedListStyle, setSelectedListStyle] = useState(BULLET_LIST_OPTIONS[0]);
+  const [, setSelectionTick] = useState(0);
+
+  useEffect(() => {
+    if (!editor) return;
+    const handleUpdate = () => {
+      setSelectionTick(prev => prev + 1);
+    };
+    editor.on('selectionUpdate', handleUpdate);
+    editor.on('transaction', handleUpdate);
+    return () => {
+      editor.off('selectionUpdate', handleUpdate);
+      editor.off('transaction', handleUpdate);
+    };
+  }, [editor]);
+
+  const getCurrentListStyle = () => {
+    if (!editor) return selectedListStyle;
+    if (editor.isActive('bulletList')) {
+      const style = editor.getAttributes('bulletList').style || '';
+      if (style.includes('circle')) return BULLET_LIST_OPTIONS[1];
+      if (style.includes('square')) return BULLET_LIST_OPTIONS[2];
+      return BULLET_LIST_OPTIONS[0];
+    }
+    if (editor.isActive('orderedList')) {
+      const style = editor.getAttributes('orderedList').style || '';
+      if (style.includes('bengali')) return BULLET_LIST_OPTIONS[4];
+      if (style.includes('upper-roman')) return BULLET_LIST_OPTIONS[5];
+      if (style.includes('lower-alpha')) return BULLET_LIST_OPTIONS[6];
+      return BULLET_LIST_OPTIONS[3];
+    }
+    return selectedListStyle;
+  };
+
+  const isTableActive = editor ? (editor.isActive('table') || (() => {
+    let hasTable = false;
+    editor.state.doc.descendants((node: any) => {
+      if (node.type.name === 'table') { hasTable = true; return false; }
+    });
+    return hasTable;
+  })()) : false;
+
   if (!editor) return null;
 
-  const isTableActive = editor.isActive('table');
+  const ensureTableFocus = () => {
+    if (!editor) return false;
+    if (editor.isActive('table')) {
+      editor.chain().focus().run();
+      return true;
+    }
+    const selection = editor.state.selection;
+    const pos = selection.$from;
+    let tablePos: number | null = null;
+    for (let d = pos.depth; d > 0; d--) {
+      if (pos.node(d).type.name === 'table') {
+        tablePos = pos.before(d);
+        break;
+      }
+    }
+    if (tablePos !== null) {
+      editor.chain().focus().run();
+      return true;
+    }
+    editor.state.doc.descendants((node: any, p: number) => {
+      if (node.type.name === 'table' && tablePos === null) {
+        tablePos = p;
+      }
+    });
+    if (tablePos !== null) {
+      editor.chain().focus().setTextSelection(tablePos + 2).run();
+      return true;
+    }
+    return false;
+  };
+
+  const applyTableBorder = (borderStyle: string) => {
+    if (!editor) return false;
+
+    // 1. Try updateAttributes on current table selection
+    editor.chain().focus().updateAttributes('table', { 'data-border': borderStyle }).run();
+    
+    // 2. Locate table node at selection depth and update via setNodeMarkup for absolute reliability
+    const { selection } = editor.state;
+    let tablePos: number | null = null;
+    for (let d = selection.$from.depth; d > 0; d--) {
+      const node = selection.$from.node(d);
+      if (node.type.name === 'table') {
+        tablePos = selection.$from.before(d);
+        break;
+      }
+    }
+
+    if (tablePos !== null) {
+      const tr = editor.state.tr;
+      const tableNode = editor.state.doc.nodeAt(tablePos);
+      if (tableNode) {
+        tr.setNodeMarkup(tablePos, undefined, {
+          ...tableNode.attrs,
+          'data-border': borderStyle,
+        });
+        editor.view.dispatch(tr);
+      }
+    }
+
+    return true;
+  };
+
+  const handleSplitTable = () => {
+    if (!editor) return false;
+    ensureTableFocus();
+    const { state, dispatch } = editor.view;
+    const { selection } = state;
+    const $pos = selection.$from;
+
+    let tableDepth = -1;
+    for (let d = $pos.depth; d > 0; d--) {
+      if ($pos.node(d).type.name === 'table') {
+        tableDepth = d;
+        break;
+      }
+    }
+
+    if (tableDepth === -1) {
+      toast.info("Place cursor inside a table cell to split table");
+      return false;
+    }
+
+    const tableNode = $pos.node(tableDepth);
+    const tableStart = $pos.before(tableDepth);
+    const tableEnd = $pos.after(tableDepth);
+
+    let currentRowIndex = -1;
+    for (let d = $pos.depth; d > tableDepth; d--) {
+      if ($pos.node(d).type.name === 'tableRow') {
+        currentRowIndex = $pos.index(tableDepth);
+        break;
+      }
+    }
+
+    if (currentRowIndex <= 0) {
+      toast.info("Cannot split at row 1. Position cursor on row 2 or lower.");
+      return false;
+    }
+
+    const topRows: any[] = [];
+    const bottomRows: any[] = [];
+
+    tableNode.forEach((child: any, _offset: number, index: number) => {
+      if (index < currentRowIndex) {
+        topRows.push(child);
+      } else {
+        bottomRows.push(child);
+      }
+    });
+
+    if (topRows.length === 0 || bottomRows.length === 0) return false;
+
+    const schema = state.schema;
+    const topTable = tableNode.type.create(tableNode.attrs, topRows);
+    const bottomTable = tableNode.type.create(tableNode.attrs, bottomRows);
+    const emptyParagraph = schema.nodes.paragraph ? schema.nodes.paragraph.create() : schema.text('');
+
+    const tr = state.tr.replaceWith(tableStart, tableEnd, [topTable, emptyParagraph, bottomTable]);
+    dispatch(tr);
+    toast.success(`Split table into two tables at row ${currentRowIndex + 1}`);
+    return true;
+  };
+
+  const handleMergeTable = () => {
+    if (!editor) return false;
+    ensureTableFocus();
+    const { state, dispatch } = editor.view;
+    const { selection } = state;
+    const $pos = selection.$from;
+
+    let tableDepth = -1;
+    for (let d = $pos.depth; d > 0; d--) {
+      if ($pos.node(d).type.name === 'table') {
+        tableDepth = d;
+        break;
+      }
+    }
+
+    if (tableDepth === -1) {
+      toast.info("Place cursor inside a table to merge with adjacent table");
+      return false;
+    }
+
+    const tableStart = $pos.before(tableDepth);
+    const tableEnd = $pos.after(tableDepth);
+    const doc = state.doc;
+
+    // Search for a table before the current table
+    let prevTablePos: number | null = null;
+    let prevTableNode: any = null;
+
+    doc.nodesBetween(0, tableStart, (node: any, p: number) => {
+      if (node.type.name === 'table' && p < tableStart) {
+        prevTablePos = p;
+        prevTableNode = node;
+      }
+    });
+
+    // Check space between prevTable and current table
+    if (prevTablePos !== null && prevTableNode !== null) {
+      const betweenStart = prevTablePos + prevTableNode.nodeSize;
+      const betweenEnd = tableStart;
+      let isAdjacent = true;
+
+      doc.nodesBetween(betweenStart, betweenEnd, (n: any) => {
+        if (n.type.name === 'table') return;
+        if (n.isText && n.text?.trim() !== '') isAdjacent = false;
+        if (n.type.name !== 'paragraph' && n.type.name !== 'text') isAdjacent = false;
+      });
+
+      if (isAdjacent) {
+        const currentTableNode = $pos.node(tableDepth);
+        const mergedRows: any[] = [];
+        prevTableNode.forEach((child: any) => mergedRows.push(child));
+        currentTableNode.forEach((child: any) => mergedRows.push(child));
+
+        const mergedTable = prevTableNode.type.create(prevTableNode.attrs, mergedRows);
+        const tr = state.tr.replaceWith(prevTablePos, tableEnd, mergedTable);
+        dispatch(tr);
+        toast.success("Merged current table with table above");
+        return true;
+      }
+    }
+
+    // Search for a table after the current table
+    let nextTablePos: number | null = null;
+    let nextTableNode: any = null;
+
+    doc.nodesBetween(tableEnd, doc.content.size, (node: any, p: number) => {
+      if (node.type.name === 'table' && p >= tableEnd && nextTablePos === null) {
+        nextTablePos = p;
+        nextTableNode = node;
+      }
+    });
+
+    if (nextTablePos !== null && nextTableNode !== null) {
+      const betweenStart = tableEnd;
+      const betweenEnd = nextTablePos;
+      let isAdjacent = true;
+
+      doc.nodesBetween(betweenStart, betweenEnd, (n: any) => {
+        if (n.type.name === 'table') return;
+        if (n.isText && n.text?.trim() !== '') isAdjacent = false;
+        if (n.type.name !== 'paragraph' && n.type.name !== 'text') isAdjacent = false;
+      });
+
+      if (isAdjacent) {
+        const currentTableNode = $pos.node(tableDepth);
+        const mergedRows: any[] = [];
+        currentTableNode.forEach((child: any) => mergedRows.push(child));
+        nextTableNode.forEach((child: any) => mergedRows.push(child));
+
+        const mergedTable = currentTableNode.type.create(currentTableNode.attrs, mergedRows);
+        const tr = state.tr.replaceWith(tableStart, nextTablePos + nextTableNode.nodeSize, mergedTable);
+        dispatch(tr);
+        toast.success("Merged current table with table below");
+        return true;
+      }
+    }
+
+    toast.info("No adjacent table found immediately above or below to merge with");
+    return false;
+  };
+
+  const setBulletStyle = (styleType: 'disc' | 'circle' | 'square') => {
+    if (!editor) return;
+    if (editor.isActive('bulletList')) {
+      const currentAttrs = editor.getAttributes('bulletList');
+      const currentStyle = currentAttrs?.style || '';
+      if (currentStyle.includes(styleType) || (!currentStyle && styleType === 'disc')) {
+        editor.chain().focus().toggleBulletList().run();
+        toast.info("Bullet list removed");
+        return;
+      }
+      editor.chain().focus().updateAttributes('bulletList', { style: `list-style-type: ${styleType};` }).run();
+    } else {
+      editor.chain().focus().toggleBulletList().updateAttributes('bulletList', { style: `list-style-type: ${styleType};` }).run();
+    }
+  };
+
+  const setOrderedStyle = (styleType: 'decimal' | 'bengali' | 'upper-roman' | 'lower-alpha') => {
+    if (!editor) return;
+    if (editor.isActive('orderedList')) {
+      const currentAttrs = editor.getAttributes('orderedList');
+      const currentStyle = currentAttrs?.style || '';
+      if (currentStyle.includes(styleType) || (!currentStyle && styleType === 'decimal')) {
+        editor.chain().focus().toggleOrderedList().run();
+        toast.info("Numbered list removed");
+        return;
+      }
+      editor.chain().focus().updateAttributes('orderedList', { style: `list-style-type: ${styleType};` }).run();
+    } else {
+      editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { style: `list-style-type: ${styleType};` }).run();
+    }
+  };
+
+  // isTableActive is already computed above (before the early return)
+
+  const hasTableInDoc = (() => {
+    if (!editor) return false;
+    let found = false;
+    editor.state.doc.descendants((node: any) => {
+      if (node.type.name === 'table') found = true;
+    });
+    return found;
+  })();
 
   const getHeadingValue = () => {
     if (editor.isActive('heading', { level: 1 })) return 'h1';
@@ -922,16 +1791,16 @@ const MenuBar = ({
   };
 
   return (
-    <div className="bg-card border-b border-border flex flex-col sticky top-0 z-20 w-full shadow-xs select-none">
+    <div className="bg-card flex flex-col sticky top-0 z-20 w-full select-none">
       {/* RIBBON TAB NAVIGATION BAR (AUTHENTIC WORD 2007 TABS) */}
-      <div className="flex items-center justify-between word-ribbon-bg px-3 pt-1 border-b border-border/80 text-xs font-semibold text-muted-foreground overflow-x-auto">
+      <div className="flex items-center justify-between word-ribbon-bg px-3 pt-1 text-xs font-semibold text-muted-foreground overflow-x-auto">
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => setActiveTab('home')}
             className={`px-4 py-1.5 rounded-t-md transition-all flex items-center gap-1.5 cursor-pointer text-xs ${
               activeTab === 'home'
-                ? 'word-ribbon-tab-active font-extrabold border-t-2 border-primary border-x'
+                ? 'word-ribbon-tab-active font-extrabold'
                 : 'hover:text-foreground hover:bg-card/40'
             }`}
           >
@@ -943,7 +1812,7 @@ const MenuBar = ({
             onClick={() => setActiveTab('insert')}
             className={`px-4 py-1.5 rounded-t-md transition-all flex items-center gap-1.5 cursor-pointer text-xs ${
               activeTab === 'insert'
-                ? 'word-ribbon-tab-active font-extrabold border-t-2 border-primary border-x'
+                ? 'word-ribbon-tab-active font-extrabold'
                 : 'hover:text-foreground hover:bg-card/40'
             }`}
           >
@@ -955,34 +1824,36 @@ const MenuBar = ({
             onClick={() => setActiveTab('layout')}
             className={`px-4 py-1.5 rounded-t-md transition-all flex items-center gap-1.5 cursor-pointer text-xs ${
               activeTab === 'layout'
-                ? 'word-ribbon-tab-active font-extrabold border-t-2 border-primary border-x'
+                ? 'word-ribbon-tab-active font-extrabold'
                 : 'hover:text-foreground hover:bg-card/40'
             }`}
           >
             <span>Page Layout</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('table')}
-            className={`px-4 py-1.5 rounded-t-md transition-all flex items-center gap-1.5 cursor-pointer text-xs relative ${
-              activeTab === 'table'
-                ? 'word-ribbon-tab-active font-extrabold border-t-2 border-primary border-x'
-                : 'hover:text-foreground hover:bg-card/40'
-            }`}
-          >
-            <span>Table Tools</span>
-            {isTableActive && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Cursor inside table" />
-            )}
-          </button>
+          {/* Contextual Table Tools Tab - Only shown when cursor is clicked inside a table */}
+          {isTableActive && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('table')}
+              className={`px-4 py-1.5 rounded-t-md transition-all flex items-center gap-1.5 cursor-pointer text-xs relative ${
+                activeTab === 'table'
+                  ? 'word-ribbon-tab-active font-extrabold'
+                  : 'hover:text-foreground hover:bg-card/40 text-emerald-600 dark:text-emerald-400 font-bold'
+              }`}
+            >
+              <Grid className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Table Tools</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Active table cell focused" />
+            </button>
+          )}
 
           <button
             type="button"
             onClick={() => setActiveTab('tools')}
             className={`px-4 py-1.5 rounded-t-md transition-all flex items-center gap-1.5 cursor-pointer text-xs ${
               activeTab === 'tools'
-                ? 'word-ribbon-tab-active font-extrabold border-t-2 border-primary border-x'
+                ? 'word-ribbon-tab-active font-extrabold'
                 : 'hover:text-foreground hover:bg-card/40'
             }`}
           >
@@ -995,7 +1866,7 @@ const MenuBar = ({
             onClick={() => setActiveTab('view')}
             className={`px-4 py-1.5 rounded-t-md transition-all flex items-center gap-1.5 cursor-pointer text-xs ${
               activeTab === 'view'
-                ? 'word-ribbon-tab-active font-extrabold border-t-2 border-primary border-x'
+                ? 'word-ribbon-tab-active font-extrabold'
                 : 'hover:text-foreground hover:bg-card/40'
             }`}
           >
@@ -1004,12 +1875,26 @@ const MenuBar = ({
           </button>
         </div>
 
-        {/* Quick Search & Window Toggle Header Actions */}
+        {/* Quick Search, Window Toggle & Pull-Down Enlarge Header Actions */}
         <div className="flex items-center gap-2 pr-1">
           <button
             type="button"
+            onClick={() => setIsRibbonEnlarged(prev => !prev)}
+            className={`px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold cursor-pointer transition-all ${
+              isRibbonEnlarged
+                ? 'bg-primary/20 text-primary shadow-xs'
+                : 'bg-card/80 hover:bg-card text-muted-foreground shadow-2xs'
+            }`}
+            title={isRibbonEnlarged ? "Restore Standard Ribbon Size" : "Pull Down & Enlarge Ribbon Menu"}
+          >
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isRibbonEnlarged ? 'rotate-180 text-primary' : ''}`} />
+            <span className="hidden sm:inline">{isRibbonEnlarged ? "Shrink Ribbon" : "Enlarge Ribbon"}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={onOpenFindReplace}
-            className="px-2.5 py-1 rounded bg-card/80 hover:bg-card text-foreground flex items-center gap-1 text-[11px] font-bold border border-border cursor-pointer transition-all shadow-2xs"
+            className="px-2.5 py-1 rounded bg-card/80 hover:bg-card text-foreground flex items-center gap-1 text-[11px] font-bold cursor-pointer transition-all shadow-2xs"
             title="Find & Replace (Ctrl+F)"
           >
             <Search className="w-3.5 h-3.5 text-primary" />
@@ -1033,7 +1918,9 @@ const MenuBar = ({
       </div>
 
       {/* RIBBON TOOLBAR BODY (AUTHENTIC MS WORD 2007 RIBBON GROUPS) */}
-      <div className="p-2 bg-card min-h-[92px] flex items-center overflow-x-auto select-none border-b border-border/80">
+      <div className={`bg-card flex items-center overflow-x-auto select-none border-b border-border/80 transition-all duration-200 ${
+        isRibbonEnlarged ? 'p-3.5 min-h-[135px]' : 'p-2 min-h-[92px]'
+      }`}>
         
         {/* ── TAB 1: HOME TAB ── */}
         {activeTab === 'home' && (
@@ -1322,111 +2209,82 @@ const MenuBar = ({
               <div className="flex flex-col gap-1 my-auto">
                 {/* Row 1: Bullets, Numbers, Bangla Numbers, Multilevel, Indent, Sort, Show/Hide Marks */}
                 <div className="flex items-center gap-1">
-                  {/* Bullet Library / Style Alignment Dropdown */}
-                  <div className="relative group">
+                  {/* Dynamic Selected Bullet & List Style Dropdown */}
+                  <div className="relative">
                     <button
                       type="button"
-                      onClick={() => editor.chain().focus().toggleBulletList().run()}
-                      className={`p-1 rounded hover:bg-muted cursor-pointer flex items-center gap-0.5 ${
-                        editor.isActive('bulletList') ? 'bg-primary/20 text-primary font-bold border border-primary/30' : 'text-muted-foreground'
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenDropdown(prev => prev === 'bulletStyles' ? null : 'bulletStyles');
+                      }}
+                      className={`px-2 py-1 rounded hover:bg-muted cursor-pointer flex items-center gap-1.5 border transition-all ${
+                        editor.isActive('bulletList') || editor.isActive('orderedList') || openDropdown === 'bulletStyles'
+                          ? 'bg-primary/20 text-primary font-bold border-primary/30 shadow-2xs'
+                          : 'border-border text-foreground'
                       }`}
-                      title="Bullet List & Alignment Options"
+                      title="Bullet & Numbered List Options (Click to choose style)"
                     >
-                      <List className="w-4 h-4" />
-                      <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                      <span className="font-mono font-bold text-sm text-primary min-w-[16px] text-center">{getCurrentListStyle().prefix}</span>
+                      <span className="text-xs font-semibold">{getCurrentListStyle().name.split(' ')[0]}</span>
+                      <ChevronDown className="w-3 h-3 text-muted-foreground ml-0.5" />
                     </button>
 
-                    {/* Bullet Style Picker Flyout */}
-                    <div className="absolute top-full left-0 mt-1 hidden group-hover:flex group-focus-within:flex flex-col bg-popover text-popover-foreground border border-border rounded-xl shadow-xl p-2 z-[100005] w-52 animate-in fade-in duration-100">
-                      <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Bullet Alignment Styles</span>
-                      
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().toggleBulletList().updateAttributes('bulletList', { style: 'list-style-type: disc;' }).run();
-                          toast.success("Disc Bullet (•)");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                    {/* Bullet & Number Style Picker Flyout */}
+                    {openDropdown === 'bulletStyles' && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute top-full left-0 mt-1 flex flex-col bg-popover text-popover-foreground border border-border rounded-xl shadow-xl p-2 z-[100005] w-56 animate-in fade-in duration-100"
                       >
-                        <span>• Solid Disc Bullet</span>
-                        <span className="text-muted-foreground font-mono">•</span>
-                      </button>
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Bullet Styles</span>
+                        
+                        {BULLET_LIST_OPTIONS.slice(0, 3).map(opt => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedListStyle(opt);
+                              setBulletStyle(opt.style as any);
+                              toast.success(`Selected ${opt.name}`);
+                              setOpenDropdown(null);
+                            }}
+                            className={`px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer ${
+                              getCurrentListStyle().id === opt.id ? 'bg-primary/10 text-primary font-bold' : ''
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className="font-mono text-sm font-bold text-primary min-w-[18px] text-center">{opt.prefix}</span>
+                              <span>{opt.name}</span>
+                            </span>
+                            <span className="text-muted-foreground font-mono font-bold">{opt.prefix}</span>
+                          </button>
+                        ))}
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().toggleBulletList().updateAttributes('bulletList', { style: 'list-style-type: circle;' }).run();
-                          toast.success("Circle Bullet (◦)");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
-                      >
-                        <span>◦ Circle Bullet</span>
-                        <span className="text-muted-foreground font-mono">◦</span>
-                      </button>
+                        <div className="h-px bg-border my-1" />
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Numbered & Bangla Styles</span>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().toggleBulletList().updateAttributes('bulletList', { style: 'list-style-type: square;' }).run();
-                          toast.success("Square Bullet (▪)");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
-                      >
-                        <span>▪ Square Bullet</span>
-                        <span className="text-muted-foreground font-mono">▪</span>
-                      </button>
-
-                      <div className="h-px bg-border my-1" />
-                      <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Numbering & Bangla</span>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { style: 'list-style-type: decimal;' }).run();
-                          toast.success("English Numerals (1, 2, 3)");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
-                      >
-                        <span>1. 2. 3. English Digits</span>
-                        <span className="text-muted-foreground font-mono">1.</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { style: 'list-style-type: bengali;' }).run();
-                          toast.success("Bangla Numerals (১, ২, ৩)");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
-                      >
-                        <span>১. ২. ৩. Bangla Digits</span>
-                        <span className="text-muted-foreground font-mono">১.</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { style: 'list-style-type: upper-roman;' }).run();
-                          toast.success("Roman Numerals (I, II, III)");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
-                      >
-                        <span>I. II. III. Roman Numerals</span>
-                        <span className="text-muted-foreground font-mono">I.</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().toggleOrderedList().updateAttributes('orderedList', { style: 'list-style-type: lower-alpha;' }).run();
-                          toast.success("Alphabet (a, b, c)");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
-                      >
-                        <span>a. b. c. Lower Alphabetic</span>
-                        <span className="text-muted-foreground font-mono">a.</span>
-                      </button>
-                    </div>
+                        {BULLET_LIST_OPTIONS.slice(3).map(opt => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedListStyle(opt);
+                              setOrderedStyle(opt.style as any);
+                              toast.success(`Selected ${opt.name}`);
+                              setOpenDropdown(null);
+                            }}
+                            className={`px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer ${
+                              getCurrentListStyle().id === opt.id ? 'bg-primary/10 text-primary font-bold' : ''
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className="font-mono text-xs font-bold text-primary min-w-[18px] text-center">{opt.prefix}</span>
+                              <span>{opt.name}</span>
+                            </span>
+                            <span className="text-muted-foreground font-mono font-bold">{opt.prefix}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <button
@@ -1686,7 +2544,7 @@ const MenuBar = ({
                 <button
                   type="button"
                   onClick={() => setIsTableModalOpen(true)}
-                  className="px-2.5 py-1.5 rounded bg-muted/60 hover:bg-muted text-foreground flex items-center gap-1.5 text-xs font-semibold cursor-pointer border border-border"
+                  className="px-3 py-1.5 rounded bg-muted/60 hover:bg-muted text-foreground flex items-center gap-1.5 text-xs font-semibold cursor-pointer border border-border"
                   title="Insert interactive Table Grid"
                 >
                   <Grid className="w-4 h-4 text-primary" />
@@ -1696,33 +2554,14 @@ const MenuBar = ({
                 <button
                   type="button"
                   onClick={() => setIsTableModalOpen(true)}
-                  className="px-2.5 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 text-xs font-bold cursor-pointer shadow-xs"
+                  className="px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 text-xs font-bold cursor-pointer shadow-xs"
                   title="Draw & customize table with specific dimensions and borders"
                 >
                   <TableIcon className="w-4 h-4" />
                   <span>Draw Table</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (editor.can().mergeCells()) {
-                      editor.chain().focus().mergeCells().run();
-                      toast.success("Merged selected cells");
-                    } else {
-                      toast.info("Highlight/select multiple table cells to merge");
-                    }
-                  }}
-                  className={`px-2.5 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer border border-border ${
-                    editor.can().mergeCells() ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'bg-muted/60 hover:bg-muted text-foreground'
-                  }`}
-                  title="Merge selected table cells into a single cell"
-                >
-                  <Combine className="w-4 h-4 text-primary" />
-                  <span>Merge Cells</span>
-                </button>
               </div>
-              <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Tables & Merging</span>
+              <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Tables</span>
             </div>
 
             {/* PAGES & BREAKS */}
@@ -1824,56 +2663,6 @@ const MenuBar = ({
               <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Page Setup</span>
             </div>
 
-            {/* GROUP 2: COLUMNS LAYOUT */}
-            <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
-              <div className="flex items-center gap-1.5 my-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPageColumns(1);
-                    toast.info("Single Column Layout");
-                  }}
-                  className={`px-2.5 py-1.5 rounded text-xs font-bold flex items-center gap-1 border cursor-pointer ${
-                    pageColumns === 1 ? 'bg-primary text-primary-foreground border-primary shadow-xs' : 'bg-muted hover:bg-muted/80 text-foreground border-border'
-                  }`}
-                  title="Standard 1 Column Full Width Layout"
-                >
-                  <Layout className="w-3.5 h-3.5" />
-                  <span>One</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPageColumns(2);
-                    toast.success("2-Column Side-by-Side Newspaper Layout Enabled");
-                  }}
-                  className={`px-2.5 py-1.5 rounded text-xs font-bold flex items-center gap-1 border cursor-pointer ${
-                    pageColumns === 2 ? 'bg-primary text-primary-foreground border-primary shadow-xs' : 'bg-muted hover:bg-muted/80 text-foreground border-border'
-                  }`}
-                  title="Split Document into 2 Newspaper Columns"
-                >
-                  <Columns className="w-3.5 h-3.5" />
-                  <span>Two</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPageColumns(3);
-                    toast.success("3-Column Article Layout Enabled");
-                  }}
-                  className={`px-2.5 py-1.5 rounded text-xs font-bold flex items-center gap-1 border cursor-pointer ${
-                    pageColumns === 3 ? 'bg-primary text-primary-foreground border-primary shadow-xs' : 'bg-muted hover:bg-muted/80 text-foreground border-border'
-                  }`}
-                  title="Split Document into 3 Columns"
-                >
-                  <Columns className="w-3.5 h-3.5" />
-                  <span>Three</span>
-                </button>
-              </div>
-              <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Page Columns</span>
-            </div>
           </div>
         )}
 
@@ -1895,20 +2684,21 @@ const MenuBar = ({
               <>
                 <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
                   <div className="flex items-center gap-1 my-auto">
-                    <button type="button" onClick={() => editor.chain().focus().addColumnBefore().run()} className="px-2 py-1 rounded bg-muted text-foreground text-xs font-medium cursor-pointer">+Col Left</button>
-                    <button type="button" onClick={() => editor.chain().focus().addColumnAfter().run()} className="px-2 py-1 rounded bg-muted text-foreground text-xs font-medium cursor-pointer">+Col Right</button>
-                    <button type="button" onClick={() => editor.chain().focus().deleteColumn().run()} className="px-2 py-1 rounded bg-destructive/10 text-destructive text-xs font-medium cursor-pointer">Del Col</button>
+                    <button type="button" onClick={() => { ensureTableFocus(); editor.chain().focus().addColumnBefore().run(); }} className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-medium cursor-pointer">+Col Left</button>
+                    <button type="button" onClick={() => { ensureTableFocus(); editor.chain().focus().addColumnAfter().run(); }} className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-medium cursor-pointer">+Col Right</button>
+                    <button type="button" onClick={() => { ensureTableFocus(); editor.chain().focus().deleteColumn().run(); }} className="px-2 py-1 rounded bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-medium cursor-pointer">Del Col</button>
                   </div>
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Columns</span>
                 </div>
 
                 <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
                   <div className="flex items-center gap-1 my-auto">
-                    <button type="button" onClick={() => editor.chain().focus().addRowBefore().run()} className="px-2 py-1 rounded bg-muted text-foreground text-xs font-medium cursor-pointer">+Row Above</button>
-                    <button type="button" onClick={() => editor.chain().focus().addRowAfter().run()} className="px-2 py-1 rounded bg-muted text-foreground text-xs font-medium cursor-pointer">+Row Below</button>
-                    <button type="button" onClick={() => editor.chain().focus().deleteRow().run()} className="px-2 py-1 rounded bg-destructive/10 text-destructive text-xs font-medium cursor-pointer">Del Row</button>
+                    <button type="button" onClick={() => { ensureTableFocus(); editor.chain().focus().addRowBefore().run(); }} className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-medium cursor-pointer">+Row Above</button>
+                    <button type="button" onClick={() => { ensureTableFocus(); editor.chain().focus().addRowAfter().run(); }} className="px-2 py-1 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-medium cursor-pointer">+Row Below</button>
+                    <button type="button" onClick={() => { ensureTableFocus(); editor.chain().focus().deleteRow().run(); }} className="px-2 py-1 rounded bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-medium cursor-pointer">Del Row</button>
+                    <button type="button" onClick={() => { ensureTableFocus(); editor.chain().focus().deleteTable().run(); }} className="px-2 py-1 rounded bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-semibold cursor-pointer">Del Table</button>
                   </div>
-                  <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Rows</span>
+                  <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Rows & Table</span>
                 </div>
 
                 {/* ROW HEIGHT & RESIZING */}
@@ -1917,6 +2707,7 @@ const MenuBar = ({
                     <button
                       type="button"
                       onClick={() => {
+                        ensureTableFocus();
                         editor.chain().focus().setCellAttribute('style', 'height: 30px; vertical-align: middle;').run();
                         toast.success("Row Height: Compact (30px)");
                       }}
@@ -1928,6 +2719,7 @@ const MenuBar = ({
                     <button
                       type="button"
                       onClick={() => {
+                        ensureTableFocus();
                         editor.chain().focus().setCellAttribute('style', 'height: 50px; vertical-align: middle;').run();
                         toast.success("Row Height: Medium (50px)");
                       }}
@@ -1939,6 +2731,7 @@ const MenuBar = ({
                     <button
                       type="button"
                       onClick={() => {
+                        ensureTableFocus();
                         editor.chain().focus().setCellAttribute('style', 'height: 80px; vertical-align: middle;').run();
                         toast.success("Row Height: Tall (80px)");
                       }}
@@ -1950,6 +2743,7 @@ const MenuBar = ({
                     <button
                       type="button"
                       onClick={() => {
+                        ensureTableFocus();
                         editor.chain().focus().setCellAttribute('style', null).run();
                         toast.info("Reset Row Height to Auto");
                       }}
@@ -1962,12 +2756,13 @@ const MenuBar = ({
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Row Height</span>
                 </div>
 
-                {/* MERGE & SPLIT CELLS */}
+                {/* MERGE & SPLIT CELLS & TABLES */}
                 <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
                   <div className="flex items-center gap-1 my-auto">
                     <button
                       type="button"
                       onClick={() => {
+                        ensureTableFocus();
                         if (editor.can().mergeCells()) {
                           editor.chain().focus().mergeCells().run();
                           toast.success("Merged selected cells");
@@ -1987,20 +2782,40 @@ const MenuBar = ({
                     <button
                       type="button"
                       onClick={() => {
+                        ensureTableFocus();
                         if (editor.can().splitCell()) {
                           editor.chain().focus().splitCell().run();
-                          toast.success("Split cell");
+                          toast.success("Split merged cell into individual cells");
                         } else {
-                          toast.info("Place cursor inside a merged cell to split");
+                          editor.chain().focus().addColumnAfter().run();
+                          toast.success("Divided cell into two by adding a column");
                         }
                       }}
-                      className={`px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer border border-border ${
-                        editor.can().splitCell() ? 'bg-primary text-primary-foreground font-bold shadow-xs' : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                      }`}
-                      title="Split merged cell into individual cells"
+                      className="px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer border border-border bg-muted hover:bg-muted/80 text-foreground"
+                      title="Divide or split current table cell into two"
                     >
-                      <Split className="w-3.5 h-3.5" />
+                      <Split className="w-3.5 h-3.5 text-primary" />
                       <span>Split Cell</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSplitTable}
+                      className="px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer border border-border bg-muted hover:bg-muted/80 text-foreground"
+                      title="Split table into two separate tables at current cursor row"
+                    >
+                      <SplitSquareVertical className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Split Table</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleMergeTable}
+                      className="px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer border border-border bg-muted hover:bg-muted/80 text-foreground"
+                      title="Merge current table with adjacent table immediately above or below"
+                    >
+                      <Combine className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Merge Tables</span>
                     </button>
                   </div>
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Merge & Split</span>
@@ -2011,6 +2826,7 @@ const MenuBar = ({
                   <button
                     type="button"
                     onClick={() => {
+                      ensureTableFocus();
                       const cellAttrs = editor.getAttributes('tableCell') || {};
                       const headerAttrs = editor.getAttributes('tableHeader') || {};
                       const currentDir = cellAttrs['data-text-direction'] || headerAttrs['data-text-direction'] || 'horizontal';
@@ -2026,88 +2842,190 @@ const MenuBar = ({
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Orientation</span>
                 </div>
 
+                {/* LISTS IN TABLE CELLS */}
+                <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
+                  <div className="flex items-center gap-1 my-auto">
+                    {/* Dynamic Selected Bullet & List Dropdown inside Table Tools */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenDropdown(prev => prev === 'tableBulletStyles' ? null : 'tableBulletStyles');
+                        }}
+                        className={`px-2 py-1 rounded hover:bg-muted cursor-pointer flex items-center gap-1.5 border transition-all ${
+                          editor.isActive('bulletList') || editor.isActive('orderedList') || openDropdown === 'tableBulletStyles'
+                            ? 'bg-primary/20 text-primary font-bold border-primary/30 shadow-2xs'
+                            : 'border-border text-foreground'
+                        }`}
+                        title="Cell List Library (Select bullet or number style)"
+                      >
+                        <span className="font-mono font-bold text-sm text-primary min-w-[16px] text-center">{getCurrentListStyle().prefix}</span>
+                        <span className="text-xs font-semibold">{getCurrentListStyle().name.split(' ')[0]}</span>
+                        <ChevronDown className="w-3 h-3 text-muted-foreground ml-0.5" />
+                      </button>
+
+                      {openDropdown === 'tableBulletStyles' && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute top-full left-0 mt-1 flex flex-col bg-popover text-popover-foreground border border-border rounded-xl shadow-xl p-2 z-[100005] w-56 animate-in fade-in duration-100"
+                        >
+                          <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Bullet Styles</span>
+                          
+                          {BULLET_LIST_OPTIONS.slice(0, 3).map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                ensureTableFocus();
+                                setSelectedListStyle(opt);
+                                setBulletStyle(opt.style as any);
+                                toast.success(`Applied ${opt.name} to cell`);
+                                setOpenDropdown(null);
+                              }}
+                              className={`px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer ${
+                                getCurrentListStyle().id === opt.id ? 'bg-primary/10 text-primary font-bold' : ''
+                              }`}
+                            >
+                              <span className="flex items-center gap-2">
+                                <span className="font-mono text-sm font-bold text-primary min-w-[18px] text-center">{opt.prefix}</span>
+                                <span>{opt.name}</span>
+                              </span>
+                              <span className="text-muted-foreground font-mono font-bold">{opt.prefix}</span>
+                            </button>
+                          ))}
+
+                          <div className="h-px bg-border my-1" />
+                          <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Numbered & Bangla Styles</span>
+
+                          {BULLET_LIST_OPTIONS.slice(3).map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                ensureTableFocus();
+                                setSelectedListStyle(opt);
+                                setOrderedStyle(opt.style as any);
+                                toast.success(`Applied ${opt.name} to cell`);
+                                setOpenDropdown(null);
+                              }}
+                              className={`px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer ${
+                                getCurrentListStyle().id === opt.id ? 'bg-primary/10 text-primary font-bold' : ''
+                              }`}
+                            >
+                              <span className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold text-primary min-w-[18px] text-center">{opt.prefix}</span>
+                                <span>{opt.name}</span>
+                              </span>
+                              <span className="text-muted-foreground font-mono font-bold">{opt.prefix}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Cell Lists</span>
+                </div>
+
                 {/* TABLE BORDER STYLE DROPDOWN */}
                 <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
-                  <div className="relative group my-auto">
+                  <div className="relative my-auto">
                     <button
                       type="button"
-                      className="px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-foreground text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-border"
-                      title="Set Table Border Style"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenDropdown(prev => prev === 'tableBorders' ? null : 'tableBorders');
+                      }}
+                      className={`px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-border ${
+                        openDropdown === 'tableBorders' ? 'bg-primary text-primary-foreground shadow-xs' : 'bg-muted hover:bg-muted/80 text-foreground'
+                      }`}
+                      title="Set Table Border Style (Click to open)"
                     >
-                      <Grid className="w-3.5 h-3.5 text-primary" />
+                      <Grid className="w-3.5 h-3.5" />
                       <span>Table Borders</span>
                       <ChevronDown className="w-3 h-3 text-muted-foreground" />
                     </button>
 
-                    <div className="absolute top-full left-0 mt-1 hidden group-hover:flex group-focus-within:flex flex-col bg-popover text-popover-foreground border border-border rounded-xl shadow-xl p-2 z-[100005] w-48 animate-in fade-in duration-100">
-                      <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Table Border Options</span>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().updateAttributes('table', { 'data-border': 'full' }).run();
-                          toast.success("All Grid Borders Enabled");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                    {openDropdown === 'tableBorders' && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute top-full left-0 mt-1 flex flex-col bg-popover text-popover-foreground border border-border rounded-xl shadow-xl p-2 z-[100005] w-48 animate-in fade-in duration-100"
                       >
-                        <span>田 All Grid Borders</span>
-                      </button>
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground px-2 py-1">Table Border Options</span>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().updateAttributes('table', { 'data-border': 'outer' }).run();
-                          toast.success("Outer Box Border Only Enabled");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
-                      >
-                        <span>▢ Outer Box Border</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            applyTableBorder('full');
+                            toast.success("All Grid Borders Enabled");
+                            setOpenDropdown(null);
+                          }}
+                          className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                        >
+                          <span>田 All Grid Borders</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().updateAttributes('table', { 'data-border': 'header' }).run();
-                          toast.success("Header Row Border Only Enabled");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
-                      >
-                        <span>▔ Header Row Border</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            applyTableBorder('outer');
+                            toast.success("Outer Box Border Only Enabled");
+                            setOpenDropdown(null);
+                          }}
+                          className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                        >
+                          <span>▢ Outer Box Border</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().updateAttributes('table', { 'data-border': 'dashed' }).run();
-                          toast.success("Dashed Grid Lines Enabled");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
-                      >
-                        <span>╍ Dashed Grid Lines</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            applyTableBorder('header');
+                            toast.success("Header Row Border Only Enabled");
+                            setOpenDropdown(null);
+                          }}
+                          className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                        >
+                          <span>▔ Header Row Border</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().updateAttributes('table', { 'data-border': 'thick' }).run();
-                          toast.success("Thick Solid Border Enabled");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
-                      >
-                        <span>⬛ Heavy Thick Border</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            applyTableBorder('dashed');
+                            toast.success("Dashed Grid Lines Enabled");
+                            setOpenDropdown(null);
+                          }}
+                          className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                        >
+                          <span>╍ Dashed Grid Lines</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          editor.chain().focus().updateAttributes('table', { 'data-border': 'none' }).run();
-                          toast.info("Invisible No-Border Mode Enabled");
-                        }}
-                        className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer text-muted-foreground"
-                      >
-                        <span>🚫 No Borders (Invisible)</span>
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            applyTableBorder('thick');
+                            toast.success("Thick Solid Border Enabled");
+                            setOpenDropdown(null);
+                          }}
+                          className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer"
+                        >
+                          <span>⬛ Heavy Thick Border</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            applyTableBorder('none');
+                            toast.info("Invisible No-Border Mode Enabled");
+                            setOpenDropdown(null);
+                          }}
+                          className="px-2 py-1.5 text-xs text-left rounded hover:bg-muted flex items-center justify-between font-medium cursor-pointer text-muted-foreground"
+                        >
+                          <span>🚫 No Borders (Invisible)</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Borders</span>
                 </div>
@@ -2247,6 +3165,21 @@ const MenuBar = ({
           </div>
         )}
 
+      </div>
+
+      {/* INTERACTIVE PULL-DOWN HANDLE TO ENLARGE OR RESTORE MENU RIBBON HEIGHT */}
+      <div className="w-full flex justify-center bg-muted/40 border-b border-border/60 py-0.5 relative group">
+        <button
+          type="button"
+          onClick={() => setIsRibbonEnlarged(prev => !prev)}
+          className="px-6 py-0.5 rounded-b-md bg-card hover:bg-primary/10 text-muted-foreground hover:text-primary border border-t-0 border-border text-[10px] font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs group-hover:border-primary/40"
+          title={isRibbonEnlarged ? "Click / Pull Up to Restore Standard Ribbon Size" : "Pull Down to Enlarge Ribbon Toolbar (Spacious Mode)"}
+        >
+          <div className="w-3 h-0.5 rounded-full bg-muted-foreground/40 group-hover:bg-primary" />
+          <ChevronDown className={`w-3 h-3 transition-transform duration-200 text-primary ${isRibbonEnlarged ? 'rotate-180' : ''}`} />
+          <span>{isRibbonEnlarged ? "Pull Up Ribbon" : "Pull Down to Enlarge Ribbon"}</span>
+          <div className="w-3 h-0.5 rounded-full bg-muted-foreground/40 group-hover:bg-primary" />
+        </button>
       </div>
 
       {/* MODAL PORTAL 1: HYPERLINK MODAL */}
@@ -2998,16 +3931,22 @@ const FindReplaceDrawer = ({
 };
 
 // MS WORD TOP RULER COMPONENT
-const WordRuler = () => {
+const WordRuler = ({ viewMode }: { viewMode: 'fluid' | 'pageView' }) => {
+  const tickCount = viewMode === 'fluid' ? 25 : 17;
+  const totalWidth = viewMode === 'pageView' ? "max-w-[210mm]" : "w-full";
+  const paddingClass = viewMode === 'pageView' ? "px-[20mm]" : "px-6 md:px-12";
+
   return (
-    <div className="word-ruler h-6 w-full flex items-center px-8 border-b text-[9px] font-bold text-muted-foreground select-none relative overflow-hidden">
-      <div className="flex justify-between w-full max-w-[210mm] mx-auto px-4">
-        {Array.from({ length: 16 }).map((_, i) => (
-          <div key={i} className="flex flex-col items-center relative">
-            <span className="text-[8px] leading-none mb-0.5">{i}</span>
-            <div className="w-px h-2 bg-muted-foreground/50" />
-          </div>
-        ))}
+    <div className="word-ruler h-7 w-full flex items-center border-b text-[9px] font-bold text-muted-foreground select-none relative overflow-hidden transition-all bg-muted/40">
+      <div className={`w-full ${totalWidth} mx-auto flex items-center justify-between ${paddingClass} relative h-full`}>
+        <div className="w-full flex justify-between items-center">
+          {Array.from({ length: tickCount }).map((_, i) => (
+            <div key={i} className="flex flex-col items-center relative">
+              <span className="text-[8px] leading-none mb-0.5 font-mono">{i}</span>
+              <div className="w-px h-2 bg-muted-foreground/50" />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -3030,7 +3969,6 @@ export default function RichTextEditor({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showParagraphMarks, setShowParagraphMarks] = useState(false);
   const [showRuler, setShowRuler] = useState(true);
-  const [pageColumns, setPageColumns] = useState<1 | 2 | 3>(1);
 
   useEffect(() => {
     const handleEscKey = (e: KeyboardEvent) => {
@@ -3044,7 +3982,14 @@ export default function RichTextEditor({
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        orderedList: false,
+      }),
+      CustomOrderedList,
+      ColumnSection,
+      ColumnBreak,
+      ColumnItem,
+      ColumnGroup,
       Underline,
       TextStyle,
       FontFamily,
@@ -3071,7 +4016,7 @@ export default function RichTextEditor({
         types: ['heading', 'paragraph', 'listItem', 'bulletList', 'orderedList'],
       }),
     ],
-    content,
+    content: convertMarkdownTablesToHtml(content || ''),
     editable,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
@@ -3091,6 +4036,30 @@ export default function RichTextEditor({
         return false;
       },
       handleKeyDown: (view, event) => {
+        if (event.key === 'Tab') {
+          const pos = view.state.selection.$from;
+          let inTable = false;
+          for (let d = pos.depth; d > 0; d--) {
+            if (pos.node(d).type.name === 'table') { inTable = true; break; }
+          }
+          if (inTable) {
+            event.preventDefault();
+            return handleTableTabNavigationWithView(view, event.shiftKey);
+          }
+        }
+
+        if (event.key === 'Enter' && event.shiftKey) {
+          const pos = view.state.selection.$from;
+          let inTable = false;
+          for (let d = pos.depth; d > 0; d--) {
+            if (pos.node(d).type.name === 'table') { inTable = true; break; }
+          }
+          if (inTable) {
+            event.preventDefault();
+            return handleTableShiftEnterNavigation(view);
+          }
+        }
+
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
           event.preventDefault();
           setIsFindReplaceOpen(true);
@@ -3102,10 +4071,11 @@ export default function RichTextEditor({
   });
 
   useEffect(() => {
-    if (editor && content !== editor.getHTML()) {
-      editor.commands.setContent(content, { emitUpdate: false });
+    if (editor && !editor.isDestroyed && content !== editor.getHTML()) {
+      const processed = convertMarkdownTablesToHtml(content || '');
+      editor.commands.setContent(processed, { emitUpdate: false });
     }
-  }, [content]);
+  }, [content, editor]);
 
   const wordCount = editor?.storage.characterCount.words() || 0;
   const charCount = editor?.storage.characterCount.characters() || 0;
@@ -3115,7 +4085,7 @@ export default function RichTextEditor({
     <div className={
       isFullscreen
         ? "fixed inset-0 z-[99999] bg-background text-foreground flex flex-col h-screen w-screen overflow-hidden"
-        : `flex flex-col w-full h-full bg-background overflow-hidden border border-border rounded-xl shadow-xs ${!editable ? 'opacity-70 cursor-not-allowed' : ''}`
+        : `flex flex-col w-full h-full bg-background overflow-hidden rounded-xl ${!editable ? 'opacity-70 cursor-not-allowed' : ''}`
     }>
       {editable && (
         <>
@@ -3132,15 +4102,13 @@ export default function RichTextEditor({
             setShowParagraphMarks={setShowParagraphMarks}
             showRuler={showRuler}
             setShowRuler={setShowRuler}
-            pageColumns={pageColumns}
-            setPageColumns={setPageColumns}
           />
           <FindReplaceDrawer
             isOpen={isFindReplaceOpen}
             onClose={() => setIsFindReplaceOpen(false)}
             editor={editor}
           />
-          {showRuler && <WordRuler />}
+          {showRuler && <WordRuler viewMode={viewMode} />}
         </>
       )}
 
@@ -3151,16 +4119,46 @@ export default function RichTextEditor({
       >
         <div className={
           viewMode === 'pageView'
-            ? "w-full max-w-[210mm] min-h-[297mm] h-auto bg-card p-[20mm] shadow-2xl border border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 rounded-sm relative my-2 flex flex-col transition-all"
-            : "w-full min-h-full h-auto bg-card p-6 border border-border focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 rounded-xl flex flex-col transition-all"
+            ? "w-fit min-w-[210mm] max-w-none min-h-[297mm] h-auto bg-card p-[20mm] shadow-xl rounded-sm relative my-2 flex flex-col transition-all overflow-x-auto"
+            : "w-full min-h-full h-auto bg-card p-6 rounded-xl flex flex-col transition-all overflow-x-auto"
         }>
-          <EditorContent editor={editor} className={`min-h-full cursor-text flex-1 flex flex-col prose-columns-${pageColumns}`} />
+          <style dangerouslySetInnerHTML={{ __html: `
+            .ProseMirror table .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: -2px; width: 4px; z-index: 50; background-color: var(--primary, #3b82f6); pointer-events: none; }
+            .ProseMirror.resize-cursor { cursor: col-resize !important; }
+            .ProseMirror table td, .ProseMirror table th, .prose table td, .prose table th, .meeting-table td, .meeting-table th { border: 1px solid #cbd5e1; padding: 2px 4px !important; }
+            .dark .ProseMirror table td, .dark .ProseMirror table th, .dark .prose table td, .dark .prose table th, .dark .meeting-table td, .dark .meeting-table th { border: 1px solid #475569; }
+            table.border-full td, table.border-full th, table[data-border="full"] td, table[data-border="full"] th, .ProseMirror table[data-border="full"] td, .ProseMirror table[data-border="full"] th { border: 1px solid #000000 !important; }
+            .dark table.border-full td, .dark table.border-full th, .dark table[data-border="full"] td, .dark table[data-border="full"] th, .dark .ProseMirror table[data-border="full"] td, .dark .ProseMirror table[data-border="full"] th { border: 1px solid #94a3b8 !important; }
+            table.border-outer, table[data-border="outer"], .ProseMirror table[data-border="outer"] { border: 2px solid #000000 !important; }
+            .dark table.border-outer, .dark table[data-border="outer"], .dark .ProseMirror table[data-border="outer"] { border: 2px solid #94a3b8 !important; }
+            table.border-outer td, table.border-outer th, table[data-border="outer"] td, table[data-border="outer"] th, .ProseMirror table[data-border="outer"] td, .ProseMirror table[data-border="outer"] th { border: none !important; }
+            table.border-outer tr:first-child td, table.border-outer tr:first-child th, table[data-border="outer"] tr:first-child td, table[data-border="outer"] tr:first-child th, .ProseMirror table[data-border="outer"] tr:first-child td, .ProseMirror table[data-border="outer"] tr:first-child th { border-top: 2px solid #000000 !important; }
+            .dark table.border-outer tr:first-child td, .dark table.border-outer tr:first-child th, .dark table[data-border="outer"] tr:first-child td, .dark table[data-border="outer"] tr:first-child th, .dark .ProseMirror table[data-border="outer"] tr:first-child td, .dark .ProseMirror table[data-border="outer"] tr:first-child th { border-top: 2px solid #94a3b8 !important; }
+            table.border-outer tr:last-child td, table.border-outer tr:last-child th, table[data-border="outer"] tr:last-child td, table[data-border="outer"] tr:last-child th, .ProseMirror table[data-border="outer"] tr:last-child td, .ProseMirror table[data-border="outer"] tr:last-child th { border-bottom: 2px solid #000000 !important; }
+            .dark table.border-outer tr:last-child td, .dark table.border-outer tr:last-child th, .dark table[data-border="outer"] tr:last-child td, .dark table[data-border="outer"] tr:last-child th, .dark .ProseMirror table[data-border="outer"] tr:last-child td, .dark .ProseMirror table[data-border="outer"] tr:last-child th { border-bottom: 2px solid #94a3b8 !important; }
+            table.border-outer td:first-child, table.border-outer th:first-child, table[data-border="outer"] td:first-child, table[data-border="outer"] th:first-child, .ProseMirror table[data-border="outer"] td:first-child, .ProseMirror table[data-border="outer"] th:first-child { border-left: 2px solid #000000 !important; }
+            .dark table.border-outer td:first-child, .dark table.border-outer th:first-child, .dark table[data-border="outer"] td:first-child, .dark table[data-border="outer"] th:first-child, .dark .ProseMirror table[data-border="outer"] td:first-child, .dark .ProseMirror table[data-border="outer"] th:first-child { border-left: 2px solid #94a3b8 !important; }
+            table.border-outer td:last-child, table.border-outer th:last-child, table[data-border="outer"] td:last-child, table[data-border="outer"] th:last-child, .ProseMirror table[data-border="outer"] td:last-child, .ProseMirror table[data-border="outer"] th:last-child { border-right: 2px solid #000000 !important; }
+            .dark table.border-outer td:last-child, .dark table.border-outer th:last-child, .dark table[data-border="outer"] td:last-child, .dark table[data-border="outer"] th:last-child, .dark .ProseMirror table[data-border="outer"] td:last-child, .dark .ProseMirror table[data-border="outer"] th:last-child { border-right: 2px solid #94a3b8 !important; }
+            table.border-header td, table.border-header th, table[data-border="header"] td, table[data-border="header"] th, .ProseMirror table[data-border="header"] td, .ProseMirror table[data-border="header"] th { border: none !important; }
+            table.border-header th, table.border-header tr:first-child td, table[data-border="header"] th, table[data-border="header"] tr:first-child td, .ProseMirror table[data-border="header"] th, .ProseMirror table[data-border="header"] tr:first-child td { border-bottom: 2px solid #000000 !important; }
+            .dark table.border-header th, .dark table.border-header tr:first-child td, .dark table[data-border="header"] th, .dark table[data-border="header"] tr:first-child td, .dark .ProseMirror table[data-border="header"] th, .dark .ProseMirror table[data-border="header"] tr:first-child td { border-bottom: 2px solid #94a3b8 !important; }
+            table.border-dashed td, table.border-dashed th, table[data-border="dashed"] td, table[data-border="dashed"] th, .ProseMirror table[data-border="dashed"] td, .ProseMirror table[data-border="dashed"] th { border: 1px dashed #000000 !important; }
+            .dark table.border-dashed td, .dark table.border-dashed th, .dark table[data-border="dashed"] td, .dark table[data-border="dashed"] th, .dark .ProseMirror table[data-border="dashed"] td, .dark .ProseMirror table[data-border="dashed"] th { border: 1px dashed #94a3b8 !important; }
+            table.border-thick, table[data-border="thick"], .ProseMirror table[data-border="thick"] { border: 2px solid #000000 !important; }
+            .dark table.border-thick, .dark table[data-border="thick"], .dark .ProseMirror table[data-border="thick"] { border: 2px solid #94a3b8 !important; }
+            table.border-thick td, table.border-thick th, table[data-border="thick"] td, table[data-border="thick"] th, .ProseMirror table[data-border="thick"] td, .ProseMirror table[data-border="thick"] th { border: 2px solid #000000 !important; }
+            .dark table.border-thick td, .dark table.border-thick th, .dark table[data-border="thick"] td, .dark table[data-border="thick"] th, .dark .ProseMirror table[data-border="thick"] td, .dark .ProseMirror table[data-border="thick"] th { border: 2px solid #94a3b8 !important; }
+            table.border-none, table[data-border="none"], .ProseMirror table[data-border="none"] { border: none !important; }
+            table.border-none td, table.border-none th, table[data-border="none"] td, table[data-border="none"] th, .ProseMirror table[data-border="none"] td, .ProseMirror table[data-border="none"] th { border: none !important; }
+          `}} />
+          <EditorContent editor={editor} className="min-h-full cursor-text flex-1 flex flex-col" />
         </div>
       </div>
 
       {/* AUTHENTIC MS WORD 2007 STATUS BAR FOOTER */}
       {editable && editor && (
-        <div className="bg-muted/90 px-4 py-1 border-t border-border flex items-center justify-between text-[11px] font-bold text-muted-foreground select-none">
+        <div className="bg-muted/90 px-4 py-1 flex items-center justify-between text-[11px] font-bold text-muted-foreground select-none">
           {/* Left info */}
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
@@ -3169,12 +4167,12 @@ export default function RichTextEditor({
             </span>
             <span>{wordCount} Words</span>
             <span>{charCount} Characters</span>
-            <span className="px-1.5 py-0.5 rounded bg-card border border-border text-[10px] text-foreground">English / বাংলা</span>
+            <span className="px-1.5 py-0.5 rounded bg-card text-[10px] text-foreground">English / বাংলা</span>
           </div>
 
           {/* Right controls: View shortcuts & Interactive Zoom Slider */}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 border-r border-border pr-3">
+            <div className="flex items-center gap-1 pr-3">
               <button
                 type="button"
                 onClick={() => setViewMode('pageView')}

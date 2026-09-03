@@ -125,9 +125,9 @@ function convertMarkdownTablesToHtml(content) {
             const headers = headerTablePart.split('|').map(s => s.trim()).filter((s, k, arr) => !(k === 0 && s === '') && !(k === arr.length - 1 && s === ''));
             if (headers.length === 0 && headerTablePart) headers.push(headerTablePart.replace(/\|/g, '').trim());
 
-            let tableHtml = '<table class="meeting-table" border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;margin:12px 0;border:1px solid #000;"><thead><tr>';
+            let tableHtml = '<table class="meeting-table" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;margin:12px 0;"><thead><tr>';
             headers.forEach(h => {
-                tableHtml += `<th style="border:1px solid #000;padding:6px;background-color:rgba(0,0,0,0.05);font-weight:bold;text-align:left;">${h}</th>`;
+                tableHtml += `<th style="padding:6px;background-color:rgba(0,0,0,0.05);font-weight:bold;text-align:left;">${h}</th>`;
             });
             tableHtml += '</tr></thead><tbody>';
 
@@ -136,7 +136,7 @@ function convertMarkdownTablesToHtml(content) {
                 if (cells.length > 0) {
                     tableHtml += '<tr>';
                     cells.forEach(c => {
-                        tableHtml += `<td style="border:1px solid #000;padding:6px;">${c}</td>`;
+                        tableHtml += `<td style="padding:6px;">${c}</td>`;
                     });
                     tableHtml += '</tr>';
                 }
@@ -242,9 +242,7 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
     // Tables
     str = str.replace(/<table(\s[^>]*)?>/gi, (match) => {
         if (match.includes('border-collapse')) return match;
-        const styled = injectStyle(match, { 'border-collapse': 'collapse', 'width': '100%', 'margin': '12px 0', 'border': '1px solid #000' });
-        if (!styled.includes('border=')) return styled.replace('<table', '<table border="1" cellpadding="6" cellspacing="0"');
-        return styled;
+        return injectStyle(match, { 'border-collapse': 'collapse', 'width': '100%', 'margin': '12px 0' });
     });
 
     // Subscript & Superscript
@@ -263,7 +261,7 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
     // Table headers with text direction
     str = str.replace(/<th(\s[^>]*)?>/gi, (match) => {
         const hasDir = /data-text-direction="vertical-rl"/i.test(match);
-        const additions = { 'border': '1px solid #000', 'padding': '6px', 'background-color': '#f2f4f7', 'font-weight': 'bold', 'text-align': 'left', 'font-size': '14px' };
+        const additions = { 'padding': '6px', 'background-color': '#f2f4f7', 'font-weight': 'bold', 'text-align': 'left', 'font-size': '14px' };
         if (hasDir) {
             additions['writing-mode'] = 'vertical-rl';
             additions['transform'] = 'rotate(180deg)';
@@ -276,7 +274,7 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
     // Table cells with text direction
     str = str.replace(/<td(\s[^>]*)?>/gi, (match) => {
         const hasDir = /data-text-direction="vertical-rl"/i.test(match);
-        const additions = { 'border': '1px solid #000', 'padding': '6px', 'text-align': 'left', 'font-size': '14px', 'vertical-align': 'top' };
+        const additions = { 'padding': '6px', 'text-align': 'left', 'font-size': '14px', 'vertical-align': 'top' };
         if (hasDir) {
             additions['writing-mode'] = 'vertical-rl';
             additions['transform'] = 'rotate(180deg)';
@@ -830,8 +828,19 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
                 .agenda-resolution { font-weight: bold; }
 
                 table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
-                table, th, td { border: 1px solid black; }
-                th, td { padding: 4px; text-align: left; }
+                th, td { padding: 4px; text-align: left; border: none; }
+                table.border-full td, table.border-full th, table[data-border="full"] td, table[data-border="full"] th { border: 1px solid black; }
+                table.border-outer, table[data-border="outer"] { border: 2px solid black; }
+                table.border-outer td, table.border-outer th, table[data-border="outer"] td, table[data-border="outer"] th { border: none; }
+                table.border-outer tr:first-child td, table.border-outer tr:first-child th, table[data-border="outer"] tr:first-child td, table[data-border="outer"] tr:first-child th { border-top: 2px solid black; }
+                table.border-outer tr:last-child td, table.border-outer tr:last-child th, table[data-border="outer"] tr:last-child td, table[data-border="outer"] tr:last-child th { border-bottom: 2px solid black; }
+                table.border-outer td:first-child, table.border-outer th:first-child, table[data-border="outer"] td:first-child, table[data-border="outer"] th:first-child { border-left: 2px solid black; }
+                table.border-outer td:last-child, table.border-outer th:last-child, table[data-border="outer"] td:last-child, table[data-border="outer"] th:last-child { border-right: 2px solid black; }
+                table.border-header td, table.border-header th, table[data-border="header"] td, table[data-border="header"] th { border: none; }
+                table.border-header th, table.border-header tr:first-child td, table[data-border="header"] th, table[data-border="header"] tr:first-child td { border-bottom: 2px solid black; }
+                table.border-dashed td, table.border-dashed th, table[data-border="dashed"] td, table[data-border="dashed"] th { border: 1px dashed black; }
+                table.border-thick td, table.border-thick th, table[data-border="thick"] td, table[data-border="thick"] th { border: 2px solid black; }
+                table.border-none td, table.border-none th, table[data-border="none"] td, table[data-border="none"] th { border: none; }
                 p { margin: 0 0 10px 0; }
 
                 .signature-block {

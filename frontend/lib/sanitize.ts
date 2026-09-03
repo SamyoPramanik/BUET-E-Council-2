@@ -6,7 +6,6 @@ import DOMPurify from "dompurify";
 // moderator can't smuggle a script into a viewer's or admin's session.
 export function convertMarkdownTablesToHtml(content: string): string {
   if (!content || typeof content !== "string") return content || "";
-  if (content.includes("<table") || content.includes("<TABLE")) return content;
   if (!content.includes("|")) return content;
 
   // Step 1: Replace line breaks and paragraph tags with newlines
@@ -85,9 +84,9 @@ export function convertMarkdownTablesToHtml(content: string): string {
       const headers = headerTablePart.split("|").map(s => s.trim()).filter((s, k, arr) => !(k === 0 && s === "") && !(k === arr.length - 1 && s === ""));
       if (headers.length === 0 && headerTablePart) headers.push(headerTablePart.replace(/\|/g, "").trim());
 
-      let tableHtml = `<table class="meeting-table" border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;margin:12px 0;border:1px solid #000;"><thead><tr>`;
+      let tableHtml = `<table class="meeting-table" data-border="full" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;margin:12px 0;"><thead><tr>`;
       headers.forEach(h => {
-        tableHtml += `<th style="border:1px solid #000;padding:6px;background-color:rgba(0,0,0,0.05);font-weight:600;text-align:left;">${h}</th>`;
+        tableHtml += `<th style="padding:6px;background-color:rgba(0,0,0,0.05);font-weight:600;text-align:left;">${h}</th>`;
       });
       tableHtml += `</tr></thead><tbody>`;
 
@@ -96,7 +95,7 @@ export function convertMarkdownTablesToHtml(content: string): string {
         if (cells.length > 0) {
           tableHtml += `<tr>`;
           cells.forEach(c => {
-            tableHtml += `<td style="border:1px solid #000;padding:6px;">${c}</td>`;
+            tableHtml += `<td style="padding:6px;">${c}</td>`;
           });
           tableHtml += `</tr>`;
         }
@@ -136,7 +135,8 @@ export function sanitizeHtml(html: string | null | undefined): string {
     ],
     ADD_ATTR: [
       "class", "border", "cellpadding", "cellspacing", "style", "data-border",
-      "data-text-direction", "href", "target", "rel", "title"
+      "data-text-direction", "href", "target", "rel", "title", "start", "type",
+      "colspan", "rowspan", "colwidth", "width", "height", "align", "valign", "scope"
     ]
   });
 }

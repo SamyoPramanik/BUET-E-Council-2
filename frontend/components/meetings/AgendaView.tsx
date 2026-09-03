@@ -694,6 +694,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                         </div>
 
                         <RichTextEditor
+                          key={editingId}
                           content={editContent}
                           onChange={setEditContent}
                           className="p-4 min-h-[380px]"

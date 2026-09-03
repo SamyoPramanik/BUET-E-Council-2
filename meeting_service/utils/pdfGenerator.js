@@ -759,7 +759,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
 
             return `
             <div class="agenda-block" style="margin-bottom: 30px; page-break-before: auto;">
-                <div class="agenda-title" style="font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${isBibidha ? 'বিবিধ :' : 'প্রস্তাবনা নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</b></div>
+                <div class="agenda-title" style="font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${isBibidha ? 'বিবিধ :' : 'প্রস্তাব নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</b></div>
                 <div class="agenda-content" style="margin-left: 30px; text-align: justify; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${styleRichTextHtml(displayContent, true)}</div>
                 ${isResolution ? `
                 <div class="agenda-title" style="margin-top:15px; font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>সিদ্ধান্ত:</b></div>
@@ -954,7 +954,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
                             ? `${firstFull}`
                             : `${firstFull} হতে ${lastFull}`;
 
-                        const headerStr = `'${letter}' গ্রুপ (প্রস্তাবনা নং ${rangeText}): ${catName}`;
+                        const headerStr = `'${letter}' গ্রুপ (প্রস্তাব নং ${rangeText}): ${catName}`;
                         categoryHeaderMap.set(firstAg.id, headerStr);
                         groupCount++;
                     }
@@ -993,7 +993,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
                         const isOnlyBibidhaTitle = isBibidha && !strippedText;
                         const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
                         const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
-                        const titleStr = isBibidha ? `বিবিধ :` : `প্রস্তাবনা নং ${fullSerial}`;
+                        const titleStr = isBibidha ? `বিবিধ :` : `প্রস্তাব নং ${fullSerial}`;
 
                         const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
                             .filter(an => !an.is_excluded_in_resolution)
@@ -1034,18 +1034,17 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
                             </tr>`;
                         }
 
-                        const cleanExecText = ag.execution_status ? ag.execution_status.replace(/<[^>]*>/g, '').trim() : '';
+                        // Single-select mirror of UI/backend: submitted > custom > executed > not_executed.
+                        const isSubmitted = ag.is_submitted_for_next_meeting === true || ag.is_submitted_for_next_meeting === 'true' || ag.is_submitted_for_next_meeting === 't' || ag.is_submitted_for_next_meeting === 1;
+                        const cleanExecText = ag.execution_status ? String(ag.execution_status).replace(/<[^>]*>/g, '').trim() : '';
                         let statusColHtml = '';
-                        if (cleanExecText.length > 0) {
+                        if (isSubmitted) {
+                            statusColHtml = 'পরবর্তী মিটিং এ উপস্থাপন এর জন্য আবেদন করা হল';
+                        } else if (cleanExecText.length > 0) {
                             statusColHtml = convertMarkdownTablesToHtml(ag.execution_status);
                         } else {
-                            const isSubmitted = ag.is_submitted_for_next_meeting === true || ag.is_submitted_for_next_meeting === 'true' || ag.is_submitted_for_next_meeting === 't';
-                            const isExec = ag.is_executed === 'yes' || ag.is_executed === true;
-                            if (isSubmitted) {
-                                statusColHtml = 'পরবর্তী মিটিং এ উপস্থাপন এর জন্য আবেদন করা হল';
-                            } else {
-                                statusColHtml = isExec ? 'বাস্তবায়িত' : 'অবাস্তবায়িত';
-                            }
+                            const isExec = ag.is_executed === true || ag.is_executed === 'yes' || ag.is_executed === 'true' || ag.is_executed === 't' || ag.is_executed === 1;
+                            statusColHtml = isExec ? 'বাস্তবায়িত' : 'অবাস্তবায়িত';
                         }
 
                         tableRows += `
@@ -1061,7 +1060,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
                     <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 13px; border: 1px solid #000; margin-top: 20px;">
                         <thead>
                             <tr style="background-color: #f2f4f7;">
-                                <th style="border: 1px solid #000; padding: 8px; width: 12%; text-align: center; font-weight: bold;">প্রস্তাবনা নং</th>
+                                <th style="border: 1px solid #000; padding: 8px; width: 12%; text-align: center; font-weight: bold;">প্রস্তাব নং</th>
                                 <th style="border: 1px solid #000; padding: 8px; width: 38%; text-align: center; font-weight: bold;">আলোচ্যসূচি</th>
                                 <th style="border: 1px solid #000; padding: 8px; width: 35%; text-align: center; font-weight: bold;">সিদ্ধান্ত</th>
                                 <th style="border: 1px solid #000; padding: 8px; width: 15%; text-align: center; font-weight: bold;">বাস্তবায়ন অবস্থা</th>
@@ -1085,7 +1084,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
                     const bibidhaSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(mainAgendaCount + 1, serialWidth);
                     const fullSerial = (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + agSerialStr;
                     const showBibidhaSerial = !isResolution && !cacheVariant && isOnlyBibidhaTitle;
-                    const titleStr = isBibidha ? (showBibidhaSerial ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${fullSerial}`;
+                    const titleStr = isBibidha ? (showBibidhaSerial ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাব নং ${fullSerial}`;
 
                     const validAnnexures = (Array.isArray(ag.annexures) ? ag.annexures : [])
                         .filter(an => isResolution ? !an.is_excluded_in_resolution : (an.annexure_type !== 'resolution'))

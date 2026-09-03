@@ -114,20 +114,47 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
     });
   };
 
-  const handleToggleSubmitForNextMeeting = async (agenda: any) => {
-    setArchivingId(agenda.id);
+  const getResolutionStatus = (agenda: any): 'not_executed' | 'executed' | 'submitted' | 'custom' => {
+    if (agenda.is_submitted_for_next_meeting) return 'submitted';
+    const plain = (agenda.execution_status || '').replace(/<[^>]*>/g, '').trim();
+    if (plain.length > 0) return 'custom';
+    if (agenda.is_executed === true || agenda.is_executed === 'yes' || agenda.is_executed === 't' || agenda.is_executed === 'true') return 'executed';
+    return 'not_executed';
+  };
+
+  const [statusSavingId, setStatusSavingId] = useState<string | null>(null);
+
+  // Single-select: exactly one status at a time. The backend enforces
+  // exclusivity (clearing the other fields + creating/removing the archive
+  // copy), so every transition goes through the unified execution endpoint.
+  const handleStatusChange = async (agenda: any, next: 'not_executed' | 'executed' | 'submitted' | 'custom', customText?: string) => {
+    const current = getResolutionStatus(agenda);
+    if (current === next && next !== 'custom') return;
+    setStatusSavingId(agenda.id);
+    setIsSavingExecution(true);
+    setArchivingId(next === 'submitted' || current === 'submitted' ? agenda.id : null);
     try {
-      if (agenda.is_submitted_for_next_meeting) {
-        await api.put(`/agendas/${agenda.id}/remove-from-archive`);
-        toast.success("Removed from next meeting archive");
-      } else {
-        await api.put(`/agendas/${agenda.id}/copy-to-archive`);
+      if (next === 'custom') {
+        if (!customText || !customText.replace(/<[^>]*>/g, '').trim()) {
+          toast.error("Custom status text is required");
+          return;
+        }
+        await api.put(`/agendas/resolutions/${agenda.id}/execution`, { status: 'custom', execution_status: customText });
+        toast.success("Custom status saved");
+      } else if (next === 'submitted') {
+        await api.put(`/agendas/resolutions/${agenda.id}/execution`, { status: 'submitted' });
         toast.success("Submitted for next meeting");
+      } else {
+        await api.put(`/agendas/resolutions/${agenda.id}/execution`, { status: next });
+        toast.success("Execution status updated");
       }
       mutate();
+      if (next === 'custom') setExecutingId(null);
     } catch (err: any) {
       toast.error(err.response?.data?.error?.message || "Failed to update");
     } finally {
+      setStatusSavingId(null);
+      setIsSavingExecution(false);
       setArchivingId(null);
     }
   };
@@ -163,7 +190,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
           ? `${firstFull}`
           : `${firstFull} হতে ${lastFull}`;
 
-        const headerStr = `'${letter}' গ্রুপ (প্রস্তাবনা নং ${rangeText}): ${catName}`;
+        const headerStr = `'${letter}' গ্রুপ (প্রস্তাব নং ${rangeText}): ${catName}`;
         categoryHeaderMap.set(firstAg.id, headerStr);
         groupCount++;
       }
@@ -243,7 +270,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                   <h3 className="font-semibold text-base text-primary mb-2">
                     {isBibidha
                       ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`)
-                      : `প্রস্তাবনা নং ${(meeting.agenda_prefix || '') + displaySerial}`}
+                      : `প্রস্তাব নং ${(meeting.agenda_prefix || '') + displaySerial}`}
                   </h3>
                   {agenda.tags && agenda.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mb-2">
@@ -366,73 +393,44 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                       Execution Status
                     </h4>
 
-                    <div className="space-y-4">
-                      {/* Radio buttons: Not Executed / Executed */}
-                      <div className="flex items-center gap-6">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`execution-${agenda.id}`}
-                            disabled={readOnly}
-                            className="w-4 h-4 border-input text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-                            checked={!agenda.is_executed}
-                            onChange={async () => {
-                              try {
-                                await api.put(`/agendas/resolutions/${agenda.id}/execution`, {
-                                  is_executed: false,
-                                  execution_status: ""
-                                });
-                                mutate();
-                                toast.success("Execution status updated");
-                              } catch (err) {
-                                toast.error("Failed to update execution status");
-                              }
-                            }}
-                          />
-                          <span className="text-sm font-medium">Not Executed</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`execution-${agenda.id}`}
-                            disabled={readOnly}
-                            className="w-4 h-4 border-input text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-                            checked={agenda.is_executed === true || agenda.is_executed === 'yes'}
-                            onChange={async () => {
-                              try {
-                                await api.put(`/agendas/resolutions/${agenda.id}/execution`, {
-                                  is_executed: true,
-                                  execution_status: ""
-                                });
-                                mutate();
-                                toast.success("Execution status updated");
-                              } catch (err) {
-                                toast.error("Failed to update execution status");
-                              }
-                            }}
-                          />
-                          <span className="text-sm font-medium">Executed</span>
-                        </label>
+                    {(() => {
+                      const currentStatus = getResolutionStatus(agenda);
+                      const busy = statusSavingId === agenda.id || archivingId === agenda.id;
+                      return (
+                      <div className="space-y-4">
+                      {/* Single-select resolution status: only one active at a time */}
+                      <div className="flex flex-col gap-2">
+                        {([
+                          { value: 'not_executed', label: 'Not Executed' },
+                          { value: 'executed', label: 'Executed' },
+                          { value: 'submitted', label: archivingId === agenda.id ? 'Updating...' : 'Submit for Next Meeting' },
+                          { value: 'custom', label: 'Custom' },
+                        ] as const).map((opt) => (
+                          <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`execution-${agenda.id}`}
+                              disabled={readOnly || busy}
+                              className="w-4 h-4 border-input text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
+                              checked={currentStatus === opt.value}
+                              onChange={() => {
+                                if (opt.value === 'custom') {
+                                  setExecutingId(agenda.id);
+                                  setExecutionContent(agenda.execution_status || "");
+                                } else {
+                                  handleStatusChange(agenda, opt.value);
+                                }
+                              }}
+                            />
+                            <span className="text-sm font-medium">{opt.label}</span>
+                          </label>
+                        ))}
                       </div>
 
-                      {/* Checkbox: Submit to Next Meeting */}
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          disabled={readOnly || archivingId === agenda.id}
-                          className="w-4 h-4 rounded border-input text-amber-600 focus:ring-amber-500 disabled:opacity-50"
-                          checked={agenda.is_submitted_for_next_meeting || false}
-                          onChange={() => handleToggleSubmitForNextMeeting(agenda)}
-                        />
-                        <span className="text-sm font-medium">
-                          {archivingId === agenda.id ? "Updating..." : "Submit to Next Meeting"}
-                        </span>
-                      </label>
-
-                      {/* Custom Status */}
-                      {!readOnly && (
+                      {/* Custom status input — visible when Custom is selected */}
+                      {(currentStatus === 'custom' || executingId === agenda.id) && (
                         <div>
-                          {executingId === agenda.id ? (
+                          {executingId === agenda.id && !readOnly ? (
                             <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10">
                               <RichTextEditor
                                 content={executionContent}
@@ -440,51 +438,37 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                                 className="p-4 min-h-[100px]"
                               />
                               <div className="bg-muted p-2 flex justify-end gap-2 border-t border-border">
-                                <button onClick={() => setExecutingId(null)} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
-                                <button onClick={async () => {
-                                  setIsSavingExecution(true);
-                                  try {
-                                    await api.put(`/agendas/resolutions/${agenda.id}/execution`, {
-                                      is_executed: agenda.is_executed,
-                                      execution_status: executionContent
-                                    });
-                                    mutate();
-                                    setExecutingId(null);
-                                    toast.success("Custom status saved");
-                                  } catch (err) {
-                                    toast.error("Failed to save custom status");
-                                  } finally {
-                                    setIsSavingExecution(false);
-                                  }
-                                }} disabled={isSavingExecution} className="px-3 py-1 text-xs bg-emerald-600 text-white hover:bg-emerald-700 rounded-md disabled:opacity-50 transition-colors">
-                                  {isSavingExecution ? "Saving..." : "Save"}
+                                <button onClick={() => {
+                                  setExecutingId(null);
+                                  if (currentStatus !== 'custom') setExecutionContent("");
+                                }} className="px-3 py-1 text-xs text-muted-foreground hover:bg-background rounded-md">Cancel</button>
+                                <button onClick={() => handleStatusChange(agenda, 'custom', executionContent)}
+                                  disabled={isSavingExecution || busy} className="px-3 py-1 text-xs bg-emerald-600 text-white hover:bg-emerald-700 rounded-md disabled:opacity-50 transition-colors">
+                                  {isSavingExecution || busy ? "Saving..." : "Save"}
                                 </button>
                               </div>
                             </div>
                           ) : agenda.execution_status ? (
                             <div className="relative group">
+                              {!readOnly && (
                               <button
                                 onClick={() => { setExecutingId(agenda.id); setExecutionContent(agenda.execution_status); }}
                                 className="absolute top-0 right-0 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-emerald-50 rounded-md hover:bg-emerald-100 flex items-center gap-2 text-xs font-medium z-10"
                               >
                                 <Edit3 className="w-3.5 h-3.5" /> Edit
                               </button>
+                              )}
                               <div
                                 className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-emerald-200/30 border border-emerald-100 p-4 rounded-md shadow-sm"
                                 dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.execution_status) }}
                               />
                             </div>
-                          ) : (
-                            <button
-                              onClick={() => { setExecutingId(agenda.id); setExecutionContent(""); }}
-                              className="bg-background border border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm py-2 px-4 text-sm font-medium rounded-md flex items-center gap-2 transition-colors"
-                            >
-                              <Edit3 className="w-4 h-4" /> Add Custom Status
-                            </button>
-                          )}
+                          ) : null}
                         </div>
                       )}
-                    </div>
+                      </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

@@ -235,7 +235,7 @@ The system tracks **8 distinct section locks** on each meeting record:
 | **Agenda Lock** | `agenda_locked_level` | Main agenda items & annexure uploads | $\text{CanEdit} \iff L_{user} \ge L_{agenda\_locked} \lor isAdmin$ |
 | **Suppli Agenda Lock** | `suppli_agenda_locked_level` | Supplementary agenda items (`is_suppli`) | $\text{CanEdit} \iff L_{user} \ge L_{suppli\_locked} \lor isAdmin$ |
 | **Resolution Lock** | `resolution_locked_level` | Resolution text authoring | $\text{CanEdit} \iff L_{user} \ge L_{resolution\_locked} \lor isAdmin$ |
-| **Resolution Status Lock** | `resolution_status_locked_level` | Execution status (`is_executed`, text) | $\text{CanEdit} \iff L_{user} \ge L_{res\_status\_locked} \lor isAdmin$ |
+| **Resolution Status Lock** | `resolution_status_locked_level` | Resolution status single-select (`is_executed` / `execution_status` / `is_submitted_for_next_meeting` — exactly one of Not Executed, Executed, Submit for Next Meeting, Custom) | $\text{CanEdit} \iff L_{user} \ge L_{res\_status\_locked} \lor isAdmin$ |
 | **Invitees Lock** | `invitees_locked_level` | Invitee list & member seniority ordering | $\text{CanEdit} \iff L_{user} \ge L_{invitees\_locked} \lor isAdmin$ |
 | **Presentees Lock** | `presentees_locked_level` | Attendance taking during active meeting | $\text{CanEdit} \iff L_{user} \ge L_{presentees\_locked} \lor isAdmin$ |
 | **Conclusion Lock** | `conclusion_locked_level` | Meeting conclusion & wrap-up summary | $\text{CanEdit} \iff L_{user} \ge L_{conclusion\_locked} \lor isAdmin$ |
@@ -607,7 +607,7 @@ export const DEPARTMENT_MERGE_RULES = [
 | `DELETE` | `/api/agendas/archived/:id` | Permanently delete archived item |
 | `GET` | `/api/agendas/:id/revisions` | View revision history for an agenda item |
 | `POST` | `/api/agendas/:id/annexures` | Upload annexure attachment to an agenda item |
-| `PUT` | `/api/agendas/resolutions/:resId/execution` | Update execution status (`is_executed`, `execution_status`) |
+| `PUT` | `/api/agendas/resolutions/:resId/execution` | Update resolution status (single-select: `status` = `not_executed` \| `executed` \| `submitted` \| `custom` with `execution_status` text for custom; backend enforces exclusivity and creates/removes the archive copy) |
 | `GET` | `/api/members` | List university council members |
 | `POST` | `/api/members` | Add a new member |
 | `PUT` | `/api/members/:id` | Update member information |

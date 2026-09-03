@@ -59,7 +59,7 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
       className={`border ${isBibidha ? 'border-border/80 bg-muted/20' : 'border-border'} rounded-lg p-6 bg-card transition-shadow ${isAgendaHighlight && showHighlight ? 'ring-2 ring-primary' : ''}`}
     >
       <h3 className="font-semibold text-lg mb-4 text-foreground">
-        {isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাবনা নং ${(agendaPrefix || '') + displaySerial}`}
+        {isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাব নং ${(agendaPrefix || '') + displaySerial}`}
       </h3>
       {!isOnlyBibidhaTitle && (
         <div

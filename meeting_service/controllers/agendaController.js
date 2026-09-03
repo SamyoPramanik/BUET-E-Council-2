@@ -439,7 +439,7 @@ const getResolutions = async (req, res, next) => {
             }
         }
 
-        let query = 'SELECT a.id, a.meeting_id, a.agenda_serial, a.resolution, a.is_executed, a.execution_status FROM agenda a WHERE a.resolution IS NOT NULL';
+        let query = 'SELECT a.id, a.meeting_id, a.agenda_serial, a.resolution, a.is_executed, a.execution_status, a.is_submitted_for_next_meeting FROM agenda a WHERE a.resolution IS NOT NULL';
         let params = [];
 
         if (meeting_id) {
@@ -531,18 +531,108 @@ const updateResolution = async (req, res, next) => {
     }
 };
 
+// Single-select resolution status: exactly one of
+// 'not_executed' | 'executed' | 'submitted' | 'custom' may be active.
+// Stored as: not_executed=(false,NULL,false), executed=(true,NULL,false),
+// submitted=(false,NULL,true + archive copy), custom=(false,<html>,false).
+const hasCustomText = (val) => {
+    if (!val) return false;
+    const plain = String(val).replace(/<[^>]*>/g, '').trim();
+    return plain.length > 0;
+};
+
+const deleteArchiveCopies = async (client, agenda) => {
+    await client.query(
+        `DELETE FROM agenda WHERE meeting_id = $1 AND is_suppli = $2 AND is_archived = true AND content IS NOT DISTINCT FROM (SELECT content FROM agenda WHERE id = $3) AND resolution IS NOT DISTINCT FROM (SELECT resolution FROM agenda WHERE id = $3)`,
+        [agenda.meeting_id, agenda.is_suppli, agenda.id]
+    );
+};
+
+const deriveStatusFromBody = (body) => {
+    if (body.status) {
+        const s = String(body.status).toLowerCase();
+        if (['not_executed', 'not-executed', 'notexecuted', 'no'].includes(s)) return 'not_executed';
+        if (['executed', 'yes'].includes(s)) return 'executed';
+        if (['submitted', 'submit_for_next_meeting', 'submit-for-next-meeting', 'next'].includes(s)) return 'submitted';
+        if (['custom'].includes(s)) return 'custom';
+    }
+    // Legacy shape: { is_executed, execution_status, is_submitted_for_next_meeting }
+    if (body.is_submitted_for_next_meeting === true || body.is_submitted_for_next_meeting === 'true') return 'submitted';
+    if (hasCustomText(body.execution_status)) return 'custom';
+    if (body.is_executed === true || body.is_executed === 'yes' || body.is_executed === 't' || body.is_executed === 'true' || body.is_executed === 1) return 'executed';
+    if (body.is_executed === false || body.is_executed === 'no' || body.is_executed === 'false' || body.is_executed === 0) return 'not_executed';
+    return null;
+};
+
 const updateExecutionStatus = async (req, res, next) => {
     try {
         const agendamId = req.params.resId;
-        const { is_executed, execution_status } = req.body;
+        const derived = deriveStatusFromBody(req.body || {});
+        if (!derived) return next(new CustomError('status is required (not_executed | executed | submitted | custom)', 400));
 
-        const result = await db.query(
-            'UPDATE agenda SET is_executed = $1, execution_status = $2 WHERE id = $3 RETURNING *',
-            [is_executed, execution_status, agendamId]
-        );
+        const existingRes = await db.query('SELECT * FROM agenda WHERE id = $1', [agendamId]);
+        if (existingRes.rows.length === 0) return next(new CustomError('Resolution/Agenda not found', 404));
+        const agenda = existingRes.rows[0];
 
-        if (result.rows.length === 0) return next(new CustomError('Resolution/Agenda not found', 404));
+        if (derived === 'custom' && !hasCustomText(req.body.execution_status)) {
+            return next(new CustomError('execution_status text is required for custom status', 400));
+        }
 
+        const client = await db.pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            if (derived === 'submitted') {
+                if (!agenda.is_submitted_for_next_meeting) {
+                    await client.query(
+                        `INSERT INTO agenda (content, content_plain, resolution, resolution_plain,
+                            is_executed, execution_status, agenda_serial, meeting_id,
+                            is_suppli, is_archived, category_id)
+                         VALUES ($1, $2, $3, $4, false, NULL, $5, $6, $7, true, $8)`,
+                        [
+                            agenda.content, agenda.content_plain,
+                            agenda.resolution, agenda.resolution_plain,
+                            0, agenda.meeting_id,
+                            agenda.is_suppli, agenda.category_id
+                        ]
+                    );
+                }
+                await client.query(
+                    'UPDATE agenda SET is_executed = false, execution_status = NULL, is_submitted_for_next_meeting = true WHERE id = $1',
+                    [agendamId]
+                );
+            } else {
+                // Leaving submitted state removes the corresponding archive copy.
+                if (agenda.is_submitted_for_next_meeting) {
+                    await deleteArchiveCopies(client, agenda);
+                }
+                if (derived === 'executed') {
+                    await client.query(
+                        'UPDATE agenda SET is_executed = true, execution_status = NULL, is_submitted_for_next_meeting = false WHERE id = $1',
+                        [agendamId]
+                    );
+                } else if (derived === 'custom') {
+                    await client.query(
+                        'UPDATE agenda SET is_executed = false, execution_status = $1, is_submitted_for_next_meeting = false WHERE id = $2',
+                        [req.body.execution_status, agendamId]
+                    );
+                } else {
+                    await client.query(
+                        'UPDATE agenda SET is_executed = false, execution_status = NULL, is_submitted_for_next_meeting = false WHERE id = $1',
+                        [agendamId]
+                    );
+                }
+            }
+
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+
+        const result = await db.query('SELECT * FROM agenda WHERE id = $1', [agendamId]);
         res.status(200).json({ success: true, message: 'Execution status updated', data: result.rows[0] });
     } catch (error) {
         next(error);
@@ -947,24 +1037,23 @@ const copyToArchive = async (req, res, next) => {
         try {
             await client.query('BEGIN');
 
-            // 1. Create a copy of the agenda in the archive
+            // 1. Create a copy of the agenda in the archive (fresh status: not executed)
             await client.query(
                 `INSERT INTO agenda (content, content_plain, resolution, resolution_plain,
                     is_executed, execution_status, agenda_serial, meeting_id,
                     is_suppli, is_archived, category_id)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10)`,
+                 VALUES ($1, $2, $3, $4, false, NULL, $5, $6, $7, true, $8)`,
                 [
                     agenda.content, agenda.content_plain,
                     agenda.resolution, agenda.resolution_plain,
-                    agenda.is_executed, agenda.execution_status,
                     0, agenda.meeting_id,
                     agenda.is_suppli, agenda.category_id
                 ]
             );
 
-            // 2. Mark the original as submitted for next meeting
+            // 2. Mark the original as submitted — exclusive: clear executed + custom
             await client.query(
-                'UPDATE agenda SET is_submitted_for_next_meeting = true WHERE id = $1',
+                'UPDATE agenda SET is_executed = false, execution_status = NULL, is_submitted_for_next_meeting = true WHERE id = $1',
                 [id]
             );
 

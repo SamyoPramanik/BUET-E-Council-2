@@ -758,7 +758,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
             }
 
             return `
-            <div class="agenda-block" style="page-break-inside: avoid; margin-bottom: 30px;">
+            <div class="agenda-block" style="margin-bottom: 30px; page-break-before: auto;">
                 <div class="agenda-title" style="font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${isBibidha ? 'বিবিধ :' : 'প্রস্তাবনা নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</b></div>
                 <div class="agenda-content" style="margin-left: 30px; text-align: justify; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${styleRichTextHtml(displayContent, true)}</div>
                 ${isResolution ? `
@@ -818,10 +818,13 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant) => {
                     margin-bottom: 15px;
                     break-after: avoid;
                     page-break-after: avoid;
+                    break-before: auto;
+                    page-break-before: auto;
                 }
                 .agenda-block {
-                    page-break-inside: avoid;
                     margin-bottom: 30px;
+                    break-before: auto;
+                    page-break-before: auto;
                 }
                 .agenda-title { font-weight: bold; margin-bottom: 5px; font-size: 14px;}
                 .agenda-content, .agenda-resolution { margin-left: 30px; text-align: justify; font-size: 14px;}

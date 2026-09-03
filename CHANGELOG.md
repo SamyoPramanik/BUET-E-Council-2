@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-09-03 — Dynamic List Ribbon Controls, Navigation & Multi-Theme System
+
+### New Features
+
+**Dynamic Single List Ribbon Control (RichTextEditor.tsx)**
+- Replaced separate English (`1, 2, 3`) and Bangla (`১, ২, ৩`) list buttons with a **single dynamic toggle button**.
+- Icon/prefix automatically updates to match whichever style is selected in the list dropdown (`•`, `◦`, `▪`, `1.`, `১.`, `I.`, `a.`).
+- Clicking the single button toggles that exact list style on/off in the document editor.
+
+**Multi-Theme Color System (globals.css & ThemeToggle.tsx)**
+- Added 4 complete application themes:
+  - 🍷 **BUET Maroon** (`maroon`): Classic Maroon (`#800000`) & cream theme.
+  - 🌊 **Ocean Blue** (`blue`): White & Blue theme featuring Royal Blue (`#2563eb`).
+  - 🖤 **Monochrome** (`monochrome`): White & Black minimalist theme (`#09090b`).
+  - 🌙 **Midnight Dark** (`dark`): Dark mode with deep crimson highlights (`#c45c5c`).
+- Built an interactive multi-theme switcher in `ThemeToggle.tsx` with live color dots, theme badges, and real-time switching.
+- Updated table headers and container borders to adapt dynamically using `color-mix` CSS variables.
+
+**Public Meeting View Navigation**
+- Updated the "View" (eye icon) action on meeting tables in `ManageMeetingsPage` to open `/meetings/[id]` (public view) directly without the administrative `/workspace/` prefix.
+
+**Administrative UI Cleanup**
+- Removed redundant "Archive Agenda Lock Level" setting from `MeetingPermissionsView.tsx`.
+
+---
+
 ## 2026-09-02 — Resolution Status & Archive Features
 
 ### New Features

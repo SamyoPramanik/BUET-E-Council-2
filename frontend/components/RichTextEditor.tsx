@@ -1892,7 +1892,7 @@ const MenuBar = ({
           <button
             type="button"
             onClick={() => setIsRibbonEnlarged(prev => !prev)}
-            className={`px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold cursor-pointer transition-all ${
+            className={`btn-dynamic px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold cursor-pointer transition-all ${
               isRibbonEnlarged
                 ? 'bg-primary/20 text-primary shadow-xs'
                 : 'bg-card/80 hover:bg-card text-muted-foreground shadow-2xs'
@@ -1906,7 +1906,7 @@ const MenuBar = ({
           <button
             type="button"
             onClick={onOpenFindReplace}
-            className="px-2.5 py-1 rounded bg-card/80 hover:bg-card text-foreground flex items-center gap-1 text-[11px] font-bold cursor-pointer transition-all shadow-2xs"
+            className="btn-dynamic px-2.5 py-1 rounded bg-card/80 hover:bg-card text-foreground flex items-center gap-1 text-[11px] font-bold cursor-pointer transition-all shadow-2xs"
             title="Find & Replace (Ctrl+F)"
           >
             <Search className="w-3.5 h-3.5 text-primary" />
@@ -1916,10 +1916,10 @@ const MenuBar = ({
           <button
             type="button"
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className={`px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold cursor-pointer transition-all ${
+            className={`btn-dynamic px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold cursor-pointer transition-all ${
               isFullscreen
                 ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-sm'
-                : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xs'
+                : 'btn-maroon-gradient shadow-2xs'
             }`}
             title={isFullscreen ? "Exit Fullscreen (Esc)" : "Full Screen Window Mode"}
           >

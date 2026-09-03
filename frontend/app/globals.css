@@ -262,31 +262,59 @@ div[data-type="column-group"][data-cols="3"] {
 /* Callout Box / Blockquote Horizontal Overflow Expansion */
 blockquote,
 .callout-box {
-  border-left: 4px solid #800000 !important;
-  background: rgba(128, 0, 0, 0.06) !important;
-  padding: 12px 16px !important;
-  margin: 12px 0 !important;
-  border-radius: 0 8px 8px 0 !important;
+  border-left: 4px solid var(--primary) !important;
+  background: linear-gradient(90deg, rgba(128, 0, 0, 0.08) 0%, rgba(128, 0, 0, 0.02) 100%) !important;
+  padding: 14px 18px !important;
+  margin: 14px 0 !important;
+  border-radius: 0 10px 10px 0 !important;
   width: 100% !important;
   max-width: none !important;
   box-sizing: border-box !important;
   overflow-x: auto !important;
+  box-shadow: inset 1px 0 0 rgba(128, 0, 0, 0.15);
+  transition: all 0.2s ease-in-out !important;
+}
+
+blockquote:hover,
+.callout-box:hover {
+  background: linear-gradient(90deg, rgba(128, 0, 0, 0.12) 0%, rgba(128, 0, 0, 0.04) 100%) !important;
+  box-shadow: inset 2px 0 0 var(--primary), 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+.dark blockquote,
+.dark .callout-box {
+  background: linear-gradient(90deg, rgba(196, 92, 92, 0.15) 0%, rgba(196, 92, 92, 0.03) 100%) !important;
 }
 
 /* ColumnItem: Each individual cell inside the grid */
 div[data-type="column-item"] {
-  min-height: 80px !important;
-  padding: 12px !important;
-  border: 1px dashed rgba(99, 102, 241, 0.35) !important;
-  border-radius: 8px !important;
+  min-height: 85px !important;
+  padding: 14px !important;
+  border: 1.5px dashed rgba(128, 0, 0, 0.3) !important;
+  border-radius: 10px !important;
   box-sizing: border-box !important;
-  transition: border-color 0.15s !important;
+  background: rgba(255, 255, 255, 0.3) !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
   overflow-x: auto !important;
+}
+
+.dark div[data-type="column-item"] {
+  border: 1.5px dashed rgba(196, 92, 92, 0.35) !important;
+  background: rgba(30, 22, 22, 0.3) !important;
+}
+
+div[data-type="column-item"]:hover {
+  border-color: var(--primary) !important;
+  border-style: solid !important;
+  box-shadow: 0 4px 12px rgba(128, 0, 0, 0.06) !important;
+  background: rgba(128, 0, 0, 0.02) !important;
 }
 
 div[data-type="column-item"]:focus-within {
   border-color: var(--primary) !important;
-  background-color: rgba(99, 102, 241, 0.04) !important;
+  border-style: solid !important;
+  background-color: rgba(128, 0, 0, 0.04) !important;
+  box-shadow: 0 0 0 3px rgba(128, 0, 0, 0.18), 0 4px 14px rgba(128, 0, 0, 0.08) !important;
 }
 
 /* Prevent prose max-width from constraining column cells */
@@ -390,10 +418,33 @@ div[data-type="column-item"]>* {
 .ProseMirror table th {
   min-width: 1em;
   border: 1px solid #64748b;
-  padding: 2px 4px;
+  padding: 4px 8px;
   vertical-align: top;
   box-sizing: border-box;
   position: relative;
+}
+
+/* ── Theme-Matched Table Header Styling ── */
+.ProseMirror table th,
+.prose table th,
+.meeting-table th,
+table thead th,
+table thead tr {
+  background: linear-gradient(180deg, rgba(128, 0, 0, 0.14) 0%, rgba(128, 0, 0, 0.06) 100%) !important;
+  color: #800000 !important;
+  font-weight: 700 !important;
+  border-bottom: 2px solid #800000 !important;
+  letter-spacing: 0.01em;
+}
+
+.dark .ProseMirror table th,
+.dark .prose table th,
+.dark .meeting-table th,
+.dark table thead th,
+.dark table thead tr {
+  background: linear-gradient(180deg, rgba(196, 92, 92, 0.28) 0%, rgba(196, 92, 92, 0.12) 100%) !important;
+  color: #f5d8d8 !important;
+  border-bottom: 2px solid #c45c5c !important;
 }
 
 .dark .ProseMirror table td,
@@ -407,7 +458,7 @@ div[data-type="column-item"]>* {
 .meeting-table th {
   min-width: 1em;
   border: 1px solid #cbd5e1;
-  padding: 2px 4px;
+  padding: 4px 8px;
   vertical-align: top;
   box-sizing: border-box;
   position: relative;
@@ -671,6 +722,22 @@ table[data-border="none"] th {
   display: none !important;
 }
 
+/* ── Table Cell Dynamic Hover & Selection Highlights ── */
+.ProseMirror table td,
+.ProseMirror table th {
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.ProseMirror table td:hover,
+.ProseMirror table th:hover {
+  background-color: rgba(128, 0, 0, 0.04) !important;
+}
+
+.dark .ProseMirror table td:hover,
+.dark .ProseMirror table th:hover {
+  background-color: rgba(196, 92, 92, 0.1) !important;
+}
+
 .ProseMirror table .selectedCell:after,
 .prose table .selectedCell:after {
   z-index: 2;
@@ -680,7 +747,8 @@ table[data-border="none"] th {
   right: 0;
   top: 0;
   bottom: 0;
-  background: rgba(128, 0, 0, 0.15);
+  background: rgba(128, 0, 0, 0.18);
+  box-shadow: inset 0 0 0 1.5px var(--primary);
   pointer-events: none;
 }
 
@@ -693,6 +761,7 @@ table[data-border="none"] th {
   width: 4px;
   z-index: 20;
   background-color: var(--primary);
+  box-shadow: 0 0 8px rgba(128, 0, 0, 0.6);
   pointer-events: none;
 }
 
@@ -701,41 +770,91 @@ table[data-border="none"] th {
   cursor: col-resize;
 }
 
-/* ── MS Word 2007 Ribbon & UI Design Tokens ── */
+/* ── MS Word Ribbon & Dynamic UI Design Tokens ── */
 .word-ribbon-bg {
-  background: linear-gradient(180deg, #e8f1fc 0%, #d0e1f9 45%, #b5d0f5 50%, #cbe0f8 100%);
+  background: linear-gradient(180deg, #f3f7fd 0%, #e1ebf9 45%, #cbdef8 50%, #dbe8fa 100%);
+  border-bottom: 1px solid #b8d2f5;
+  box-shadow: 0 4px 12px rgba(26, 54, 93, 0.04);
 }
 
 .dark .word-ribbon-bg {
-  background: linear-gradient(180deg, #2a2228 0%, #20191e 45%, #181216 50%, #241c22 100%);
+  background: linear-gradient(180deg, #2c2027 0%, #22181f 45%, #1a1117 50%, #261b22 100%);
+  border-bottom: 1px solid #4a303b;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 .word-group-box {
-  background: rgba(255, 255, 255, 0.45);
-  border: none;
-  border-radius: 4px;
-  box-shadow: none;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(128, 0, 0, 0.08);
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: all 0.2s ease-in-out;
+}
+
+.word-group-box:hover {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(128, 0, 0, 0.2);
+  box-shadow: 0 2px 6px rgba(128, 0, 0, 0.06);
 }
 
 .dark .word-group-box {
-  background: rgba(40, 30, 35, 0.5);
-  border: none;
+  background: rgba(45, 32, 38, 0.55);
+  border: 1px solid rgba(196, 92, 92, 0.15);
+  border-radius: 6px;
   box-shadow: none;
 }
 
+.dark .word-group-box:hover {
+  background: rgba(55, 38, 46, 0.75);
+  border-color: rgba(196, 92, 92, 0.3);
+}
+
 .word-ribbon-tab-active {
-  background: linear-gradient(180deg, #ffffff 0%, #edf4fe 100%) !important;
-  color: #1a365d !important;
-  border-color: #8bb5e8 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f4f8fe 100%) !important;
+  color: #800000 !important;
+  font-weight: 700 !important;
+  border-color: #9cbde8 !important;
   border-bottom-color: #ffffff !important;
-  box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 -3px 8px rgba(128, 0, 0, 0.12), inset 0 2px 0 var(--primary);
+  border-top-left-radius: 6px !important;
+  border-top-right-radius: 6px !important;
 }
 
 .dark .word-ribbon-tab-active {
-  background: linear-gradient(180deg, #3d2828 0%, #2a1b1b 100%) !important;
+  background: linear-gradient(180deg, #3d2527 0%, #2a181b 100%) !important;
   color: #f5d8d8 !important;
-  border-color: #704040 !important;
-  border-bottom-color: #2a1b1b !important;
+  font-weight: 700 !important;
+  border-color: #804045 !important;
+  border-bottom-color: #2a181b !important;
+  box-shadow: 0 -3px 8px rgba(0, 0, 0, 0.3), inset 0 2px 0 var(--primary);
+}
+
+/* Dynamic Button & Micro-Interactions */
+.btn-dynamic {
+  position: relative;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.btn-dynamic:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 10px rgba(128, 0, 0, 0.15);
+}
+
+.btn-dynamic:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 1px 3px rgba(128, 0, 0, 0.2);
+}
+
+.btn-maroon-gradient {
+  background: linear-gradient(135deg, #800000 0%, #991b1b 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(128, 0, 0, 0.25);
+}
+
+.btn-maroon-gradient:hover {
+  background: linear-gradient(135deg, #991b1b 0%, #b91c1c 100%) !important;
+  box-shadow: 0 4px 12px rgba(128, 0, 0, 0.35);
 }
 
 /* Word 2007 Quick Styles Gallery Cards */
@@ -744,8 +863,8 @@ table[data-border="none"] th {
 }
 
 .word-style-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(128, 0, 0, 0.15);
   border-color: var(--primary) !important;
 }
 

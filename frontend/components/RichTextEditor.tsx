@@ -2299,45 +2299,27 @@ const MenuBar = ({
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                    className={`p-1.5 rounded hover:bg-muted cursor-pointer ${editor.isActive('orderedList') && !(editor.getAttributes('orderedList').style || '').includes('bengali') ? 'bg-primary/20 text-primary font-bold border border-primary/30' : 'text-muted-foreground'}`}
-                    title="English Numbered List (1, 2, 3)"
-                  >
-                    <ListOrdered className="w-4 h-4" />
-                  </button>
-
+                  {/* Single Dynamic List Toggle Button (matches selected dropdown style) */}
                   <button
                     type="button"
                     onClick={() => {
-                      if (editor.isActive('orderedList')) {
-                        const currentStyle = editor.getAttributes('orderedList').style || '';
-                        if (currentStyle.includes('bengali')) {
-                          editor.chain().focus().toggleOrderedList().run();
-                          toast.info("Removed list");
-                        } else {
-                          editor.chain().focus().updateAttributes('orderedList', { style: 'list-style-type: bengali;' }).run();
-                          toast.success("Set to Bangla Numerals (১, ২, ৩)");
-                        }
+                      const curStyle = getCurrentListStyle();
+                      if (curStyle.type === 'bullet') {
+                        setBulletStyle(curStyle.style as any);
                       } else {
-                        editor.chain().focus().toggleOrderedList().run();
-                        setTimeout(() => {
-                          if (editor.isActive('orderedList')) {
-                            editor.chain().focus().updateAttributes('orderedList', { style: 'list-style-type: bengali;' }).run();
-                          }
-                        }, 15);
-                        toast.success("Bangla Numbered List (১, ২, ৩)");
+                        setOrderedStyle(curStyle.style as any);
                       }
                     }}
-                    className={`px-1.5 py-1 rounded hover:bg-muted flex items-center text-xs font-extrabold cursor-pointer ${
-                      editor.isActive('orderedList') && (editor.getAttributes('orderedList').style || '').includes('bengali')
-                        ? 'bg-primary/20 text-primary border border-primary/30'
-                        : 'text-muted-foreground'
+                    className={`px-2 py-1 rounded hover:bg-muted flex items-center justify-center font-extrabold cursor-pointer border transition-all ${
+                      editor.isActive('bulletList') || editor.isActive('orderedList')
+                        ? 'bg-primary/20 text-primary border-primary/30 font-bold shadow-2xs'
+                        : 'border-border text-muted-foreground hover:text-foreground'
                     }`}
-                    title="Bangla Numbered List (১. ২. ৩.)"
+                    title={`Toggle List (${getCurrentListStyle().name})`}
                   >
-                    <span>১.২.</span>
+                    <span className="font-mono text-sm font-bold text-primary min-w-[16px] text-center">
+                      {getCurrentListStyle().prefix}
+                    </span>
                   </button>
 
                   {/* Bangla Virtual Keyboard Trigger Button */}

@@ -478,6 +478,17 @@ Agenda / resolution / conclusion bodies may contain pipe-style Markdown tables (
 - Generated tables carry inline cell borders and `word-wrap` so they render as a grid in both the PDF stylesheet (`th, td { border: none }`) and the DOCX path.
 - Historical bug (fixed 2026-09-06): a header pre-processing step split multi-column header rows into one-cell lines, leaking the first cell as a stray `<p>` and dropping the rest of the header.
 
+#### Rich-Text Table Sizing in the PDF (`styleRichTextHtml`)
+
+Every `<table>` produced by the rich-text editor is re-sized for the PDF by `styleRichTextHtml`, keyed off the table's `data-width-mode` attribute (`full` default = stretch to the printable page width, `auto` = keep the authored/resized width — see [5.7 Table Tools Tab](#table-tools-tab)):
+
+- It walks the first row's cells, reading each column's `colwidth` (written by TipTap's column-resize) into a per-column pixel-width-or-`null` array.
+- All columns sized → emits a `<colgroup>`: `full` converts each width to a percentage of their sum (proportions preserved, table still fills the page); `auto` keeps the exact pixel widths (table width = their sum).
+- Some columns sized, others not → pins the sized ones to their exact px and lets the rest share the remaining width — mirrors the editor's live mid-resize state.
+- No columns sized → no `<colgroup>`; `table-layout: fixed` splits the columns evenly.
+
+**Historical bug (fixed 2026-09-15):** the internal `injectStyle` helper found an existing `style="..."` attribute with `/style="([^"]*)"/i` — unanchored, so it also matched inside `data-table-style="..."` (present on every editor table by default) and spliced the sizing CSS in there instead of adding a real `style` attribute. Every table silently fell back to `table-layout: auto`, breaking column proportions and forcing mid-word wraps for both Bangla and English text, and also broke the Table Style Gallery presets (their selectors match `data-table-style="grid-blue"` etc. exactly). Fixed by requiring `style=` to be preceded by whitespace before treating it as a real attribute match — a reminder that any future attribute containing the substring `style` needs the same care in this helper.
+
 #### Per-Request Page-Layout Overrides
 
 `normalizePdfLayout(raw)` validates and clamps an optional layout object (parsed from the `GET /api/meetings/:id/pdf/:type` query string by `meetingController.generatePdf`) into a safe shape. When nothing is supplied, generation stays on the historical A4 / 20 mm / 1× defaults, so email attachments and status sync are unaffected.

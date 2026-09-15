@@ -172,10 +172,17 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
         return s.replace(/^;\s*/, '').trim();
     };
 
-    // Helper: inject/update a style attribute on an HTML opening tag string
+    // Helper: inject/update a style attribute on an HTML opening tag string.
+    // The `style=` match requires a preceding whitespace so it can only match a
+    // genuine `style="..."` attribute — without it, `/style="([^"]*)"/i` also
+    // matches inside attributes like `data-table-style="none"` (present on every
+    // editor table by default), silently corrupting that attribute instead of
+    // adding a real `style` one and dropping the sizing CSS (table-layout: fixed,
+    // width, colgroup honoring, etc.) entirely.
     const injectStyle = (tag, additions) => {
-        if (/style="([^"]*)"/i.test(tag)) {
-            return tag.replace(/style="([^"]*)"/i, (m, s) => `style="${mergeStyle(s, additions)}"`);
+        const styleAttrRe = /(\s)style="([^"]*)"/i;
+        if (styleAttrRe.test(tag)) {
+            return tag.replace(styleAttrRe, (m, ws, s) => `${ws}style="${mergeStyle(s, additions)}"`);
         }
         const styleStr = Object.entries(additions).map(([k, v]) => `${k}: ${v}`).join('; ');
         return tag.replace(/(\s*\/?>)$/, ` style="${styleStr}"$1`);

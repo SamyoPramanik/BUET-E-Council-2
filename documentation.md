@@ -1062,7 +1062,7 @@ Ribbon dropdowns (Page Layout's included) render through a `LayoutPopover` helpe
 
 #### Table Tools Tab
 
-Columns/Rows insert & delete, Row Height presets, Cell Shading, Vertical Alignment (Top/Middle/Bottom), Merge/Split Cells, Split/Merge Tables, Rotate Text 90°, per-cell bullet/number list styling, a 6-option Border style picker (`data-border` attribute), a 4-preset Table Style gallery (`data-table-style` — Plain/Blue Grid/Gray Bands/Crimson Header) and Table Alignment on the page (`data-align`). Row/column dragging is handled by TipTap's built-in column resizing plus a custom `rowResizing` ProseMirror plugin ([`frontend/lib/tableRowResizing.ts`](frontend/lib/tableRowResizing.ts)) that mirrors it for rows.
+Columns/Rows insert & delete, Row Height presets, Cell Shading, Vertical Alignment (Top/Middle/Bottom), Merge/Split Cells, Split/Merge Tables, Rotate Text 90°, per-cell bullet/number list styling, a 6-option Border style picker (`data-border` attribute), a 4-preset Table Style gallery (`data-table-style` — Plain/Blue Grid/Gray Bands/Crimson Header), Table Alignment on the page (`data-align`), and a Width choice — **Stretch to Page** / **Original Size** (`data-width-mode`, `full` default vs. `auto`) — that also drives the table's rendered width in the generated PDF. Row/column dragging is handled by TipTap's built-in column resizing plus a custom `rowResizing` ProseMirror plugin ([`frontend/lib/tableRowResizing.ts`](frontend/lib/tableRowResizing.ts)) that mirrors it for rows.
 
 Row Height, Cell Shading, and Vertical Alignment all persist into the same table-cell `style` attribute. They go through a `mergeCellStyle` helper that parses the existing `style` string into a property map, patches only the property being changed, and re-serializes it — setting one no longer silently erases the other two.
 
@@ -1075,7 +1075,7 @@ Several TipTap StarterKit default nodes don't declare a `style`/`class` attribut
 | `orderedList` | `CustomOrderedList` | `start` + `style` (numbering style, Bangla digit input rule) |
 | `bulletList` | `CustomBulletList` | `style` (Disc/Circle/Square marker) |
 | `horizontalRule` | `CustomHorizontalRule` | `class` + `style` (the "Page Break" `<hr>` needs its `page-break` class and dashed-line style to survive) |
-| `table` | `CustomTable` | `data-border`, `data-table-style`, `data-align` |
+| `table` | `CustomTable` | `data-border`, `data-table-style`, `data-align`, `data-width-mode` |
 
 When adding a new node-level style/attribute to this editor, check this table first — it is the recurring root cause of "I set it but nothing happened" bugs here.
 
@@ -1105,6 +1105,12 @@ Full list lives in `KEYBOARD_SHORTCUTS_DATA` in `RichTextEditor.tsx` and is rend
 | `Ctrl + Alt + P` | Toggle Word A4 Page view / Fluid Canvas |
 | `Ctrl + Shift + F` | Toggle editor full-screen mode |
 | `Ctrl` / `Cmd + S` | Trigger the host view's save handler (via the `onSave` prop), from anywhere in the editing panel |
+
+#### Paste Handling & Bijoy Auto-Conversion
+
+`editorProps.handlePaste` distinguishes rich pastes (Word, Docs, or any browser copy — anything carrying `text/html` on the clipboard) from genuine plain-text-only pastes (Notepad, or a bare Bijoy-typed line). Only the latter go through the direct plain-text Bijoy-detection/conversion path (`isBijoyText` / `convertBijoyToUnicode`) inside `handlePaste` itself; any paste carrying `text/html` returns `false` immediately and falls through to TipTap's default HTML→schema parsing, which preserves `<table>`/`<tr>`/`<td>` and all other markup untouched.
+
+Bijoy conversion for rich pastes instead happens via `editorProps.transformPastedHTML: convertHtmlBijoyToUnicode` ([`frontend/lib/bijoyToUnicode.ts`](frontend/lib/bijoyToUnicode.ts)), which parses the pasted HTML with `DOMParser`, walks every text node, and Bijoy-converts only the individual nodes that match the heuristic — never the surrounding tags. This node-scoped approach is deliberate: an earlier version ran the same heuristic against the clipboard's flattened plain-text representation of the *whole* selection, so pasting a table replaced the entire selection with one converted plain-text node (destroying the table), and concatenating unrelated cells' text together could break apart Bengali juktakkhor (conjunct) sequences or false-positive ordinary English into Bangla-looking gibberish.
 
 ---
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-09-15 — Rich-Text Table Sizing Fix in Generated PDFs
+
+### Bug Fixes
+
+**Rich-text tables losing their sizing/layout in the PDF (`pdfGenerator.js` → `styleRichTextHtml` → `injectStyle`)**
+- Every table coming out of the editor carries a `data-table-style` attribute (default `"none"`). The helper that injects the table's sizing CSS (`table-layout: fixed`, `width`, colgroup honoring, etc.) found an existing `style="..."` attribute to merge into with the regex `/style="([^"]*)"/i` — which, having no word boundary, also matched inside `data-table-style="none"`. The sizing CSS was silently spliced into `data-table-style` instead of a real `style` attribute, which was never added at all.
+- Result: every rich-text table in every generated PDF rendered with `table-layout: auto` instead of `fixed`, so the browser ignored authored/resized column widths and sized columns from content instead — breaking table proportions and forcing ugly mid-word wraps in both Bangla and English text. It also broke the Table Style Gallery presets (Blue Grid/Gray Bands/Crimson Header), since their CSS selectors match `data-table-style="grid-blue"` etc. exactly, which was now corrupted.
+- Fixed by requiring `style=` to be preceded by whitespace before treating it as a real attribute.
+
+---
+
+## 2026-09-12 — Manual Table Width Choice & Word-Paste Table Fix
+
+### New Features
+
+**Per-table width choice (`RichTextEditor.tsx`, `globals.css`, `pdfGenerator.js`)**
+- The Table ribbon now exposes **Stretch to Page** / **Original Size**, stored as the `data-width-mode` table attribute (`full` default, `auto`). `full` keeps the previous always-stretch-to-page behavior; `auto` keeps the table at its authored width (sum of its column widths) so a small table no longer balloons to the full page width. Honored identically in the editor CSS and the PDF renderer.
+
+### Bug Fixes
+
+**Word paste destroying tables and mangling text (`RichTextEditor.tsx` → `handlePaste`, `transformPastedHTML`)**
+- The Bijoy→Unicode auto-convert heuristic used to run against the flattened plain-text half of every paste regardless of source. Pasting a table (or any rich content) from Word could get the *entire* selection replaced with one converted plain-text node — discarding all `<table>`/`<tr>`/`<td>` structure, and, since different cells' text got concatenated into one blob, sometimes breaking apart Bengali juktakkhor (conjunct) sequences that need to stay adjacent to reassemble correctly, or false-positive-converting ordinary English into Bangla-looking gibberish.
+- `handlePaste` now bails out (`return false`) whenever the clipboard carries `text/html` — true for any real rich paste — so table structure goes through TipTap's normal HTML→schema parsing untouched. Bijoy conversion for rich pastes now runs via `transformPastedHTML` → `convertHtmlBijoyToUnicode`, which walks the parsed HTML node-by-node and only converts individual text nodes that match the heuristic, so one cell's content can no longer contaminate another's.
+
+---
+
 ## 2026-09-10 — Print Each Resolution on Separate Page Option
 
 ### New Features

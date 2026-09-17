@@ -269,13 +269,27 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
     // it can still grow to any height, breaking onto the next page as needed.
     // markdown-generated tables (from convertMarkdownTablesToHtml) already carry
     // their own inline sizing incl. `border-collapse`, so they are left alone.
-    str = str.replace(/<table(\s[^>]*)?>([\s\S]*?)<\/table>/gi, (fullMatch, rawAttrs, inner) => {
+    str = str.replace(/<table(\s[^>]*)?>([\s\S]*?)<\/table>/gi, (fullMatch, rawAttrs, rawInner) => {
         const attrs = rawAttrs || '';
         if (/border-collapse/i.test(attrs)) return fullMatch;
 
         const align = (attrs.match(/data-align="(left|center|right)"/i) || [])[1] || 'left';
         const marginByAlign = { left: '12px 0', center: '12px auto', right: '12px 0 12px auto' }[align];
         const isAutoWidth = /data-width-mode="auto"/i.test(attrs);
+
+        // @tiptap/extension-table's own Table.renderHTML (createColGroup /
+        // getTableStyle) always bakes ITS OWN <colgroup> plus an absolute
+        // editor-canvas-px `width` (or `min-width`, if not every column was
+        // resized) into every table's HTML — that's what column-dragging and
+        // "Stretch to Page"/"Original Size" actually persist as. Left in
+        // place, that stale colgroup doubles up with the one we build below
+        // (two <colgroup>s), and its stale width/min-width silently wins the
+        // style merge below, because mergeStyle only fills in *properties
+        // that aren't already present* and "width: 1113px" already contains
+        // the substring "width". Net effect: resizing a column, or switching
+        // width mode, stopped reflecting in the PDF. Strip both so our own
+        // sizing always wins.
+        const inner = rawInner.replace(/<colgroup>[\s\S]*?<\/colgroup>/gi, '');
 
         // Walk the first row cell-by-cell so column order (and colspans) is kept,
         // recording a pixel width or null for every column.
@@ -322,7 +336,17 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
             ? { 'table-layout': 'fixed', 'width': 'auto', 'max-width': '100%', 'min-width': '0' }
             : { 'table-layout': 'fixed', 'width': '100%', 'max-width': '100%', 'min-width': '0' };
 
-        const openTag = injectStyle(`<table${attrs}>`, {
+        // Drop any stale width/min-width/max-width/table-layout TipTap baked into
+        // the table's own style attribute (see note above) so injectStyle's
+        // fill-in-only-if-missing merge can't skip our sizing in favor of it.
+        const attrsForOpenTag = attrs.replace(/(\s)style="([^"]*)"/i, (m, ws, s) => {
+            const kept = s.split(';').map((d) => d.trim())
+                .filter((d) => d && !/^(width|min-width|max-width|table-layout)\s*:/i.test(d))
+                .join('; ');
+            return kept ? `${ws}style="${kept}"` : '';
+        });
+
+        const openTag = injectStyle(`<table${attrsForOpenTag}>`, {
             'border-collapse': 'collapse',
             'margin': marginByAlign,
             'page-break-inside': 'auto',

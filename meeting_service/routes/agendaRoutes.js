@@ -38,6 +38,7 @@ router.delete('/:id', requireMeetingAuthor, agendaController.deleteAgendam);
 // approved + meeting ongoing, before the resolution is approved).
 router.get('/:id/resolutions', agendaController.getResolutions);
 router.post('/:id/resolutions', requireResolutionEditor, agendaController.createResolution);
+router.post('/:id/resolutions/autofill', requireResolutionEditor, agendaController.autofillResolution);
 router.put('/resolutions/:resId', requireResolutionEditor, agendaController.updateResolution);
 router.put('/resolutions/:resId/execution', requireResolutionEditor, agendaController.updateExecutionStatus);
 router.delete('/resolutions/:resId', requireResolutionEditor, agendaController.deleteResolution);

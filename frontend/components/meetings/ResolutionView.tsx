@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Edit3, FileText, FileCheck, Plus, Trash2, Eye, Download, X, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Edit3, FileText, FileCheck, Plus, Trash2, Eye, Download, X, Loader2, Sparkles } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import AnnexureList from "./AnnexureList";
 import RevisionHistory from "./RevisionHistory";
@@ -31,6 +31,30 @@ function stripLeadingResolutionPrefix(content: string): string {
   str = str.replace(/(<p[^>]*>)\s*(?:<(strong|b|span|em)[^>]*>\s*<\/\2>\s*)+/gi, '$1');
   return str.trim();
 }
+
+// Fixed dropdown for AI Resolution Autofill's decision-type input. Kept in
+// sync by hand with meeting_service/utils/resolutionAutofill.js's
+// RESOLUTION_DECISION_TYPES — the backend is the validation source of
+// truth, this is just the label set for the same fixed values.
+const RESOLUTION_DECISION_TYPES: { value: string; label: string }[] = [
+  { value: "approved", label: "Approved / অনুমোদিত" },
+  { value: "rejected", label: "Rejected / প্রত্যাখ্যাত" },
+  { value: "approved_with_conditions", label: "Approved with Conditions / শর্তসাপেক্ষে অনুমোদিত" },
+  { value: "deferred", label: "Deferred (Tabled) / স্থগিত" },
+  { value: "referred_to_committee", label: "Referred to Committee / কমিটিতে প্রেরিত" },
+  { value: "amended_and_approved", label: "Amended and Approved / সংশোধনসহ অনুমোদিত" },
+  { value: "noted", label: "Noted (No Action) / অবগতির জন্য" },
+  { value: "withdrawn", label: "Withdrawn / প্রত্যাহৃত" },
+];
+
+const AUTOFILL_MODE_STORAGE_KEY = "resolutionAutofillMode";
+
+const CONFIDENCE_DISPLAY: Record<string, { label: string; className: string }> = {
+  near_identical_precedent: { label: "Near-identical precedent found", className: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+  consistent_pattern: { label: "Consistent pattern found", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+  weak_precedent: { label: "Weak precedent — review carefully", className: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+  unconfirmed: { label: "No strong precedent — review carefully", className: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+};
 
 export default function ResolutionView({ meeting }: { meeting: any }) {
   const { user } = useAuth();
@@ -74,6 +98,27 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
+  // AI Resolution Autofill state. autofillMode is deliberately global (one
+  // switch, persisted, applies to every autofill click) rather than a
+  // per-click prompt — set it once, forget about it.
+  const [editDecisionType, setEditDecisionType] = useState<string>("");
+  const [isAutofilling, setIsAutofilling] = useState(false);
+  const [autofillMeta, setAutofillMeta] = useState<{ confidence: string; placeholders: string[]; sources: any[] } | null>(null);
+  const [autofillMode, setAutofillModeState] = useState<"direct" | "preview">("direct");
+  const [autofillPreviewHtml, setAutofillPreviewHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(AUTOFILL_MODE_STORAGE_KEY);
+      if (stored === "preview" || stored === "direct") setAutofillModeState(stored);
+    } catch { /* localStorage unavailable (private mode etc.) — default stands */ }
+  }, []);
+
+  const setAutofillMode = (mode: "direct" | "preview") => {
+    setAutofillModeState(mode);
+    try { localStorage.setItem(AUTOFILL_MODE_STORAGE_KEY, mode); } catch { /* per-viewer convenience only */ }
+  };
+
   const handleAddNewTag = async (name: string) => {
     try {
       const res = await api.post('/tags', { name });
@@ -89,7 +134,11 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
     setIsSaving(true);
     try {
       const cleanResolution = stripLeadingResolutionPrefix(editContent);
-      await api.put(`/agendas/resolutions/${editingId}`, { resolution: cleanResolution, tag_ids: editTagIds });
+      await api.put(`/agendas/resolutions/${editingId}`, {
+        resolution: cleanResolution,
+        tag_ids: editTagIds,
+        decision_type: editDecisionType || undefined,
+      });
       mutate();
       setEditingId(null);
       toast.success("Resolution saved successfully");
@@ -104,7 +153,49 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
     setEditingId(agenda.id);
     setEditContent(stripLeadingResolutionPrefix(agenda.resolution || ""));
     setEditTagIds((agenda.tags || []).map((t: any) => t.id));
+    setEditDecisionType(agenda.decision_type || "");
+    setAutofillMeta(null);
+    setAutofillPreviewHtml(null);
   };
+
+  const handleAutofill = async () => {
+    if (!editDecisionType) {
+      toast.error("Pick a decision type first");
+      return;
+    }
+    const roughDraft = (editContent || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (!roughDraft) {
+      toast.error("Write a rough decision in the resolution box first");
+      return;
+    }
+    setIsAutofilling(true);
+    setAutofillMeta(null);
+    setAutofillPreviewHtml(null);
+    try {
+      const res = await api.post(`/agendas/${editingId}/resolutions/autofill`, {
+        roughDraft,
+        decisionType: editDecisionType,
+      });
+      const { html, confidence, placeholders, sources } = res.data.data;
+      setAutofillMeta({ confidence, placeholders, sources });
+      if (autofillMode === "direct") {
+        setEditContent(html);
+      } else {
+        setAutofillPreviewHtml(html);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message || err.response?.data?.message || "AI drafting failed — try again or write it manually");
+    } finally {
+      setIsAutofilling(false);
+    }
+  };
+
+  const acceptAutofillPreview = () => {
+    if (autofillPreviewHtml) setEditContent(autofillPreviewHtml);
+    setAutofillPreviewHtml(null);
+  };
+
+  const discardAutofillPreview = () => setAutofillPreviewHtml(null);
 
   const handleDelete = (agendaId: string) => {
     confirm("Delete Resolution", "Are you sure you want to delete this resolution?", async () => {
@@ -472,6 +563,49 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
 
                   {editingId === agenda.id ? (
                     <div className="border border-primary/50 rounded-md overflow-hidden ring-4 ring-primary/10">
+                      {/* AI Resolution Autofill toolbar. Global mode toggle (top,
+                          persisted) rather than a per-click prompt: set once, every
+                          Autofill click on this page follows it until changed. */}
+                      <div className="p-3 border-b border-border bg-muted/30 flex flex-wrap items-center gap-2">
+                        <select
+                          value={editDecisionType}
+                          onChange={(e) => setEditDecisionType(e.target.value)}
+                          className="text-xs border border-border rounded-md px-2 py-1.5 bg-background"
+                          title="Decision type"
+                        >
+                          <option value="">Decision type…</option>
+                          {RESOLUTION_DECISION_TYPES.map((d) => (
+                            <option key={d.value} value={d.value}>{d.label}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={handleAutofill}
+                          disabled={isAutofilling}
+                          className="px-3 py-1.5 text-xs bg-primary/10 text-primary font-medium rounded-md flex items-center gap-1.5 hover:bg-primary/20 disabled:opacity-50 transition-colors"
+                          title="Write your rough decision above, then click to have AI draft the formal resolution"
+                        >
+                          {isAutofilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                          {isAutofilling ? "Drafting…" : "Autofill AI"}
+                        </button>
+                        <div className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span>Autofill mode:</span>
+                          <div className="flex rounded-md border border-border overflow-hidden">
+                            <button
+                              onClick={() => setAutofillMode("direct")}
+                              className={`px-2 py-1 ${autofillMode === "direct" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+                            >
+                              Direct Edit
+                            </button>
+                            <button
+                              onClick={() => setAutofillMode("preview")}
+                              className={`px-2 py-1 ${autofillMode === "preview" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+                            >
+                              Preview
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="p-3 border-b border-border bg-muted/30">
                         <TagMultiSelect
                           options={allTags}
@@ -487,6 +621,44 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                         onSave={() => { if (!isSaving) handleSave(); }}
                         className="p-4 min-h-[300px] font-bold"
                       />
+
+                      {/* Preview mode: nothing above touches editContent until Accept. */}
+                      {autofillPreviewHtml && (
+                        <div className="border-t border-border bg-background p-3">
+                          <div className="text-xs font-medium text-muted-foreground mb-1.5">AI draft preview — not yet applied</div>
+                          <div
+                            className="prose prose-sm dark:prose-invert max-w-none border border-dashed border-primary/40 rounded-md p-3 mb-2"
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(autofillPreviewHtml) }}
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={acceptAutofillPreview} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md">Accept</button>
+                            <button onClick={discardAutofillPreview} className="px-3 py-1 text-xs text-muted-foreground hover:bg-muted rounded-md">Discard</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Basis panel: what the draft (direct-filled or just accepted) was based on. */}
+                      {autofillMeta && (
+                        <div className="border-t border-border bg-background p-3 text-xs space-y-1.5">
+                          <span className={`inline-block px-2 py-0.5 rounded-full font-medium ${CONFIDENCE_DISPLAY[autofillMeta.confidence]?.className || ""}`}>
+                            {CONFIDENCE_DISPLAY[autofillMeta.confidence]?.label || autofillMeta.confidence}
+                          </span>
+                          {autofillMeta.sources.length > 0 && (
+                            <div className="text-muted-foreground">
+                              Based on {autofillMeta.sources.length} past resolution{autofillMeta.sources.length > 1 ? "s" : ""}:{" "}
+                              {autofillMeta.sources.map((s: any, i: number) => (
+                                <span key={s.agendaId}>{i > 0 ? ", " : ""}{s.meetingTitle || "meeting"} ({Math.round((s.similarity || 0) * 100)}%)</span>
+                              ))}
+                            </div>
+                          )}
+                          {autofillMeta.placeholders.length > 0 && (
+                            <div className="text-amber-700 dark:text-amber-400">
+                              Still needs your input: {autofillMeta.placeholders.join(", ")}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="bg-muted p-2 flex justify-between items-center border-t border-border">
                         <button
                           onClick={() => { setTargetAgendaId(agenda.id); setIsDrawerOpen(true); }}

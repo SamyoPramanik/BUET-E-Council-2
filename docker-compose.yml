@@ -64,6 +64,7 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       MAIL_FROM: ${MAIL_FROM:-no-reply@buet-ecouncil.local}
+      RESOLUTION_AI_MODEL: ${RESOLUTION_AI_MODEL:-aya-expanse:8b}
     ports:
       - "127.0.0.1:8001:8001"
     volumes:
@@ -75,11 +76,13 @@ services:
         condition: service_healthy # FIX: Wait until MinIO is fully initialized
       redis:
         condition: service_healthy
-      # embedding_service is intentionally NOT a hard dependency: it's behind
-      # the "embeddings" profile (opt-in, see below) and every code path that
-      # calls it (searchController.js, searchIndexer.js) already degrades to
-      # keyword-only search if it's unreachable. Meeting management, viewing,
-      # and keyword search all work fully without it.
+      # embedding_service and resolution_ai are intentionally NOT hard
+      # dependencies: both are behind the "embeddings" profile (opt-in, see
+      # below) and every code path that calls them (searchController.js,
+      # searchIndexer.js, agendaController.js's autofillResolution) already
+      # degrades to keyword-only search / a clear "AI unavailable" error if
+      # unreachable. Meeting management, viewing, and resolution editing all
+      # work fully without either.
     healthcheck:
       test: [ "CMD-SHELL", "node -e \"require('http').get('http://localhost:8001/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\"" ]
       interval: 10s
@@ -137,6 +140,32 @@ services:
       test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\"" ]
       interval: 10s
       timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Local, free, CPU-only text generation for AI Resolution Autofill
+  # (agendaController.js's autofillResolution). Plain upstream Ollama image —
+  # no custom wrapper service needed, meeting_service calls its REST API
+  # directly (POST /api/generate), same pattern as embedding_service's
+  # /embed. Deliberately CPU-only: no GPU reservation here, because the
+  # model is quantized specifically so this runs on ordinary deployment
+  # hardware (see documentation.md's "AI Resolution Autofill" section for
+  # why Aya Expanse 8B was picked over Llama/Qwen for Bangla quality, and
+  # the fine-tuning path for swapping in a BUET-specific model later).
+  # `ollama pull "$RESOLUTION_AI_MODEL"` (or `ollama create` for a fine-tuned
+  # Modelfile) must be run once against this container before first use —
+  # the image ships with no models baked in.
+  resolution_ai:
+    profiles: [ "embeddings" ]
+    image: ollama/ollama:latest
+    volumes:
+      - resolution_ai_models:/root/.ollama
+    # Not published to the host: only meeting_service talks to it, over the
+    # internal compose network (same reasoning as embedding_service above).
+    healthcheck:
+      test: [ "CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1" ]
+      interval: 15s
+      timeout: 10s
       retries: 5
       start_period: 30s
 
@@ -202,3 +231,4 @@ services:
 volumes:
   pgdata:
   minio_data:
+  resolution_ai_models:

@@ -209,6 +209,11 @@ CREATE TABLE agenda (
     -- submitted | custom. Source of truth for the selected radio (flags+text
     -- alone cannot distinguish edited Not-Executed text from Custom).
     resolution_status VARCHAR(20) DEFAULT 'not_executed',
+    -- Fixed decision-type dropdown for AI Resolution Autofill (Approved /
+    -- Rejected / Deferred / etc.). NULL for resolutions authored without it;
+    -- see db/migrations/2026_09_add_resolution_decision_type.sql for why this
+    -- is deliberately never backfilled from historical free text.
+    decision_type VARCHAR(30),
     agenda_serial INTEGER, -- e.g., "Ag-1", "Res-5"
     meeting_id UUID REFERENCES meetings (id) ON DELETE CASCADE,
     legacy_agenda_id VARCHAR(20) UNIQUE,
@@ -436,6 +441,11 @@ CREATE INDEX idx_audit_logs_created_at ON audit_logs (created_at DESC);
 CREATE INDEX idx_audit_logs_user_id ON audit_logs (user_id);
 
 CREATE INDEX idx_agenda_meeting_id ON agenda (meeting_id);
+-- Backs the AI Resolution Autofill precedent lookup: same-category rows
+-- ranked/boosted by matching decision_type. Partial since most rows have
+-- no decision_type (never backfilled, see column comment above).
+CREATE INDEX idx_agenda_category_decision ON agenda (category_id, decision_type)
+    WHERE decision_type IS NOT NULL;
 -- Hit by sync_invitee_serial() on every member serial change.
 CREATE INDEX idx_invitees_member_id ON invitees (member_id);
 

@@ -1,4 +1,5 @@
 const { injectInlinePrefix } = require('./inlinePrefix');
+const { toPdfLayout } = require('./pageLayout');
 const HTMLtoDOCX = require('html-to-docx');
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
@@ -195,7 +196,10 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
     // alignment, so an explicitly right-aligned paragraph stays right-aligned in
     // the PDF instead of being silently justified.
     str = str.replace(/<p(\s[^>]*)?>/gi, (match) => {
-        const base = { 'line-height': '1.6', 'margin-top': '0', 'margin-bottom': '10px', 'text-align': 'left', 'font-size': '14px' };
+        // break-spaces: the editor (ProseMirror) keeps every typed space, including
+        // double / trailing ones, and lets a space wrap onto its own line in a
+        // narrow cell; collapsing them made the PDF wrap differently.
+        const base = { 'line-height': '1.6', 'margin-top': '0', 'margin-bottom': '10px', 'text-align': 'left', 'font-size': '14px', 'white-space': 'break-spaces' };
         if (isIndented) base['margin-left'] = `${indentPx}px`;
         return injectStyle(match, base);
     });
@@ -204,7 +208,7 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
     const headingSizes = { h1: '22px', h2: '18px', h3: '16px', h4: '14px', h5: '13px', h6: '12px' };
     for (const [tag, size] of Object.entries(headingSizes)) {
         str = str.replace(new RegExp(`<${tag}(\\s[^>]*)?>`, 'gi'), (match) =>
-            injectStyle(match, { 'font-size': size, 'font-weight': 'bold', 'line-height': '1.4', 'margin-top': '12px', 'margin-bottom': '8px', 'text-align': 'left' })
+            injectStyle(match, { 'font-size': size, 'font-weight': 'bold', 'line-height': '1.4', 'margin-top': '12px', 'margin-bottom': '8px', 'text-align': 'left', 'white-space': 'break-spaces' })
         );
     }
 
@@ -239,7 +243,7 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
 
     // List items
     str = str.replace(/<li(\s[^>]*)?>/gi, (match) =>
-        injectStyle(match, { 'font-size': '14px', 'line-height': '1.6', 'margin-bottom': '4px', 'text-align': 'left' })
+        injectStyle(match, { 'font-size': '14px', 'line-height': '1.6', 'margin-bottom': '4px', 'text-align': 'left', 'white-space': 'break-spaces' })
     );
 
     // Blockquote
@@ -275,7 +279,7 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
         if (/border-collapse/i.test(attrs)) return fullMatch;
 
         const align = (attrs.match(/data-align="(left|center|right)"/i) || [])[1] || 'left';
-        const marginByAlign = { left: '12px 0', center: '12px auto', right: '12px 0 12px auto' }[align];
+        const marginByAlign = { left: '16px 0', center: '16px auto', right: '16px 0 16px auto' }[align];
         const isAutoWidth = /data-width-mode="auto"/i.test(attrs);
 
         // @tiptap/extension-table's own Table.renderHTML (createColGroup /
@@ -316,26 +320,31 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
 
         let colgroup = '';
         if (allWidth) {
-            if (isAutoWidth) {
-                // Keep the authored pixel widths exactly — the table's overall
-                // width ends up being just their sum, not stretched to the page.
-                colgroup = `<colgroup>${colWidths.map((w) => `<col style="width:${w}px;" />`).join('')}</colgroup>`;
-            } else {
-                // Always lay the table out at 100% of the printable page width so
-                // it can never be clipped at the right page edge — however wide it
-                // was drawn in the editor. Column *proportions* are preserved:
-                // author pixel widths are emitted as percentages of their own sum.
-                const total = colWidths.reduce((a, b) => a + b, 0) || colWidths.length;
-                colgroup = `<colgroup>${colWidths.map((w) => `<col style="width:${(w / total * 100).toFixed(4)}%;" />`).join('')}</colgroup>`;
-            }
+            // Keep the authored pixel widths exactly; the table's overall width is
+            // their sum (see `sizing` below), as in the editor. A table wider than
+            // the page is clamped by max-width: 100% so it is never clipped.
+            // Percentages of the table: identical to the pixel widths while the table
+            // is at its own width, and the columns scale together if it has to be
+            // clamped to the page (a fixed-px <col> would keep it overflowing).
+            const total = colWidths.reduce((a, b) => a + b, 0);
+            colgroup = `<colgroup>${colWidths.map((w) => `<col style="width:${(w / total * 100).toFixed(4)}%;" />`).join('')}</colgroup>`;
         } else if (anyWidth) {
             colgroup = `<colgroup>${colWidths.map((w) => (w != null ? `<col style="width:${w}px;" />` : '<col />')).join('')}</colgroup>`;
         }
         // min-width:0 clears any authored `min-width:<sum>px` (prosemirror-tables
         // writes one) that would otherwise push the table past the page edge.
-        const sizing = isAutoWidth
-            ? { 'table-layout': 'fixed', 'width': 'auto', 'max-width': '100%', 'min-width': '0' }
-            : { 'table-layout': 'fixed', 'width': '100%', 'max-width': '100%', 'min-width': '0' };
+        // The editor writes an inline `width: <sum>px` on a table whose every column
+        // has a width, and that beats its `width: 100%` rule, so such a table stays
+        // at the sum of its columns whatever its width mode; only a table with
+        // unsized columns stretches to fill the page. Mirror that.
+        const sumWidth = allWidth ? colWidths.reduce((a, b) => a + b, 0) : 0;
+        const sizing = allWidth
+            // Chromium ignores max-width on tables, so clamp with min(); the plain px
+            // value first is the fallback for consumers without min() (the .docx export).
+            ? { 'table-layout': 'fixed', 'width': `${sumWidth}px; width: min(${sumWidth}px, 100%)`, 'max-width': '100%', 'min-width': '0' }
+            : isAutoWidth
+                ? { 'table-layout': 'fixed', 'width': 'auto', 'max-width': '100%', 'min-width': '0' }
+                : { 'table-layout': 'fixed', 'width': '100%', 'max-width': '100%', 'min-width': '0' };
 
         // Drop any stale width/min-width/max-width/table-layout TipTap baked into
         // the table's own style attribute (see note above) so injectStyle's
@@ -353,7 +362,27 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
             'page-break-inside': 'auto',
             ...sizing,
         });
-        return openTag + colgroup + inner + '</table>';
+        // Text inside a table is smaller in the editor: Tailwind's prose-sm scales
+        // table text to 0.857em (12px) with a 1.5 line-height, while the generic
+        // paragraph / list rules above used 14px / 1.6. Swap those defaults for the
+        // table ones. (Only the injected defaults are replaced: a paragraph's own
+        // line spacing comes from the Line Height presets, which never include 1.6,
+        // and font sizes are set on spans, which are left alone.)
+        const tableText = (tag) => tag.replace(/font-size:\s*14px/i, 'font-size: 12px').replace(/line-height:\s*1\.6\b/i, 'line-height: 1.5');
+        // Lists inside a cell use the editor's (em-scaled, so smaller) spacing too.
+        const tableList = (tag) => tableText(tag)
+            .replace(/margin:\s*8px 0/i, 'margin: 4px 0')
+            .replace(/padding-left:\s*[\d.]+px/i, 'padding-left: 21.6px');
+        const tableListItem = (tag) => tableText(tag).replace(/margin-bottom:\s*4px/i, 'margin: 2px 0; padding-left: 4px');
+        let cellsHtml = inner
+            .replace(/<(p)(\s[^>]*)?>/gi, tableText)
+            .replace(/<(ul|ol)(\s[^>]*)?>/gi, tableList)
+            .replace(/<(li)(\s[^>]*)?>/gi, tableListItem);
+        // A vertical-text cell centres its text; the paragraph rule above forced
+        // `text-align: left` on the paragraphs inside it, overriding that.
+        cellsHtml = cellsHtml.replace(/(<(?:td|th)\b[^>]*data-text-direction="vertical-rl"[^>]*>)([\s\S]*?)(<\/(?:td|th)>)/gi,
+            (m, open, body, close) => open + body.replace(/(<p\b[^>]*?)text-align:\s*left/gi, '$1text-align: center') + close);
+        return openTag + colgroup + cellsHtml + '</table>';
     });
 
     // Subscript & Superscript
@@ -364,7 +393,7 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
     str = str.replace(/<mark(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'background-color': '#fef08a', 'color': '#000', 'padding': '0 2px' }));
 
     // Links
-    str = str.replace(/<a(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'color': '#2563eb', 'text-decoration': 'underline' }));
+    str = str.replace(/<a(\s[^>]*)?>/gi, (match) => injectStyle(match, { 'color': '#800000', 'font-weight': '500', 'text-decoration': 'underline' }));
 
     // Page Break HR
     str = str.replace(/<hr\s+class="page-break"[^>]*\/?>/gi, '<div style="page-break-after: always; break-after: page; height: 0; margin: 0; padding: 0;"></div>');
@@ -566,7 +595,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v61';
+const PDF_TEMPLATE_VERSION = 'v62';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -736,7 +765,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
             presentees: stableRows(presentees),
             agendas: stableRows(agendas),
             signatures: { presidentSignature, secretarySignature, presidentSignatureImage, secretarySignatureImage },
-            ...(layoutIsCustom ? { layout: pdfLayout } : {})
+            ...(JSON.stringify(pdfLayout) !== JSON.stringify(DEFAULT_PDF_LAYOUT) ? { layout: pdfLayout } : {})
         });
 
         const topLeadership = [];
@@ -1034,6 +1063,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                    header row and Table Style gallery. Colours are the default maroon
                    theme with its variables resolved (paper is always light). */
                 table[data-table-style] th, table[data-table-style] td { padding: 4px 8px; vertical-align: top; box-sizing: border-box; min-width: 1em; }
+                table[data-table-style] td { color: #1c1017; }
                 table[data-table-style] th { background: #ecd9d9 !important; color: #800000 !important; font-weight: 700 !important; letter-spacing: 0.01em; }
                 table[data-table-style="grid-blue"] th { background: #dbeafe !important; color: #1e3a8a !important; }
                 table[data-table-style="grid-blue"] tr:nth-child(even) td { background-color: #eff6ff; }
@@ -1050,6 +1080,10 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                 table.border-outer td:last-child, table.border-outer th:last-child, table[data-border="outer"] td:last-child, table[data-border="outer"] th:last-child { border-right: 2px solid black; }
                 table.border-header td, table.border-header th, table[data-border="header"] td, table[data-border="header"] th { border: none; }
                 table.border-header th, table.border-header tr:first-child td, table[data-border="header"] th, table[data-border="header"] tr:first-child td { border-bottom: 2px solid black; }
+                /* The editor also draws Tailwind's faint row separators (tbody tr border, the
+                   theme border colour) wherever cells have no borders of their own: in the
+                   header-only style, between the body rows. */
+                table[data-border="header"] tr:not(:last-child) { border-bottom: 1px solid #e8ddd9; }
                 table.border-dashed td, table.border-dashed th, table[data-border="dashed"] td, table[data-border="dashed"] th { border: 1px dashed black; }
                 table.border-thick td, table.border-thick th, table[data-border="thick"] td, table[data-border="thick"] th { border: 2px solid black; }
                 table.border-none td, table.border-none th, table[data-border="none"] td, table[data-border="none"] th { border: none; }
@@ -1062,6 +1096,9 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                 table[data-border="full"], table[data-border="thick"], table[data-border="dashed"] {
                     border-collapse: separate !important; border-spacing: 0 !important;
                     border-top: 1px solid black; border-left: 1px solid black;
+                    /* Repeat the table's own top/left border on every page fragment, so a
+                       table that continues on the next page starts with a top line. */
+                    -webkit-box-decoration-break: clone; box-decoration-break: clone;
                 }
                 table[data-border="full"] td, table[data-border="full"] th,
                 table[data-border="thick"] td, table[data-border="thick"] th,
@@ -1073,6 +1110,14 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                 table[data-border="thick"] td, table[data-border="thick"] th { border-right-width: 2px; border-bottom-width: 2px; }
                 table[data-border="dashed"] { border-top-style: dashed; border-left-style: dashed; }
                 table[data-border="dashed"] td, table[data-border="dashed"] th { border-right-style: dashed; border-bottom-style: dashed; }
+                /* The editor rotates a vertical-text cell 180deg (transform on the cell),
+                   which flips the right/bottom borders drawn above onto its left/top.
+                   Give it the mirrored borders so they land on its right/bottom. */
+                table[data-border="full"] td[data-text-direction="vertical-rl"], table[data-border="full"] th[data-text-direction="vertical-rl"] { border-right: none; border-bottom: none; border-left: 1px solid black; border-top: 1px solid black; }
+                table[data-border="thick"] td[data-text-direction="vertical-rl"], table[data-border="thick"] th[data-text-direction="vertical-rl"] { border-right: none; border-bottom: none; border-left: 2px solid black; border-top: 2px solid black; }
+                table[data-border="dashed"] td[data-text-direction="vertical-rl"], table[data-border="dashed"] th[data-text-direction="vertical-rl"] { border-right: none; border-bottom: none; border-left: 1px dashed black; border-top: 1px dashed black; }
+                /* List markers are the editor's muted colour (prose --tw-prose-bullets). */
+                li::marker { color: #6b5c58; }
                 p { margin: 0 0 10px 0; }
 
                 .signature-block {
@@ -1458,9 +1503,28 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
     }
 };
 
+// The page setup saved from the editor's Page Layout tab (meetings.page_layout),
+// in the shape normalizePdfLayout() takes; undefined when none was saved.
+const loadSavedPageLayout = async (meetingId) => {
+    try {
+        const r = await pool.query('SELECT page_layout FROM meetings WHERE id = $1', [meetingId]);
+        return toPdfLayout(r.rows[0]?.page_layout);
+    } catch (e) {
+        console.error('Error loading saved page layout:', e.message);
+        return undefined;
+    }
+};
+
 const generatePdf = async (meetingId, isResolution, cacheVariant, rawLayout) => {
     try {
-        const { layout, isCustom } = normalizePdfLayout(rawLayout);
+        // No explicit layout (i.e. not the PDF Preview page's own controls):
+        // print on the page the author set up in the editor. That is the
+        // meeting's own canonical layout, so it stays on the canonical cache
+        // entry / filesystem copy (email attachments) rather than a variant.
+        const savedLayout = rawLayout == null ? await loadSavedPageLayout(meetingId) : undefined;
+        const normalized = normalizePdfLayout(rawLayout == null ? savedLayout : rawLayout);
+        const layout = normalized.layout;
+        const isCustom = rawLayout == null ? false : normalized.isCustom;
         const { html, cacheKey, fingerprint } = await buildMeetingHtml(meetingId, isResolution, cacheVariant, layout, isCustom);
         const cached = await getCachedPdf(cacheKey, fingerprint);
         if (cached) return cached;
@@ -1616,7 +1680,7 @@ const buildSingleResolutionHtml = async (meetingId, agendaId) => {
 
 const generateSingleResolutionPdf = async (meetingId, agendaId) => {
     const html = await buildSingleResolutionHtml(meetingId, agendaId);
-    const { layout } = normalizePdfLayout(undefined);
+    const { layout } = normalizePdfLayout(await loadSavedPageLayout(meetingId));
     return renderPdf(html, layout);
 };
 
@@ -2226,6 +2290,9 @@ function renderNoticeMembers(presentees) {
 }
 
 module.exports = {
+    // Exposed for meeting_service/scripts/tableFidelityAudit (dev tooling).
+    styleRichTextHtml,
+    renderPdf,
     generatePdf,
     generateMeetingDocx,
     generateSingleResolutionPdf,

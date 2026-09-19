@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-09-19 — Tables Print the Way the Editor Draws Them
+
+### Bug Fixes
+
+Found by rendering 26 table cases (every border style, the Table Style gallery, alignment, width modes, partial / full / merged column widths, header rows, shading, vertical alignment, row heights, vertical text, formatting, lists, long words, spaces) in Chromium twice — once with the editor's real compiled CSS, once through the PDF's own HTML processing and stylesheet — and diffing layout and computed styles (`pdfGenerator.js`):
+
+- **Text size in cells:** the editor draws table text at **12px / 1.5** (Tailwind `prose-sm` scales tables to 0.857em); the PDF used 14px / 1.6, so cells wrapped and grew differently. Paragraphs, lists and list items inside tables now use the editor's values.
+- **Fully sized columns keep their width:** in the editor a table whose every column has a width stays at the *sum* of those widths (TipTap's inline `width` beats the `width: 100%` rule), whatever its width mode. The PDF always stretched it to the page and rescaled the columns. It now keeps the sum, and a table wider than the page shrinks to fit with the columns scaling together (Chromium ignores `max-width` on tables, so `min(<sum>px, 100%)` is used, with the plain px value first as the fallback for the `.docx` export).
+- **Table margins:** 16px above and below like the editor (was 12px).
+- **Vertical-text cells:** the editor rotates the cell 180° (`transform` on the `<td>`), which flipped the PDF's right/bottom borders onto the left/top so the cell lost two edges, and the paragraph rule forced `text-align: left` over the cell's centring. Borders are mirrored for these cells and the text stays centred.
+- **Lists in cells:** the editor's spacing (4px list margins, 21.6px indent, 2px item margins) instead of 8px / 20px / 4px.
+- **Text colours:** body cells use the editor's `#1c1017`; links use the editor's `#800000` (was `#2563eb`); list markers the editor's muted `#6b5c58`.
+- **Spaces:** paragraphs / headings / list items keep every typed space (`white-space: break-spaces`), as ProseMirror does, so a space can take its own line in a squeezed cell.
+
+Result: all 25 layout cases match the editor (within 1px, the collapsed-vs-separate border model); the plain grid, banded and crimson styles, merged cells, shading, heights, header row, `hello world` in a 24px column all match.
+
+- **Header-only border style:** the editor also draws Tailwind's faint row separators between body rows (`tbody tr` border in the theme border colour); now printed.
+- **Page breaks:** a table that continues on the next page now starts it with a top line (the table's own border is cloned onto every page fragment). Checked with a 6-page document: a 45-row table, a very tall cell, tables back to back, a rowspan crossing the break, dashed / thick borders.
+- **Dev tool:** `meeting_service/scripts/tableFidelityAudit/` keeps the audit (`audit.js`, 25 cases, exit code 1 on a real difference) and the page-break render (`pages.js`) in the repo; see its README. `pdfGenerator.js` now exports `styleRichTextHtml` and `renderPdf` for it.
+
+Known limits: a table's header row is not repeated on the continuation page, and a small (~15px) stub of the table's left border hangs below the last row of a page. Not printed on purpose: the editor's dashed guide lines on `outer` / `none` tables (editing aids). Not covered: images or nested content in cells, and the editor's other colour themes (the PDF always uses the maroon default).
+
+---
+
+## 2026-09-19 — PDF Prints on the Page Layout Chosen in the Editor
+
+### Changes
+
+- **The PDF now uses the page setup from the editor's Page Layout tab.** The editor's page setup (size, orientation, margins) was temporary state inside each editor and never reached the PDF, which used its own separate defaults (A4 / 20 mm vs the editor's 25.4 mm margins), so lines wrapped and pages broke differently. Now:
+  - All editors on a meeting page share one page setup (`MeetingPageLayoutContext` / `MeetingPageLayoutProvider`), and changing size, orientation or margins is saved on the meeting shortly after (`PUT /meetings/:id/page-layout` → new `meetings.page_layout` JSONB column; startup adds it automatically, also in `db/init.sql` and `db/migrations/2026_09_add_meeting_page_layout.sql`).
+  - `pdfGenerator.js` prints on the saved layout whenever the caller gives none — agenda, supplementary agenda, resolution, status report and email attachments. It is the meeting's canonical layout, so it uses the normal cache entry / filesystem copy, and the cache fingerprint now includes any non-default layout so a change regenerates the PDF.
+  - The PDF Preview page starts from the saved layout; its own controls still override it for that preview.
+  - Values are validated and clamped server-side (`utils/pageLayout.js`, tested): sizes A4/Letter/Legal/A3/A5/Tabloid, margins 0–60 mm.
+- **Text wraps in narrow cells the way it does in the editor** (`pdfGenerator.js`): ProseMirror keeps every typed space (`white-space: break-spaces`), so in a squeezed column the space in `hello world` takes a line of its own and double/trailing spaces show. The PDF collapsed them, so the same cell wrapped onto a different number of lines. Paragraphs, headings and list items now use `break-spaces` too. Checked by rendering the same table in Chromium both ways at the same width: identical line breaks.
+- Bumped `PDF_TEMPLATE_VERSION` to `v62`.
+
+Known limits: a meeting nobody has set a page layout on still prints on the PDF defaults (A4, 20 mm) while the editor's page view shows 25.4 mm — pick a layout once (e.g. click **Normal** in Margins) to save it. Page colour, page border and watermark are not carried into the PDF yet.
+
+---
+
 ## 2026-09-19 — Supplementary Heading, "Immediate" JSON Import & Serial Beside Tables
 
 ### Bug Fixes

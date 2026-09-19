@@ -4217,6 +4217,12 @@ const MenuBar = ({
                           const end = Math.min(pos + node.nodeSize, range.$to.pos);
                           const text = node.text.slice(start - pos, end - pos);
                           if (!text.trim() || /[\u0980-\u09FF]/.test(text)) return;
+                          // English is valid Bijoy input too, so only convert text that
+                          // is actually Bijoy: by its font, else by the byte heuristic.
+                          const bijoyMark = node.marks.some(
+                            (m: any) => m.type.name === 'textStyle' && m.attrs.fontFamily && fontIsBijoyName(m.attrs.fontFamily)
+                          );
+                          if (!isBijoyText(text, bijoyMark ? true : undefined)) return;
                           const converted = convertBijoyToUnicode(text);
                           if (converted === text) return;
                           const marks = node.marks.filter(

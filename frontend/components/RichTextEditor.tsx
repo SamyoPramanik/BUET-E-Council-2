@@ -2587,7 +2587,7 @@ const MenuBar = ({
       {/* RIBBON TOOLBAR BODY (AUTHENTIC MS WORD 2007 RIBBON GROUPS) */}
       <div className={`bg-card flex items-center overflow-x-auto select-none border-b border-border/80 transition-all duration-200 ${
         isRibbonEnlarged ? 'p-3.5 min-h-[135px]' : 'p-2 min-h-[92px]'
-      }`}>
+      } ${isFullscreen ? 'ribbon-fullscreen' : ''}`}>
         
         {/* ── TAB 1: HOME TAB ── */}
         {activeTab === 'home' && (
@@ -2652,6 +2652,7 @@ const MenuBar = ({
                 <div className="flex items-center gap-1">
                   <div className="w-32">
                     <CustomSelect
+                      placeholder="Text font"
                       value={editor.getAttributes('textStyle').fontFamily || ''}
                       onChange={(val) => editor.chain().focus().setFontFamily(val).run()}
                       options={[
@@ -2667,8 +2668,9 @@ const MenuBar = ({
                     />
                   </div>
 
-                  <div className="w-16">
+                  <div className="w-24">
                     <CustomSelect
+                      placeholder="Font size"
                       value={editor.getAttributes('textStyle').fontSize || ''}
                       onChange={(val) => {
                         if (!val) editor.chain().focus().unsetFontSize().run();

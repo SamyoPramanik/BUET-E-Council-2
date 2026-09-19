@@ -1436,3 +1436,11 @@ table[data-border="none"] th {
   background: linear-gradient(180deg, #1e1b1d 0%, #171415 100%);
   border-bottom: 1px solid #382d33;
 }
+/* Fullscreen editor: let the ribbon groups share the extra width instead of
+   bunching to the left. */
+.ribbon-fullscreen > div {
+  width: 100%;
+}
+.ribbon-fullscreen .word-group-box {
+  flex: 1 1 auto;
+}

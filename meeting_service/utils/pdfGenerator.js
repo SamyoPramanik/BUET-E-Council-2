@@ -1038,6 +1038,26 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                 table.border-dashed td, table.border-dashed th, table[data-border="dashed"] td, table[data-border="dashed"] th { border: 1px dashed black; }
                 table.border-thick td, table.border-thick th, table[data-border="thick"] td, table[data-border="thick"] th { border: 2px solid black; }
                 table.border-none td, table.border-none th, table[data-border="none"] td, table[data-border="none"] th { border: none; }
+                /* Chromium never paints a collapsed-border cell's bottom edge where a
+                   row is split across pages, so a tall cell ran off the page with
+                   no closing line. For the fully-gridded styles, draw the grid
+                   as separate borders (table top/left + each cell's right/bottom,
+                   visually identical to collapsed) and clone the cell borders onto
+                   every page fragment so the bottom edge is drawn at the break. */
+                table[data-border="full"], table[data-border="thick"], table[data-border="dashed"] {
+                    border-collapse: separate !important; border-spacing: 0 !important;
+                    border-top: 1px solid black; border-left: 1px solid black;
+                }
+                table[data-border="full"] td, table[data-border="full"] th,
+                table[data-border="thick"] td, table[data-border="thick"] th,
+                table[data-border="dashed"] td, table[data-border="dashed"] th {
+                    border: none; border-right: 1px solid black; border-bottom: 1px solid black;
+                    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+                }
+                table[data-border="thick"] { border-top-width: 2px; border-left-width: 2px; }
+                table[data-border="thick"] td, table[data-border="thick"] th { border-right-width: 2px; border-bottom-width: 2px; }
+                table[data-border="dashed"] { border-top-style: dashed; border-left-style: dashed; }
+                table[data-border="dashed"] td, table[data-border="dashed"] th { border-right-style: dashed; border-bottom-style: dashed; }
                 p { margin: 0 0 10px 0; }
 
                 .signature-block {

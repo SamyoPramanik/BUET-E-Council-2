@@ -9,13 +9,90 @@ import {
   hasBengaliUnicode as pkgHasBengaliUnicode
 } from 'bijoy2unicode';
 
+// Mirrors the (unexported) font-name lists bijoy2unicode/docx uses to decide
+// whether a Word run's own font-family settles the question outright. Kept
+// in sync by hand since the package doesn't export these.
+const BIJOY_FONT_PATTERNS = [
+  /Sutonny\s*MJ/i,
+  /SutonnyMJ/i,
+  /SutonnyOMJ/i,
+  /Sutonny\s*OMJ/i,
+  /Sutonny\s*XMJ/i,
+  /SutonnyXMJ/i,
+  /Sulekha[a-z\s]*/i,
+  /Boishakhi/i,
+  /Lekhoni/i,
+  /BijoyEkattor/i,
+  /Bijoy[a-z0-9 ]*MJ/i,
+  /[A-Za-z]+MJ\b/i,
+  /\bMJ\s+[A-Za-z]+/i,
+];
+
+const UNICODE_FONT_PATTERNS = [
+  /Nikosh/i,
+  /SolaimanLipi/i,
+  /Solaiman\s*Lipi/i,
+  /Kalpurush/i,
+  /Siyam\s*Rupali/i,
+  /Mukti/i,
+  /Vrinda/i,
+  /Shonar\s*Bangla/i,
+  /Hind\s*Siliguri/i,
+  /Noto\s*Sans\s*Bengali/i,
+  /Noto\s*Serif\s*Bengali/i,
+  /AdorshoLipi/i,
+];
+
+function fontIsBijoyName(name: string): boolean {
+  return BIJOY_FONT_PATTERNS.some((p) => p.test(name));
+}
+
+function fontIsUnicodeBanglaName(name: string): boolean {
+  return UNICODE_FONT_PATTERNS.some((p) => p.test(name));
+}
+
+/**
+ * Walks up from a pasted text node's parent looking for an explicit
+ * font-family (inline `style=` or legacy `<font face>`) and matches it
+ * against known Bijoy vs. Unicode Bangla font names. Word/Bijoy documents
+ * split a paragraph into many small per-run spans on copy, so an individual
+ * run can be too short for isBijoyText's byte-heuristic to trust on its
+ * own — the source font, when present, is a much stronger signal.
+ */
+function inheritedFontIsBijoy(el: Element | null): boolean | undefined {
+  let cur: Element | null = el;
+  while (cur) {
+    const face = cur.getAttribute?.("face");
+    if (face) {
+      if (fontIsBijoyName(face)) return true;
+      if (fontIsUnicodeBanglaName(face)) return false;
+    }
+    const style = cur.getAttribute?.("style") || "";
+    const m = style.match(/font-family\s*:\s*([^;]+)/i);
+    if (m) {
+      const fams = m[1];
+      if (fontIsBijoyName(fams)) return true;
+      if (fontIsUnicodeBanglaName(fams)) return false;
+    }
+    cur = cur.parentElement;
+  }
+  return undefined;
+}
+
 /**
  * Detects if a text string is Bijoy ANSI formatted.
  * Ignores English acronyms (like SME, BUET, CSE) and standard English sentences.
+ *
+ * `fontIsBijoy`, when known (see inheritedFontIsBijoy), overrides the
+ * byte-range/vowel heuristic below outright: true forces conversion even
+ * for a too-short-to-trust fragment, false protects a run explicitly
+ * styled in a real Unicode Bangla or Latin font from a false-positive.
  */
-export function isBijoyText(text: string): boolean {
+export function isBijoyText(text: string, fontIsBijoy?: boolean): boolean {
   if (!text || typeof text !== "string") return false;
   if (pkgHasBengaliUnicode(text)) return false;
+  if (fontIsBijoy === true) return true;
+  if (fontIsBijoy === false) return false;
 
   // The package's own heuristic just checks whether ANY character falls in
   // legacy Windows-1252 "high byte" territory (codes 128-591, or the
@@ -90,8 +167,8 @@ export function convertHtmlBijoyToUnicode(html: string): string {
     const walkTextNodes = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         if (node.nodeValue && node.nodeValue.trim()) {
-          // Only convert text nodes if they match Bijoy pattern
-          if (isBijoyText(node.nodeValue)) {
+          const fontIsBijoy = inheritedFontIsBijoy(node.parentElement);
+          if (isBijoyText(node.nodeValue, fontIsBijoy)) {
             node.nodeValue = convertBijoyToUnicode(node.nodeValue);
           }
         }

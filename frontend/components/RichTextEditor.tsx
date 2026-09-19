@@ -1453,6 +1453,15 @@ export const DEFAULT_PAGE_SETTINGS: PageSettings = {
   watermark: { enabled: false, text: 'CONFIDENTIAL', color: '#94a3b8', opacity: 0.25 },
 };
 
+// The page setup shared by every editor on a meeting page. It is saved with the
+// meeting so the generated PDF prints on the same page the author is writing
+// on. Without a provider (templates page, test editor) each editor keeps its
+// own local page setup, as before.
+export const MeetingPageLayoutContext = React.createContext<{
+  settings: PageSettings;
+  setSettings: React.Dispatch<React.SetStateAction<PageSettings>>;
+} | null>(null);
+
 const PAGE_SIZES_MM: Record<PageSize, [number, number]> = {
   A4: [210, 297],
   Letter: [215.9, 279.4],
@@ -5213,7 +5222,10 @@ export default function RichTextEditor({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showParagraphMarks, setShowParagraphMarks] = useState(false);
   const [showRuler, setShowRuler] = useState(true);
-  const [pageSettings, setPageSettings] = useState<PageSettings>(DEFAULT_PAGE_SETTINGS);
+  const pageLayoutCtx = React.useContext(MeetingPageLayoutContext);
+  const [localPageSettings, setLocalPageSettings] = useState<PageSettings>(DEFAULT_PAGE_SETTINGS);
+  const pageSettings = pageLayoutCtx ? pageLayoutCtx.settings : localPageSettings;
+  const setPageSettings = pageLayoutCtx ? pageLayoutCtx.setSettings : setLocalPageSettings;
 
   const [rawPageW, rawPageH] = PAGE_SIZES_MM[pageSettings.size];
   const pageWidthMm = pageSettings.orientation === 'landscape' ? rawPageH : rawPageW;

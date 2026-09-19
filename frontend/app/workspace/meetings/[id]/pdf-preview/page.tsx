@@ -129,6 +129,26 @@ export default function PdfPreviewPage() {
   const [lineHeight, setLineHeight] = useState<number | "">("");
   const [separatePages, setSeparatePages] = useState(false);
 
+  // Start from the page the author set up in the editor's Page Layout tab (saved
+  // with the meeting), so the preview and the PDF match the editor. The controls
+  // below can still override it for this preview.
+  const savedLayoutApplied = useRef(false);
+  useEffect(() => {
+    const saved = meeting?.page_layout;
+    if (!saved || savedLayoutApplied.current) return;
+    savedLayoutApplied.current = true;
+    if (typeof saved.size === "string") setPageSize(saved.size);
+    if (saved.orientation === "landscape" || saved.orientation === "portrait") setOrientation(saved.orientation);
+    if (saved.margins) {
+      setMargins({
+        top: Number(saved.margins.top) || 0,
+        right: Number(saved.margins.right) || 0,
+        bottom: Number(saved.margins.bottom) || 0,
+        left: Number(saved.margins.left) || 0,
+      });
+    }
+  }, [meeting]);
+
   const layoutQuery = useMemo(() => {
     const qs = new URLSearchParams({
       pageSize,

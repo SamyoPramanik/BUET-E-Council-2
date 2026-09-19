@@ -119,6 +119,11 @@ const ensureNoticeDocPersistence = `
 `;
 pool.query(ensureNoticeDocPersistence).catch((err) => console.error('ensureNoticeDocPersistence error:', err.message));
 
+const ensureMeetingPageLayout = `
+  ALTER TABLE meetings ADD COLUMN IF NOT EXISTS page_layout JSONB;
+`;
+pool.query(ensureMeetingPageLayout).catch((err) => console.error('ensureMeetingPageLayout error:', err.message));
+
 const ensureEmailDrafts = `
   CREATE TABLE IF NOT EXISTS email_drafts (
       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

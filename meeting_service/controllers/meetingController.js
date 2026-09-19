@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
 const { extractAgendaPrefix, parseAgendumBody } = require('../utils/agendaSerial');
 const { resolveIsRegular } = require('../utils/meetingKind');
+const { sanitizePageLayout } = require('../utils/pageLayout');
 const { loadMeeting, calculateMeetingAccess } = require('../middlewares/meetingWorkflowMiddleware');
 
 // A viewer whose account is scoped to a specific member_type (academic/syndicate)
@@ -1426,6 +1427,23 @@ const getAttendanceGroups = async (req, res, next) => {
         ].filter(g => g.count > 0);
 
         res.json({ data: result });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Saves the page setup chosen in the editor's Page Layout tab so the PDF prints
+// on the same page. Sending null / an invalid layout clears it (PDF defaults).
+const updatePageLayout = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const layout = sanitizePageLayout(req.body?.page_layout);
+        const result = await db.query(
+            'UPDATE meetings SET page_layout = $2 WHERE id = $1 RETURNING id, page_layout',
+            [id, layout ? JSON.stringify(layout) : null]
+        );
+        if (result.rows.length === 0) return next(new CustomError('Meeting not found', 404));
+        res.json({ data: result.rows[0] });
     } catch (error) {
         next(error);
     }
@@ -3233,6 +3251,7 @@ module.exports = {
     uploadMaterial,
     deleteMaterial,
     bulkImportMeeting,
+    updatePageLayout,
     getInviteesEmails,
     sendAgendaEmail,
     sendNoticeEmail,

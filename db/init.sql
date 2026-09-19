@@ -977,6 +977,8 @@ FOR EACH STATEMENT EXECUTE FUNCTION clear_search_cache_trigger_fn();
 
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS is_suppli_visible_to_viewers BOOLEAN DEFAULT FALSE;
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS is_regular BOOLEAN DEFAULT TRUE;
+-- Page setup (size / orientation / margins) chosen in the editor's Page Layout tab; the PDF prints on it.
+ALTER TABLE meetings ADD COLUMN IF NOT EXISTS page_layout JSONB;
 ALTER TABLE agenda ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES categories (id) ON DELETE SET NULL;
 
 -- Notices table for storing notice drafts and generating notice PDFs

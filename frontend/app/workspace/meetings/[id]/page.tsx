@@ -17,9 +17,23 @@ import EmailTabView from "../../../../components/meetings/EmailTabView";
 import SignedPersonaView from "../../../../components/meetings/SignedPersonaView";
 import ArchivedAgendaView from "../../../../components/meetings/ArchivedAgendaView";
 
+import MeetingPageLayoutProvider from "../../../../components/meetings/MeetingPageLayoutProvider";
 import { useAuth } from "../../../../hooks/useAuth";
 
+// Every editor on the page shares one page setup (Page Layout tab), saved with
+// the meeting so the PDF prints on the same page.
 export default function MeetingWorkspace() {
+  const params = useParams();
+  const id = String(params.id);
+  const { data: response } = useSWR(`/meetings/${id}`, fetcher);
+  return (
+    <MeetingPageLayoutProvider key={id} meetingId={id} saved={response?.data?.page_layout} ready={!!response?.data}>
+      <MeetingWorkspaceBody />
+    </MeetingPageLayoutProvider>
+  );
+}
+
+function MeetingWorkspaceBody() {
   const params = useParams();
   const searchParams = useSearchParams();
   const view = searchParams.get('view') || 'info';

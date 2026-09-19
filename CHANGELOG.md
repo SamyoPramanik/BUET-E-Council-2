@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-19 — Bijoy → Unicode Converter Fixes (Word Paste)
+
+### Bug Fixes
+
+Found by pasting a real SutonnyMJ Word document (agenda + tables) into the editor. Fixes are in `frontend/lib/bijoyToUnicode.ts`; regression tests in `frontend/lib/bijoyToUnicode.test.ts` use strings from that document.
+
+- **Words split across Word runs** — Word cuts one Bijoy word into several runs (`Uvg`|`©`, `‡`|`gvU`, `me©‡`|`kl`, `wkÿv_x`|`©`) and paste converted each text node alone, stranding pre-base vowels and reph (`মোট` came out as `েমাট`, `টার্ম` lost its `র্`). `convertHtmlBijoyToUnicode` now joins a word that continues across adjacent runs before converting it. Breaks at `<br>`, blocks and table cells are respected, and whitespace-only runs are kept in place.
+- **Runs without a font** — a fontless run is judged on its own, as in a plain paste, so a standalone English run (`one`, `grade`) stays English. It is treated as Bijoy only when it touches a Bijoy run with no space between (the same word split by Word).
+- **Reph after a vowel sign or conjunct** — `wkÿv_x©` gave `শিক্ষাথীর্`, `KZ…©K` gave `কতৃর্ক`, `cv‡k¦©` gave `পাশ্বের্`. Reph is now moved in front of the trailing vowel sign / conjunct suffix before conversion (`শিক্ষার্থী`, `কর্তৃক`, `পার্শ্বে`). A doubled reph (`Uvg©©`) is collapsed.
+- **`ø`** is the ল-ফলা conjunct: `Dwjø…` now gives `উল্লিখিত` (the package produced `উলিস্ন…`).
+- **Embedded English** — `Forwarded`, `Add/Drop`, `Thesis-G` (→ `Thesis-এ`) inside Bijoy text used to become gibberish (`ঋড়ৎধিৎফবফ`). English words are detected (vowel density, mid-word capitals, `v` after a consonant, acronyms) and kept, backed by explicit lists for what patterns can't catch: short words (`term`, `faculty`, `Withdraw`), dotted abbreviations kept only with their full stop (`Dept.`, `Dr.`, `No.`, `Arch.`), and uppercase codes (`VC`, `DVC`, `ME`, `ChE`). Department, faculty, institute and officer names from `db/init.sql` are covered; a standalone `&` stays an ampersand. **Force convert** still converts everything (`keepEnglish: false`).
+- **English digits are kept as typed** — `2106007`, `2025`, `8.5`, `17-07-2026` are no longer turned into Bangla digits; the Bijoy letters around them still convert (`5wU` → `5টি`).
+
+Known limits: very short English words (`one`, `X grade`) are indistinguishable from Bijoy and are still converted; a bold/italic word split from its neighbour can lose that formatting on the joined fragment.
+
+---
+
 ## 2026-09-19 — Council Name in PDF Headings, Font Size Box & Editor Tweaks
 
 ### Changes

@@ -5170,7 +5170,7 @@ function convertSelectionBijoy(editor: any, force: boolean) {
         (m: any) => m.type.name === 'textStyle' && m.attrs.fontFamily && fontIsBijoyName(m.attrs.fontFamily)
       );
       if (!force && !isBijoyText(text, bijoyMark ? true : undefined) && !hasBijoySignature(text)) return;
-      const converted = convertBijoyToUnicode(text);
+      const converted = convertBijoyToUnicode(text, { keepEnglish: !force });
       if (converted === text) return;
       const marks = node.marks.filter(
         (m: any) => !(m.type.name === 'textStyle' && m.attrs.fontFamily && fontIsBijoyName(m.attrs.fontFamily))

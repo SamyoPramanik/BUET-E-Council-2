@@ -168,13 +168,105 @@ export function isBijoyText(text: string, fontIsBijoy?: boolean): boolean {
   return true;
 }
 
+// Short English words that the vowel-density test below can't vouch for
+// (too short, or containing the Bijoy vowel-sign letter "v").
+const ENGLISH_ALLOWLIST = new Set([
+  "add", "drop", "and", "the", "for", "not", "cgpa", "bsc", "msc", "phd", "mphil",
+  "have", "give", "live", "over", "ever", "even", "very", "move", "save", "love",
+  "case", "term", "dean", "head", "form", "type", "list", "note", "date", "page",
+  "faculty", "roll", "withdraw", "backlog", "fall", "spring",
+  "proctor", "provost", "pro", "registrar", "treasurer",
+  "of", "vice", "post", "bio", "chemistry", "civil", "physics", "naval", "planning", "ministry", "test",
+]);
+// Abbreviations that are only English when written with their full stop
+// ("No." / "Dr."): without it they are as likely to be a short Bijoy word.
+const ENGLISH_ABBREVIATIONS_WITH_DOT = new Set([
+  "dept", "arch", "sl", "no", "dr", "prof", "md", "mr", "mrs", "ms", "st", "stn", "engg",
+]);
+// Short acronyms with no vowel to recognise them by; uppercase only, as in
+// "ME" / "VC" (Vice-Chancellor).
+const ENGLISH_DEPT_CODES = new Set(["ME", "CE", "EE", "IPE", "NAME", "VC", "DVC", "DSW", "AC", "TC", "SC", "ChE", "Phy"]);
+
+/**
+ * True when an all-letter ASCII token is an English word rather than Bijoy
+ * keystrokes. Bijoy words are vowel-poor in ASCII letters, carry stray capitals
+ * mid-word ("wWbm") and lean on "v" (া) right after a consonant, so a
+ * vowel-dense word of four or more letters without those traits is English.
+ */
+function isEnglishWord(word: string): boolean {
+  if (!/^[A-Za-z]+$/.test(word)) return false;
+  if (ENGLISH_DEPT_CODES.has(word)) return true;
+  if (ENGLISH_ALLOWLIST.has(word.toLowerCase())) return true;
+  // Acronyms: BUET, CSE, CGPA.
+  if (word.length >= 3 && word === word.toUpperCase()) return /[AEIOU]/.test(word);
+  if (word.length < 4) return false;
+  if (/[a-z][A-Z]/.test(word)) return false;
+  const hasV = /v/i.test(word);
+  if (hasV && (word.length < 6 || /[bcdfghjklmnpqrstwxz]v/i.test(word))) return false;
+  const vowels = (word.match(/[aeiou]/gi) || []).length;
+  return vowels / word.length >= (hasV ? 0.35 : 0.3);
+}
+
+/**
+ * Bijoy documents routinely embed real English ("Forwarded", "Add/Drop",
+ * "Thesis-G" for "Thesis-এ"). Pushed through the converter blindly those come
+ * out as gibberish ("ঋড়ৎধিৎফবফ"), so English words are lifted out and the
+ * rest is converted as before.
+ */
+function convertKeepingEnglish(text: string, convert: (s: string) => string): string {
+  return text.replace(/[^\s/()]+/g, (tok) => {
+    // Bijoy's "&" is the hasant (্), which never stands alone between spaces:
+    // a lone "&" is the English ampersand ("Materials & Metallurgical").
+    if (tok === "&") return tok;
+    const m = tok.match(/^(.*?)([.,:;!?|]*)$/);
+    const core = m ? m[1] : tok;
+    const trail = m ? m[2] : "";
+    if (ENGLISH_DEPT_CODES.has(core) || (trail.startsWith(".") && ENGLISH_ABBREVIATIONS_WITH_DOT.has(core.toLowerCase()))) {
+      return core + convert(trail);
+    }
+    // "Thesis-G": Bijoy "G" is the suffix "এ" attached to an English word.
+    const suffixed = core.match(/^([A-Za-z]{4,})-G$/);
+    if (suffixed && isEnglishWord(suffixed[1])) {
+      return `${suffixed[1]}-এ${convert(trail)}`;
+    }
+    const parts = core.split("-");
+    // "CSE-2106007": English words kept, the number left as typed.
+    if (parts.some(isEnglishWord) && parts.every((part) => isEnglishWord(part) || /^\d+$/.test(part))) {
+      return parts.map((part) => (isEnglishWord(part) ? part : convert(part))).join("-") + convert(trail);
+    }
+    return convert(tok);
+  });
+}
+
+// Corrects Bijoy source sequences the underlying converter mishandles:
+// - "ø" is the ল-ফলা conjunct ("Dwjø" → উল্লি); the package maps it to স্ন.
+// - A reph "©" typed after a vowel sign or conjunct suffix ("wkÿv_x©",
+//   "KZ…©K", "cv‡k¦©") belongs before that mark: the reph attaches to the
+//   whole cluster, not to whatever the mark happens to follow.
+// - Word-processor typos can double the reph ("Uvg©©"), which is never valid.
+function normalizeBijoySource(text: string): string {
+  return text
+    .replace(/ø/g, "¬")
+    .replace(/©{2,}/g, "©")
+    .replace(/([xyz…„¦¬ª«]+)©/g, "©$1");
+}
+
 /**
  * Converts Bijoy 52 ANSI (SutonnyMJ) text to Unicode Bangla text.
+ * English words embedded in the text are kept as-is unless `keepEnglish` is
+ * false (used by "Force convert", which treats everything as Bijoy).
  */
-export function convertBijoyToUnicode(text: string): string {
+export function convertBijoyToUnicode(text: string, opts: { keepEnglish?: boolean } = {}): string {
   if (!text) return "";
   try {
-    return pkgConvertBijoyToUnicode(text);
+    // The package turns every ASCII digit into a Bangla one; digits (roll
+    // numbers, years, credits like 8.5) are kept exactly as typed.
+    const convert = (s: string) =>
+      s
+        .split(/(\d+(?:[.,]\d+)*)/)
+        .map((part, i) => (i % 2 === 1 ? part : part ? pkgConvertBijoyToUnicode(normalizeBijoySource(part)) : ""))
+        .join("");
+    return opts.keepEnglish === false ? convert(text) : convertKeepingEnglish(text, convert);
   } catch (err) {
     console.error("Bijoy conversion error:", err);
     return text;
@@ -241,6 +333,13 @@ function isBijoyFragmentInBijoyContext(text: string): boolean {
   return vowels / letters.length < 0.3;
 }
 
+function bijoyBlockOf(node: Node): Element | null {
+  for (let cur = node.parentElement; cur && cur.tagName !== "BODY"; cur = cur.parentElement) {
+    if (/^(P|LI|DIV|H[1-6]|TD|TH)$/.test(cur.tagName)) return cur;
+  }
+  return null;
+}
+
 function bijoyContextOf(node: Node): Element | null {
   let cur: Element | null = node.parentElement;
   let block: Element | null = null;
@@ -271,27 +370,98 @@ export function convertHtmlBijoyToUnicode(html: string, opts: { lenient?: boolea
     const converted = new Set<Element>();
     const leftovers: Text[] = [];
 
-    const walkTextNodes = (node: Node) => {
+    // Word splits one Bijoy word into several runs at arbitrary points
+    // ("Uvg" | "©", "‡" | "gvU", "me©‡" | "kl"). Converting each run alone
+    // strands pre-base vowels (‡ † w) and reph/vowel-sign marks away from their
+    // consonant, so a word spanning runs is converted as one unit first.
+    const INLINE = /^(SPAN|FONT|B|I|U|S|EM|STRONG|A|SUB|SUP|MARK|SMALL|BIG|O:P)$/;
+    const textNodes: Text[] = [];
+    // Text nodes that start after a <br>, block or table boundary: a word
+    // never continues across one.
+    const afterBarrier = new Set<Text>();
+    let barrier = false;
+    const collect = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) {
-        if (node.nodeValue && node.nodeValue.trim()) {
-          const fontIsBijoy = inheritedFontIsBijoy(node.parentElement, node.nodeValue);
-          if (isBijoyText(node.nodeValue, fontIsBijoy)) {
-            node.nodeValue = convertBijoyToUnicode(node.nodeValue);
-            // The text is Unicode now; leaving the Bijoy font on it would render
-            // it in the wrong face and make a second conversion pass look valid.
-            stripBijoyFontFromAncestors(node.parentElement);
-            const ctx = bijoyContextOf(node);
-            if (ctx) converted.add(ctx);
-          } else if (opts.lenient) {
-            leftovers.push(node as Text);
-          }
-        }
+        if (!node.nodeValue) return;
+        const text = node as Text;
+        if (barrier) afterBarrier.add(text);
+        barrier = false;
+        textNodes.push(text);
       } else {
-        node.childNodes.forEach(walkTextNodes);
+        const inline = node.nodeType === Node.ELEMENT_NODE && INLINE.test((node as Element).tagName);
+        if (!inline) barrier = true;
+        node.childNodes.forEach(collect);
+        if (!inline) barrier = true;
       }
     };
+    collect(doc.body);
 
-    walkTextNodes(doc.body);
+    const isBijoyNode = new Map<Text, boolean>();
+    const glued = (a: Text, b: Text) =>
+      !afterBarrier.has(b) && !/\s$/.test(a.nodeValue as string) && !/^\s/.test(b.nodeValue as string);
+    // A run judged on its own, exactly as a plain paste would: its font when
+    // known, else the byte heuristic. Standalone English runs ("one", "grade")
+    // fail this and stay English.
+    const undecided: Text[] = [];
+    for (const node of textNodes) {
+      const value = node.nodeValue as string;
+      if (!value.trim()) {
+        isBijoyNode.set(node, false);
+        continue;
+      }
+      const fontIsBijoy = inheritedFontIsBijoy(node.parentElement, value);
+      const bijoy = isBijoyText(value, fontIsBijoy);
+      isBijoyNode.set(node, bijoy);
+      if (!bijoy && fontIsBijoy === undefined && !BENGALI_UNICODE.test(value)) undecided.push(node);
+    }
+    // Word splits a word into runs, and a fragment like "©" or "gvU" can't be
+    // judged alone. A fontless run that is glued to a Bijoy run with no space
+    // between them is the same word, so it is Bijoy too. Anything separated by
+    // whitespace is left as judged above, so English in a Bijoy paragraph is
+    // never dragged along.
+    const index = new Map(textNodes.map((n, i) => [n, i]));
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const node of undecided) {
+        if (isBijoyNode.get(node)) continue;
+        const i = index.get(node) as number;
+        const prev = textNodes[i - 1];
+        const next = textNodes[i + 1];
+        if ((prev && isBijoyNode.get(prev) && glued(prev, node)) || (next && isBijoyNode.get(next) && glued(node, next))) {
+          isBijoyNode.set(node, true);
+          changed = true;
+        }
+      }
+    }
+
+    // Hand the trailing part of a word to the next run when the word continues
+    // there, so the pair converts together.
+    let pending = "";
+    textNodes.forEach((node, i) => {
+      if (!isBijoyNode.get(node)) {
+        if (opts.lenient && (node.nodeValue as string).trim()) leftovers.push(node);
+        return;
+      }
+      let raw = pending + (node.nodeValue as string);
+      pending = "";
+      const next = textNodes[i + 1];
+      if (next && isBijoyNode.get(next) && glued(node, next)) {
+        const tail = raw.match(/\S+$/);
+        if (tail && tail[0].length < raw.length) {
+          pending = tail[0];
+          raw = raw.slice(0, raw.length - pending.length);
+        } else if (tail) {
+          pending = raw;
+          raw = "";
+        }
+      }
+      node.nodeValue = raw ? convertBijoyToUnicode(raw) : "";
+      // The text is Unicode now; leaving the Bijoy font on it would render
+      // it in the wrong face and make a second conversion pass look valid.
+      stripBijoyFontFromAncestors(node.parentElement);
+      const ctx = bijoyContextOf(node);
+      if (ctx) converted.add(ctx);
+    });
 
     const convertLeftover = (node: Text) => {
       node.nodeValue = convertBijoyToUnicode(node.nodeValue || "");

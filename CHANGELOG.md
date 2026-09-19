@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-19 — Supplementary Heading, "Immediate" JSON Import & Serial Beside Tables
+
+### Bug Fixes
+
+- **Supplementary agenda heading lacked the university name** (`pdfGenerator.js`, `pdf-preview/page.tsx`): the `suppli-agenda` PDF and its preview printed only the sub-title. They now print `বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা` above it, like regular and immediate agendas.
+- **Serial number landed inside a table** (`utils/inlinePrefix.js`): with the inline agenda-number style, the `১:` prefix went into the first `<p>` found anywhere in the body. Editor tables wrap each cell's text in `<p>`, so an agenda that opens with a table got the serial inside the first cell. The prefix is now only put into a paragraph that comes before any table; a body that opens with a table gets the prefix as its own line above it.
+- Bumped `PDF_TEMPLATE_VERSION` to `v61` so cached PDFs regenerate.
+
+### Changes
+
+- **JSON import: "Immediate" in the heading makes it an Immediate meeting** (`meetingController.js` → `bulkImportMeeting`, `utils/meetingKind.js`): imported meetings were always created as Regular. If the JSON `title` (the heading, stored as `meeting_title`) or the serial contains "immediate" (any case), `is_regular` is now `false`. An explicit `is_regular` boolean in the payload still wins.
+
+---
+
 ## 2026-09-19 — PDF Tables Follow the Editor's Table Styling
 
 ### Changes

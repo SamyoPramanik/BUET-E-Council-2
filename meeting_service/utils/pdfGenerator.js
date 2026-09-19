@@ -1,3 +1,4 @@
+const { injectInlinePrefix } = require('./inlinePrefix');
 const HTMLtoDOCX = require('html-to-docx');
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
@@ -565,7 +566,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v59';
+const PDF_TEMPLATE_VERSION = 'v61';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -1097,6 +1098,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
         </head>
         <body>
             ${cacheVariant === 'suppli-agenda' ? `
+            <div class="text-center header-title" style="text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
             <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
             ` : (isImmediate ? `
             <div class="text-center header-title" style="text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
@@ -1323,17 +1325,6 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                 // and "<serial>:" + body flow in a second column, so wrapped
                 // lines align under the serial. Bibidha keeps a plain inline run.
                 const inlineNum = pdfLayout.agendaNumberStyle === 'inline';
-                const injectInlinePrefix = (rawHtml, prefix) => {
-                    if (!prefix) return rawHtml;
-                    const bold = `<b>${prefix}</b> `;
-                    const m = rawHtml.match(/<p\b[^>]*>/i);
-                    if (m) {
-                        const at = m.index + m[0].length;
-                        return rawHtml.slice(0, at) + bold + rawHtml.slice(at);
-                    }
-                    return bold + rawHtml;
-                };
-
                 return targetAgendas.map(ag => {
                     const agSerialStr = ag.is_suppli
                         ? toBanglaDigits(mainAgendaCount + (ag.agenda_serial || 1), serialWidth)

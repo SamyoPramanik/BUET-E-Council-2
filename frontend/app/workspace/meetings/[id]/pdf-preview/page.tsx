@@ -307,7 +307,7 @@ export default function PdfPreviewPage() {
 
     if (docType === "suppli-agenda") {
       return {
-        university: false,
+        university: true,
         subtitle: `${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।`,
       };
     }

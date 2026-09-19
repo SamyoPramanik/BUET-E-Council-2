@@ -565,7 +565,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v57';
+const PDF_TEMPLATE_VERSION = 'v58';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -731,7 +731,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
             : pdfCacheKey(meetingId, cacheType);
         const fingerprint = computeFingerprint({
             type: cacheType,
-            meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, conclusion: meeting.conclusion, agenda_prefix: meeting.agenda_prefix, is_regular: meeting.is_regular },
+            meeting: { title: meeting.title, meeting_date: meeting.meeting_date, description: meeting.description, conclusion: meeting.conclusion, agenda_prefix: meeting.agenda_prefix, is_regular: meeting.is_regular, type: meeting.type },
             presentees: stableRows(presentees),
             agendas: stableRows(agendas),
             signatures: { presidentSignature, secretarySignature, presidentSignatureImage, secretarySignatureImage },

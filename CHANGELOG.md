@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-19 — PDF Tables Follow the Editor's Table Styling
+
+### Changes
+
+**Rich-text tables in generated PDFs (`pdfGenerator.js`)**
+- The PDF used its own table look (6px cell padding, forced 14px cell font, plain grey `#f2f4f7` header) and had no Table Style gallery at all, so a table never printed the way it looked in the editor. Editor tables (identified by their `data-table-style` attribute, so attendance/invitee tables are untouched) now use the editor's rules from `globals.css`: `4px 8px` cell padding, the theme-tinted header row (default maroon theme, variables resolved for white paper), and the **grid-blue / bands-gray / crimson-header** styles including their banded rows.
+- The forced inline `padding` / `font-size` / header `background-color` / `font-weight` on `<th>` / `<td>` were removed, so a cell's own pasted styling (background, alignment) is what prints.
+- Column widths are unchanged: the editor's per-column `colwidth`s already print as proportions of the page width.
+- Bumped `PDF_TEMPLATE_VERSION` to `v59` so cached PDFs regenerate.
+
+Known limit: the PDF always uses the default maroon theme colours, whichever theme the editor is showing.
+
+---
+
 ## 2026-09-19 — Bijoy → Unicode Converter Fixes (Word Paste)
 
 ### Bug Fixes

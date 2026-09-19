@@ -371,7 +371,7 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
     // Table headers with text direction
     str = str.replace(/<th(\s[^>]*)?>/gi, (match) => {
         const hasDir = /data-text-direction="vertical-rl"/i.test(match);
-        const additions = { 'padding': '6px', 'background-color': '#f2f4f7', 'font-weight': 'bold', 'text-align': 'left', 'font-size': '14px', 'overflow-wrap': 'break-word', 'word-break': 'normal', 'vertical-align': 'top' };
+        const additions = { 'text-align': 'left', 'overflow-wrap': 'break-word', 'word-break': 'normal', 'vertical-align': 'top' };
         if (hasDir) {
             additions['writing-mode'] = 'vertical-rl';
             additions['transform'] = 'rotate(180deg)';
@@ -384,7 +384,7 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
     // Table cells with text direction
     str = str.replace(/<td(\s[^>]*)?>/gi, (match) => {
         const hasDir = /data-text-direction="vertical-rl"/i.test(match);
-        const additions = { 'padding': '6px', 'text-align': 'left', 'font-size': '14px', 'vertical-align': 'top', 'overflow-wrap': 'break-word', 'word-break': 'normal' };
+        const additions = { 'text-align': 'left', 'vertical-align': 'top', 'overflow-wrap': 'break-word', 'word-break': 'normal' };
         if (hasDir) {
             additions['writing-mode'] = 'vertical-rl';
             additions['transform'] = 'rotate(180deg)';
@@ -565,7 +565,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v58';
+const PDF_TEMPLATE_VERSION = 'v59';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -1028,6 +1028,18 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
 
                 table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
                 th, td { padding: 4px; text-align: left; border: none; }
+                /* Editor tables (always carry data-table-style) look the way they do in
+                   the editor (frontend/app/globals.css): same cell padding, theme-tinted
+                   header row and Table Style gallery. Colours are the default maroon
+                   theme with its variables resolved (paper is always light). */
+                table[data-table-style] th, table[data-table-style] td { padding: 4px 8px; vertical-align: top; box-sizing: border-box; min-width: 1em; }
+                table[data-table-style] th { background: #ecd9d9 !important; color: #800000 !important; font-weight: 700 !important; letter-spacing: 0.01em; }
+                table[data-table-style="grid-blue"] th { background: #dbeafe !important; color: #1e3a8a !important; }
+                table[data-table-style="grid-blue"] tr:nth-child(even) td { background-color: #eff6ff; }
+                table[data-table-style="bands-gray"] th { background: #e5e7eb !important; color: #374151 !important; }
+                table[data-table-style="bands-gray"] tr:nth-child(even) td { background-color: #f3f4f6; }
+                table[data-table-style="crimson-header"] th { background: #800000 !important; color: #ffffff !important; }
+                table[data-table-style="crimson-header"] tr:nth-child(even) td { background-color: #fdf2f2; }
                 table.border-full td, table.border-full th, table[data-border="full"] td, table[data-border="full"] th { border: 1px solid black; }
                 table.border-outer, table[data-border="outer"] { border: 2px solid black; }
                 table.border-outer td, table.border-outer th, table[data-border="outer"] td, table[data-border="outer"] th { border: none; }

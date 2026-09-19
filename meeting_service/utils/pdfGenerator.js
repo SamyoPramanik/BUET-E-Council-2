@@ -823,7 +823,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
         Object.values(depts).forEach(dept => dept.members.sort(bySerial));
 
         const fontBase64 = FONT_BASE64;
-        const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); }` : '';
+        const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
 
         const getSuffix = (item) => {
             const office = normalize(item.office || '');
@@ -1566,7 +1566,7 @@ const buildSingleResolutionHtml = async (meetingId, agendaId) => {
     const titleStr = isBibidha ? 'বিবিধ :' : `প্রস্তাব নং ${fullSerial}`;
 
     const fontBase64 = FONT_BASE64;
-    const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); }` : '';
+    const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
     const contentHtml = styleRichTextHtml(convertMarkdownTablesToHtml(ag.content || ''), true);
     const resolutionHtml = styleRichTextHtml(convertMarkdownTablesToHtml(stripResolutionPrefix(ag.resolution || '')), true);
 
@@ -1708,7 +1708,7 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
         Object.values(depts).forEach(dept => dept.members.sort(bySerial));
 
         const fontBase64 = FONT_BASE64;
-        const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); }` : '';
+        const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
 
         const formatMeetingSerial = (rawTitle) => {
             if (!rawTitle) return '';
@@ -1971,7 +1971,7 @@ const generateNoticePdf = async (notice, presentees) => {
     const secretaryLabel = isSyndicate ? 'সিন্ডিকেটের সচিব।' : 'একাডেমিক কাউন্সিলের সচিব।';
 
     const fontBase64 = FONT_BASE64;
-    const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); }` : '';
+    const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
 
     let html = `
     <!DOCTYPE html>

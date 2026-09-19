@@ -7,12 +7,12 @@ const { indexAgendaContent, indexResolutionContent } = require('../utils/searchI
 const { toBanglaDigits, stripProposalPrefix, stripResolutionPrefix } = require('../utils/agendaSerial');
 const { embedTexts } = require('../utils/embeddingClient');
 const {
-    RESOLUTION_DECISION_TYPES,
+    MAX_CLARIFICATION_ROUNDS,
     computeConfidence,
     buildUserPrompt,
     extractPlaceholders,
     toResolutionHtml,
-    generateResolutionText,
+    runGenerationTurn,
 } = require('../utils/resolutionAutofill');
 
 const setAgendaTags = async (agendaId, tagIds) => {
@@ -514,23 +514,17 @@ const createResolution = async (req, res, next) => {
     try {
         // Since resolution is on the agenda table, we just update the resolution column
         const agendamId = req.params.id; // Expecting the URL to be POST /:id/resolutions where id is agenda_id
-        const { resolution, tag_ids, decision_type } = req.body;
+        const { resolution, tag_ids } = req.body;
 
         if (!resolution) return next(new CustomError('Resolution text is required', 400));
-        if (decision_type && !RESOLUTION_DECISION_TYPES.includes(decision_type)) {
-            return next(new CustomError('Invalid decision type', 400));
-        }
 
         const cleanedResolution = stripResolutionPrefix(resolution);
 
         await snapshotResolutionRevision(agendamId, req.user?.id);
 
-        // COALESCE so a save that doesn't include decision_type (e.g. plain
-        // manual edit, no autofill involved) never clobbers a previously-set
-        // one — only an explicit value ever overwrites it.
         const result = await db.query(
-            'UPDATE agenda SET resolution = $1, decision_type = COALESCE($3, decision_type) WHERE id = $2 RETURNING *',
-            [cleanedResolution, agendamId, decision_type || null]
+            'UPDATE agenda SET resolution = $1 WHERE id = $2 RETURNING *',
+            [cleanedResolution, agendamId]
         );
 
         if (result.rows.length === 0) return next(new CustomError('Agendam not found', 404));
@@ -549,21 +543,17 @@ const updateResolution = async (req, res, next) => {
     try {
         // Similar to create, we just update the resolution text
         const agendamId = req.params.resId; // from PUT /resolutions/:resId
-        const { resolution, tag_ids, decision_type } = req.body;
+        const { resolution, tag_ids } = req.body;
 
         if (!resolution) return next(new CustomError('Resolution text is required', 400));
-        if (decision_type && !RESOLUTION_DECISION_TYPES.includes(decision_type)) {
-            return next(new CustomError('Invalid decision type', 400));
-        }
 
         const cleanedResolution = stripResolutionPrefix(resolution);
 
         await snapshotResolutionRevision(agendamId, req.user?.id);
 
-        // Same COALESCE reasoning as createResolution above.
         const result = await db.query(
-            'UPDATE agenda SET resolution = $1, decision_type = COALESCE($3, decision_type) WHERE id = $2 RETURNING *',
-            [cleanedResolution, agendamId, decision_type || null]
+            'UPDATE agenda SET resolution = $1 WHERE id = $2 RETURNING *',
+            [cleanedResolution, agendamId]
         );
 
         if (result.rows.length === 0) return next(new CustomError('Resolution/Agendam not found', 404));
@@ -578,25 +568,29 @@ const updateResolution = async (req, res, next) => {
     }
 };
 
-// AI Resolution Autofill. Single retrieval-then-generation pipeline — see
-// utils/resolutionAutofill.js's header comment and documentation.md for why
-// this deliberately does NOT short-circuit to a verbatim copy even when a
-// near-duplicate past agenda is found; the model always sees the full
-// current agenda text so it can catch when a similar-looking case is
-// actually substantively different. Nothing here is saved to the DB — the
-// caller gets back HTML to review/edit and save via the existing
-// updateResolution/createResolution endpoints, same as manually-typed text.
+// AI Resolution Autofill. Retrieval-then-generation, called once per round
+// of a back-and-forth: the model either asks 1-3 clarifying questions
+// (surfaced through the floating chat widget in ResolutionView.tsx) or
+// returns the finished resolution text — no dropdown, no inline
+// [placeholder] text the author has to notice and edit themselves. See
+// utils/resolutionAutofill.js's header comment and
+// documentation.md for why generation always runs (never a verbatim-copy
+// shortcut even for a near-duplicate past agenda) and why the model asks
+// rather than guesses or blanks. Nothing here is saved to the DB — the
+// caller gets back HTML (once complete) to review/edit and save via the
+// existing updateResolution/createResolution endpoints, same as
+// manually-typed text.
 const autofillResolution = async (req, res, next) => {
     try {
         const agendamId = req.params.id;
-        const { roughDraft, decisionType } = req.body;
+        const { roughDraft, conversation } = req.body;
 
         if (!roughDraft || !roughDraft.trim()) {
             return next(new CustomError('A rough decision draft is required', 400));
         }
-        if (!decisionType || !RESOLUTION_DECISION_TYPES.includes(decisionType)) {
-            return next(new CustomError('A valid decision type is required', 400));
-        }
+        const priorTurns = Array.isArray(conversation)
+            ? conversation.filter((t) => t && typeof t.question === 'string' && typeof t.answer === 'string')
+            : [];
 
         const agendaRes = await db.query(
             `SELECT a.id, a.content_plain, a.category_id, c.name AS category_name
@@ -621,27 +615,30 @@ const autofillResolution = async (req, res, next) => {
             console.warn('[autofillResolution] Embedding service unavailable:', embedErr.message);
         }
 
-        // 2. Retrieve same-category precedents ranked by similarity. Hard
-        // filter on category_id (never widened to other categories, even
-        // when results are sparse — a cross-category "precedent" would
-        // mislead more than help); decision_type match only affects ranking/
-        // confidence, since most historical rows won't have one set yet.
+        // 2. Retrieve precedents ranked by similarity. Hard filter on
+        // category_id when the agenda actually has one — never widened to
+        // OTHER categories even when results are sparse, since a
+        // cross-category "precedent" would mislead more than help. But when
+        // the current agenda has no category at all, that filter is
+        // impossible to apply meaningfully (`category_id = NULL` matches
+        // nothing in SQL), so fall back to content-similarity search across
+        // all agendas instead of silently returning zero precedents forever.
         let precedents = [];
-        if (queryEmbedding && agenda.category_id) {
+        if (queryEmbedding) {
             const precedentRes = await db.query(
                 `SELECT a.id AS agenda_id, m.meeting_title, m.title, a.content_plain,
-                        a.resolution_plain, a.decision_type,
+                        a.resolution_plain,
                         1 - (rc.embedding <=> $1::vector) AS similarity
                  FROM resolution_chunks rc
                  JOIN agenda a ON a.id = rc.agenda_id
                  JOIN meetings m ON m.id = a.meeting_id
-                 WHERE a.category_id = $2
+                 WHERE ($2::uuid IS NULL OR a.category_id = $2)
                    AND a.id != $3
                    AND a.resolution_plain IS NOT NULL
                    AND length(a.resolution_plain) > 0
                  ORDER BY rc.embedding <=> $1::vector ASC
                  LIMIT 5`,
-                [JSON.stringify(queryEmbedding), agenda.category_id, agendamId]
+                [JSON.stringify(queryEmbedding), agenda.category_id || null, agendamId]
             );
             // One agenda can have multiple resolution_chunks; keep the best
             // (lowest-distance / highest-similarity) row per agenda.
@@ -653,33 +650,40 @@ const autofillResolution = async (req, res, next) => {
             precedents = [...seen.values()].sort((a, b) => b.similarity - a.similarity).slice(0, 5);
         }
 
-        // 3. Generate. Always — see the no-shortcut rationale above.
-        const decisionTypeLabel = decisionType.replace(/_/g, ' ');
+        // 3. Generate (or ask). Always routes through the model — see the
+        // no-shortcut rationale above.
+        const forceComplete = priorTurns.length >= MAX_CLARIFICATION_ROUNDS;
         const userPrompt = buildUserPrompt({
             agendaText: agenda.content_plain || '',
             roughDraft,
-            decisionTypeLabel,
             precedents,
+            conversation: priorTurns,
+            forceComplete,
         });
 
-        let generatedText;
+        let turn;
         try {
-            generatedText = await generateResolutionText(userPrompt);
+            turn = await runGenerationTurn(userPrompt);
         } catch (genErr) {
             console.error('[autofillResolution] Generation failed:', genErr.message);
             return next(new CustomError('AI drafting is unavailable right now — please try again shortly or write the resolution manually', 502));
         }
-        if (!generatedText) {
-            return next(new CustomError('AI drafting returned no text — please try again or write the resolution manually', 502));
+
+        if (turn.status === 'needs_clarification') {
+            return res.status(200).json({
+                success: true,
+                data: { needsClarification: true, questions: turn.questions },
+            });
         }
 
-        const confidence = computeConfidence(precedents, decisionType);
-        const placeholders = extractPlaceholders(generatedText);
-        const html = toResolutionHtml(generatedText);
+        const confidence = computeConfidence(precedents);
+        const placeholders = extractPlaceholders(turn.resolution);
+        const html = toResolutionHtml(turn.resolution);
 
         res.status(200).json({
             success: true,
             data: {
+                needsClarification: false,
                 html,
                 confidence,
                 placeholders,
@@ -687,7 +691,6 @@ const autofillResolution = async (req, res, next) => {
                     agendaId: p.agenda_id,
                     meetingTitle: p.meeting_title || p.title,
                     similarity: p.similarity,
-                    decisionType: p.decision_type,
                     snippet: (p.resolution_plain || '').slice(0, 160),
                 })),
             },

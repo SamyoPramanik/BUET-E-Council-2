@@ -670,6 +670,14 @@ textarea:focus {
   outline: none !important;
 }
 
+/* Match the generated PDF (pdfGenerator.js), where every paragraph has no top
+   margin and a 10px bottom margin. Tailwind Typography's default ~1em top and
+   bottom margins made each Enter look like an extra blank line. */
+.ProseMirror p {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
 /* Multi-Column Document & Section Layout Styles */
 /* ColumnGroup: Grid container rendered by TipTap as data-type="column-group" */
 div[data-type="column-group"] {

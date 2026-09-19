@@ -32,21 +32,6 @@ function stripLeadingResolutionPrefix(content: string): string {
   return str.trim();
 }
 
-// Fixed dropdown for AI Resolution Autofill's decision-type input. Kept in
-// sync by hand with meeting_service/utils/resolutionAutofill.js's
-// RESOLUTION_DECISION_TYPES — the backend is the validation source of
-// truth, this is just the label set for the same fixed values.
-const RESOLUTION_DECISION_TYPES: { value: string; label: string }[] = [
-  { value: "approved", label: "Approved / অনুমোদিত" },
-  { value: "rejected", label: "Rejected / প্রত্যাখ্যাত" },
-  { value: "approved_with_conditions", label: "Approved with Conditions / শর্তসাপেক্ষে অনুমোদিত" },
-  { value: "deferred", label: "Deferred (Tabled) / স্থগিত" },
-  { value: "referred_to_committee", label: "Referred to Committee / কমিটিতে প্রেরিত" },
-  { value: "amended_and_approved", label: "Amended and Approved / সংশোধনসহ অনুমোদিত" },
-  { value: "noted", label: "Noted (No Action) / অবগতির জন্য" },
-  { value: "withdrawn", label: "Withdrawn / প্রত্যাহৃত" },
-];
-
 const AUTOFILL_MODE_STORAGE_KEY = "resolutionAutofillMode";
 
 const CONFIDENCE_DISPLAY: Record<string, { label: string; className: string }> = {
@@ -100,12 +85,26 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
 
   // AI Resolution Autofill state. autofillMode is deliberately global (one
   // switch, persisted, applies to every autofill click) rather than a
-  // per-click prompt — set it once, forget about it.
-  const [editDecisionType, setEditDecisionType] = useState<string>("");
+  // per-click prompt — set it once, forget about it. There's no
+  // decision-type dropdown: the author just types a rough decision into the
+  // resolution box, and any genuine ambiguity surfaces as chat questions
+  // instead of guessing or leaving an inline blank.
   const [isAutofilling, setIsAutofilling] = useState(false);
   const [autofillMeta, setAutofillMeta] = useState<{ confidence: string; placeholders: string[]; sources: any[] } | null>(null);
   const [autofillMode, setAutofillModeState] = useState<"direct" | "preview">("direct");
   const [autofillPreviewHtml, setAutofillPreviewHtml] = useState<string | null>(null);
+
+  // The floating chat widget's back-and-forth. originalRoughDraft is
+  // snapshotted once when a round starts so re-asking always reasons about
+  // the same rough decision, regardless of what's since happened to
+  // editContent. conversation accumulates every Q&A pair across rounds so
+  // each new call has the full history; pendingQuestions/answerDrafts are
+  // just the current round's unanswered questions and in-progress answers.
+  const [originalRoughDraft, setOriginalRoughDraft] = useState("");
+  const [conversation, setConversation] = useState<{ question: string; answer: string }[]>([]);
+  const [pendingQuestions, setPendingQuestions] = useState<string[] | null>(null);
+  const [answerDrafts, setAnswerDrafts] = useState<string[]>([]);
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -137,7 +136,6 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
       await api.put(`/agendas/resolutions/${editingId}`, {
         resolution: cleanResolution,
         tag_ids: editTagIds,
-        decision_type: editDecisionType || undefined,
       });
       mutate();
       setEditingId(null);
@@ -153,31 +151,35 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
     setEditingId(agenda.id);
     setEditContent(stripLeadingResolutionPrefix(agenda.resolution || ""));
     setEditTagIds((agenda.tags || []).map((t: any) => t.id));
-    setEditDecisionType(agenda.decision_type || "");
     setAutofillMeta(null);
     setAutofillPreviewHtml(null);
+    setConversation([]);
+    setPendingQuestions(null);
+    setAnswerDrafts([]);
+    setChatOpen(false);
   };
 
-  const handleAutofill = async () => {
-    if (!editDecisionType) {
-      toast.error("Pick a decision type first");
-      return;
-    }
-    const roughDraft = (editContent || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-    if (!roughDraft) {
-      toast.error("Write a rough decision in the resolution box first");
-      return;
-    }
+  // Shared by the initial "Autofill AI" click and every chat-panel answer
+  // submission — one call per round of the back-and-forth.
+  const runAutofillTurn = async (roughDraft: string, conversationSoFar: { question: string; answer: string }[]) => {
     setIsAutofilling(true);
-    setAutofillMeta(null);
-    setAutofillPreviewHtml(null);
     try {
       const res = await api.post(`/agendas/${editingId}/resolutions/autofill`, {
         roughDraft,
-        decisionType: editDecisionType,
+        conversation: conversationSoFar,
       });
-      const { html, confidence, placeholders, sources } = res.data.data;
+      const data = res.data.data;
+      if (data.needsClarification) {
+        setPendingQuestions(data.questions);
+        setAnswerDrafts(new Array(data.questions.length).fill(""));
+        setChatOpen(true);
+        return;
+      }
+      const { html, confidence, placeholders, sources } = data;
       setAutofillMeta({ confidence, placeholders, sources });
+      setPendingQuestions(null);
+      setAnswerDrafts([]);
+      setChatOpen(false);
       if (autofillMode === "direct") {
         setEditContent(html);
       } else {
@@ -188,6 +190,29 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
     } finally {
       setIsAutofilling(false);
     }
+  };
+
+  const handleAutofill = () => {
+    const roughDraft = (editContent || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    if (!roughDraft) {
+      toast.error("Write a rough decision in the resolution box first");
+      return;
+    }
+    setOriginalRoughDraft(roughDraft);
+    setConversation([]);
+    runAutofillTurn(roughDraft, []);
+  };
+
+  const handleSubmitAnswers = () => {
+    if (!pendingQuestions) return;
+    const newTurns = pendingQuestions.map((q, i) => ({ question: q, answer: answerDrafts[i]?.trim() || "I don't know" }));
+    const nextConversation = [...conversation, ...newTurns];
+    setConversation(nextConversation);
+    runAutofillTurn(originalRoughDraft, nextConversation);
+  };
+
+  const handleSkipQuestion = (index: number) => {
+    setAnswerDrafts((prev) => prev.map((a, i) => (i === index ? "I don't know" : a)));
   };
 
   const acceptAutofillPreview = () => {
@@ -567,17 +592,6 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                           persisted) rather than a per-click prompt: set once, every
                           Autofill click on this page follows it until changed. */}
                       <div className="p-3 border-b border-border bg-muted/30 flex flex-wrap items-center gap-2">
-                        <select
-                          value={editDecisionType}
-                          onChange={(e) => setEditDecisionType(e.target.value)}
-                          className="text-xs border border-border rounded-md px-2 py-1.5 bg-background"
-                          title="Decision type"
-                        >
-                          <option value="">Decision type…</option>
-                          {RESOLUTION_DECISION_TYPES.map((d) => (
-                            <option key={d.value} value={d.value}>{d.label}</option>
-                          ))}
-                        </select>
                         <button
                           onClick={handleAutofill}
                           disabled={isAutofilling}
@@ -854,6 +868,79 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
           }
         }}
       />
+
+      {/* AI Resolution Autofill's clarifying-question chat widget. Only
+          rendered while there's something to ask — nothing to click on
+          otherwise. The FAB always stays visible once questions exist;
+          clicking it (or clicking outside the slid-out panel) just toggles
+          the panel, it never discards the pending questions/conversation. */}
+      {pendingQuestions && pendingQuestions.length > 0 && (
+        <>
+          {chatOpen && (
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setChatOpen(false)}
+              aria-hidden="true"
+            />
+          )}
+          <div
+            className={`fixed top-0 right-0 h-full w-full max-w-sm bg-background border-l border-border shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${chatOpen ? "translate-x-0" : "translate-x-full"}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <div className="font-medium text-sm flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" /> AI needs a bit more info
+              </div>
+              <button onClick={() => setChatOpen(false)} className="p-1 hover:bg-muted rounded-md">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {conversation.map((turn, i) => (
+                <div key={i} className="text-xs space-y-1">
+                  <div className="text-muted-foreground font-medium">{turn.question}</div>
+                  <div className="bg-muted rounded-md px-2 py-1">{turn.answer}</div>
+                </div>
+              ))}
+              {pendingQuestions.map((q, i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="text-xs font-medium">{q}</div>
+                  <textarea
+                    value={answerDrafts[i] || ""}
+                    onChange={(e) => setAnswerDrafts((prev) => prev.map((a, idx) => (idx === i ? e.target.value : a)))}
+                    className="w-full text-xs border border-border rounded-md p-2 bg-background min-h-[60px]"
+                    placeholder="Type your answer…"
+                  />
+                  <button
+                    onClick={() => handleSkipQuestion(i)}
+                    className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                  >
+                    Skip / I don't know
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-border">
+              <button
+                onClick={handleSubmitAnswers}
+                disabled={isAutofilling}
+                className="w-full px-3 py-2 text-xs bg-primary text-primary-foreground rounded-md disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isAutofilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                {isAutofilling ? "Drafting…" : "Submit answers"}
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); setChatOpen((prev) => !prev); }}
+            className="fixed bottom-5 right-5 z-[60] w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
+            title="AI has a question for you"
+          >
+            <Sparkles className="w-5 h-5" />
+            {!chatOpen && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full border-2 border-background" />}
+          </button>
+        </>
+      )}
     </div>
   );
 }

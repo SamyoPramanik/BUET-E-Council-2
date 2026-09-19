@@ -1,4 +1,4 @@
-name: Deploy to Azure VM
+name: Deploy to VM
 
 on:
   workflow_run:
@@ -51,6 +51,17 @@ jobs:
             R3_SECRET_ACCESS_KEY=${{ secrets.R3_SECRET_ACCESS_KEY }}
             R3_BUCKET_NAME=${{ vars.R3_BUCKET_NAME }}
             BACKEND_URL=${{ vars.BACKEND_URL }}
+            ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
+            MAX_ANNEXURE_SIZE_MB=${{ vars.MAX_ANNEXURE_SIZE_MB }}
+            HF_TOKEN=${{ secrets.HF_TOKEN }}
+            MODEL_NAME=${{ vars.MODEL_NAME }}
+            RESOLUTION_AI_MODEL=${{ vars.RESOLUTION_AI_MODEL }}
+            SMTP_HOST=${{ vars.SMTP_HOST }}
+            SMTP_PORT=${{ vars.SMTP_PORT }}
+            SMTP_SECURE=${{ vars.SMTP_SECURE }}
+            SMTP_USER=${{ secrets.SMTP_USER }}
+            SMTP_PASS=${{ secrets.SMTP_PASS }}
+            MAIL_FROM=${{ vars.MAIL_FROM }}
             EOF
             # -------------------------------------------------
 

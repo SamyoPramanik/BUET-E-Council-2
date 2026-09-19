@@ -14,6 +14,13 @@ import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
 import { canEditInvitees, canEditPresentees } from "../../lib/meetingAccess";
 
+// An invitee row is "the same person" as a member when it is linked to that
+// member (invitees.member_id). Name + designation is only a fallback for legacy
+// rows with no link — matching on it alone merges two different people who share
+// a Bangla name and designation into one.
+const isSameMember = (p: any, m: any) =>
+  p.member_id ? p.member_id === m.id : (p.name === m.name && p.designation === m.designation);
+
 export default function InviteesView({ meeting, type, mutate }: { meeting: any, type: string, mutate: any }) {
   const { user } = useAuth();
   const isPast = meeting.status === 'past' || meeting.is_completed === true;
@@ -524,7 +531,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
       }
       // Find presentees to remove (they are in invitees but their member.id is NOT in selectedMembers)
       const presenteesToRemove = invitees.filter((p: any) => {
-        const matchedMember = allMembers.find((m: any) => p.name === m.name && p.designation === m.designation);
+        const matchedMember = allMembers.find((m: any) => isSameMember(p, m));
         if (matchedMember) {
           return !selectedMembers.includes(matchedMember.id);
         }
@@ -534,7 +541,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
       // Find presentees to add (they are in selectedMembers but NOT in invitees)
       const presenteesToAdd = allMembers
         .filter((m: any) => selectedMembers.includes(m.id))
-        .filter((m: any) => !invitees.some((p: any) => p.name === m.name && p.designation === m.designation))
+        .filter((m: any) => !invitees.some((p: any) => isSameMember(p, m)))
         .map((m: any) => ({
             name: m.name,
             email: m.email || '',
@@ -704,7 +711,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
             ? member.is_present
             : (!canEditInviteesAccess
                 ? false
-                : invitees.some((p: any) => p.name === member.name && p.designation === member.designation));
+                : invitees.some((p: any) => isSameMember(p, member)));
           return (
             <label key={member.id} className={`flex items-center gap-3 p-3 rounded-md border border-border ${isAlreadyAdded ? 'bg-muted/10' : 'hover:bg-muted/30'} cursor-pointer`}>
               <input
@@ -807,7 +814,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                   <button
                     onClick={() => {
                       const initiallySelected = allMembers
-                        .filter((m: any) => invitees.some((p: any) => p.name === m.name && p.designation === m.designation))
+                        .filter((m: any) => invitees.some((p: any) => isSameMember(p, m)))
                         .map((m: any) => m.id);
                       setSelectedMembers(initiallySelected);
                       setIsAddPresenteeModalOpen(true);
@@ -828,7 +835,7 @@ export default function InviteesView({ meeting, type, mutate }: { meeting: any, 
                   onClick={() => {
                     // Initialize selectedMembers with already added presentees
                     const initiallySelected = allMembers
-                      .filter((m: any) => invitees.some((p: any) => p.name === m.name && p.designation === m.designation))
+                      .filter((m: any) => invitees.some((p: any) => isSameMember(p, m)))
                       .map((m: any) => m.id);
                     setSelectedMembers(initiallySelected);
                     setIsAddPresenteeModalOpen(true);

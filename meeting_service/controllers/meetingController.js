@@ -9,6 +9,7 @@ const { sendMail } = require('../utils/mailer');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
 const { extractAgendaPrefix, parseAgendumBody } = require('../utils/agendaSerial');
+const { resolveIsRegular } = require('../utils/meetingKind');
 const { loadMeeting, calculateMeetingAccess } = require('../middlewares/meetingWorkflowMiddleware');
 
 // A viewer whose account is scoped to a specific member_type (academic/syndicate)
@@ -1756,8 +1757,8 @@ const bulkImportMeeting = async (req, res, next) => {
             `INSERT INTO meetings
             -- No approval_status: that column is gone, replaced by stage, whose
             -- 'initiator' default is the equivalent of the old 'draft'.
-            (title, meeting_title, meeting_date, type, status, description, president, conclusion, created_by, agenda_prefix)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            (title, meeting_title, meeting_date, type, status, description, president, conclusion, created_by, agenda_prefix, is_regular)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id`,
             [
                 meeting.title,
@@ -1769,7 +1770,9 @@ const bulkImportMeeting = async (req, res, next) => {
                 meeting.president,
                 meeting.conclusion,
                 req.user?.id || null,
-                firstAgendaExtraction.agendaPrefix
+                firstAgendaExtraction.agendaPrefix,
+                // A heading that says "Immediate" makes this an Immediate meeting.
+                resolveIsRegular(meeting.is_regular, meeting.meeting_title, meeting.title)
             ]
         );
 

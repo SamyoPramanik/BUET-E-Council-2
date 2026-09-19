@@ -294,6 +294,7 @@ export default function ManageDepartmentsPage() {
                     value={newDepartment.faculty_id}
                     onChange={(val) => setNewDepartment({...newDepartment, faculty_id: val})}
                     placeholder="Select Faculty..."
+                    noneLabel="None"
                   />
                 </div>
                 <div className="space-y-1">

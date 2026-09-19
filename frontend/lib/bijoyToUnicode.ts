@@ -51,15 +51,34 @@ function fontIsUnicodeBanglaName(name: string): boolean {
   return UNICODE_FONT_PATTERNS.some((p) => p.test(name));
 }
 
+function grabStyleProp(style: string, prop: string): string | undefined {
+  const m = style.match(new RegExp(`${prop}\\s*:\\s*([^;]+)`, "i"));
+  return m ? m[1] : undefined;
+}
+
 /**
  * Walks up from a pasted text node's parent looking for an explicit
- * font-family (inline `style=` or legacy `<font face>`) and matches it
- * against known Bijoy vs. Unicode Bangla font names. Word/Bijoy documents
- * split a paragraph into many small per-run spans on copy, so an individual
- * run can be too short for isBijoyText's byte-heuristic to trust on its
- * own — the source font, when present, is a much stronger signal.
+ * font-family and matches it against known Bijoy vs. Unicode Bangla font
+ * names. Word/Bijoy documents split a paragraph into many small per-run
+ * spans on copy, so an individual run can be too short for isBijoyText's
+ * byte-heuristic to trust on its own — the source font, when present, is a
+ * much stronger signal.
+ *
+ * Word's HTML export can carry up to four separate font slots per run
+ * (legacy `<font face>`, plain `font-family`, and the `mso-ascii-font-family`
+ * / `mso-bidi-font-family` / `mso-fareast-font-family` inline properties for
+ * its ascii/complex-script/east-asian font overrides), and a run that
+ * contains any non-ASCII byte is rendered with the complex-script
+ * (`mso-bidi-font-family`) font, not the plain one — exactly mirroring how
+ * bijoy2unicode's own docx converter picks `w:cs` over `w:ascii` for such
+ * runs (see chooseRelevantFont in the installed package). A run typed with
+ * `font-family:"Times New Roman"; mso-bidi-font-family:"SutonnyMJ"` — common
+ * for incidental table text (labels, footnotes) where only the
+ * complex-script slot was ever set to a Bijoy font — was invisible to a
+ * plain `font-family` check alone.
  */
-function inheritedFontIsBijoy(el: Element | null): boolean | undefined {
+function inheritedFontIsBijoy(el: Element | null, text: string): boolean | undefined {
+  const hasNonAscii = /[^\x00-\x7e]/.test(text);
   let cur: Element | null = el;
   while (cur) {
     const face = cur.getAttribute?.("face");
@@ -68,9 +87,12 @@ function inheritedFontIsBijoy(el: Element | null): boolean | undefined {
       if (fontIsUnicodeBanglaName(face)) return false;
     }
     const style = cur.getAttribute?.("style") || "";
-    const m = style.match(/font-family\s*:\s*([^;]+)/i);
-    if (m) {
-      const fams = m[1];
+    const props = hasNonAscii
+      ? ["mso-bidi-font-family", "font-family", "mso-ascii-font-family", "mso-fareast-font-family"]
+      : ["font-family", "mso-ascii-font-family", "mso-bidi-font-family", "mso-fareast-font-family"];
+    for (const prop of props) {
+      const fams = grabStyleProp(style, prop);
+      if (!fams) continue;
       if (fontIsBijoyName(fams)) return true;
       if (fontIsUnicodeBanglaName(fams)) return false;
     }
@@ -167,7 +189,7 @@ export function convertHtmlBijoyToUnicode(html: string): string {
     const walkTextNodes = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         if (node.nodeValue && node.nodeValue.trim()) {
-          const fontIsBijoy = inheritedFontIsBijoy(node.parentElement);
+          const fontIsBijoy = inheritedFontIsBijoy(node.parentElement, node.nodeValue);
           if (isBijoyText(node.nodeValue, fontIsBijoy)) {
             node.nodeValue = convertBijoyToUnicode(node.nodeValue);
           }

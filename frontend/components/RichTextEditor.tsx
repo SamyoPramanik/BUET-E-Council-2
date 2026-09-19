@@ -1739,6 +1739,84 @@ const LineSpacingControl = ({ editor }: { editor: any }) => {
   );
 };
 
+const FONT_SIZE_PRESETS = ["10", "11", "12", "14", "16", "18", "20", "24", "28", "32", "36"];
+
+// Font-size control: a preset dropdown + a free-text box for any px value.
+// Like LineSpacingControl, the box keeps a LOCAL draft while focused and never
+// calls editor.focus(), so multi-digit values can be typed. When the text at
+// the cursor has no explicit size, the box shows the size actually rendered
+// there, so clicking on any text tells you its font size.
+const FontSizeControl = ({ editor }: { editor: any }) => {
+  const explicit: string = editor.getAttributes('textStyle').fontSize || '';
+  let cur = explicit ? String(parseFloat(explicit)) : '';
+  if (!cur) {
+    try {
+      const { node } = editor.view.domAtPos(editor.state.selection.from);
+      const el: Element | null = node.nodeType === 1 ? (node as Element) : node.parentElement;
+      if (el) cur = String(Math.round(parseFloat(getComputedStyle(el).fontSize) * 10) / 10);
+    } catch { /* view not mounted yet */ }
+  }
+  if (cur === 'NaN') cur = '';
+
+  const [draft, setDraft] = useState(cur);
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(cur);
+  }, [cur, focused]);
+
+  const applyFS = (val: string) => {
+    if (!val) editor.chain().unsetFontSize().run();
+    else editor.chain().setFontSize(`${val}px`).run();
+  };
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <div className="w-24">
+        <CustomSelect
+          placeholder="Font size"
+          value={explicit ? String(parseFloat(explicit)) : ''}
+          onChange={(val) => {
+            setDraft(val);
+            if (!val) editor.chain().focus().unsetFontSize().run();
+            else editor.chain().focus().setFontSize(`${val}px`).run();
+          }}
+          options={[
+            { value: "", label: "Size" },
+            ...FONT_SIZE_PRESETS.map(v => ({ value: v, label: v })),
+            ...(explicit && !FONT_SIZE_PRESETS.includes(String(parseFloat(explicit)))
+              ? [{ value: String(parseFloat(explicit)), label: `${parseFloat(explicit)} Custom` }]
+              : []),
+          ]}
+        />
+      </div>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={focused ? draft : cur}
+        onFocus={() => { setFocused(true); setDraft(cur); }}
+        onBlur={() => {
+          setFocused(false);
+          const v = draft.trim();
+          if (v.endsWith('.')) applyFS(v.replace(/\.$/, ''));
+        }}
+        onChange={(e) => {
+          const val = e.target.value.trim();
+          if (val && !/^\d*\.?\d*$/.test(val)) return;
+          setDraft(val);
+          if (!val) return;
+          // Hold partial entries ("1", "1.") locally; commit once it's a
+          // complete positive number. Any size from 1px up is allowed.
+          if (!val.endsWith('.') && parseFloat(val) > 0) applyFS(val);
+        }}
+        title="Font size in px (type any value, e.g. 13 or 9.5). Shows the size of the text at the cursor."
+        placeholder="14"
+        className="w-10 px-1 py-1 text-xs text-center border border-border rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+      />
+    </div>
+  );
+};
+
 const MenuBar = ({
   editor,
   viewMode,
@@ -2668,30 +2746,7 @@ const MenuBar = ({
                     />
                   </div>
 
-                  <div className="w-24">
-                    <CustomSelect
-                      placeholder="Font size"
-                      value={editor.getAttributes('textStyle').fontSize || ''}
-                      onChange={(val) => {
-                        if (!val) editor.chain().focus().unsetFontSize().run();
-                        else editor.chain().focus().setFontSize(val).run();
-                      }}
-                      options={[
-                        { value: "", label: "Size" },
-                        { value: "10px", label: "10" },
-                        { value: "11px", label: "11" },
-                        { value: "12px", label: "12" },
-                        { value: "14px", label: "14" },
-                        { value: "16px", label: "16" },
-                        { value: "18px", label: "18" },
-                        { value: "20px", label: "20" },
-                        { value: "24px", label: "24" },
-                        { value: "28px", label: "28" },
-                        { value: "32px", label: "32" },
-                        { value: "36px", label: "36" }
-                      ]}
-                    />
-                  </div>
+                  <FontSizeControl editor={editor} />
 
                   {/* Grow Font & Shrink Font Buttons */}
                   <div className="flex items-center border border-border rounded overflow-hidden">

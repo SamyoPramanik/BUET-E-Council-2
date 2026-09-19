@@ -22,8 +22,10 @@ const createDepartment = async (req, res, next) => {
     try {
         const { name_bangla, name_english, alias_bangla, alias_english, faculty_id, serial } = req.body;
 
-        if (!name_bangla || !name_english || !alias_bangla || !alias_english || !faculty_id) {
-            return next(new CustomError('All fields (names, aliases, faculty_id) are required', 400));
+        // Faculty is optional; the form sends "" when none is picked, which is
+        // not a valid UUID, so store it as NULL.
+        if (!name_bangla || !name_english || !alias_bangla || !alias_english) {
+            return next(new CustomError('All fields (names, aliases) are required', 400));
         }
 
         let assignedSerial = serial;
@@ -43,7 +45,7 @@ const createDepartment = async (req, res, next) => {
 
         const result = await db.query(
             'INSERT INTO departments (name_bangla, name_english, alias_bangla, alias_english, faculty_id, serial) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [name_bangla, name_english, alias_bangla, alias_english, faculty_id, assignedSerial]
+            [name_bangla, name_english, alias_bangla, alias_english, faculty_id || null, assignedSerial]
         );
 
         await db.query('COMMIT');
@@ -62,6 +64,9 @@ const updateDepartment = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { name_bangla, name_english, alias_bangla, alias_english, faculty_id, serial } = req.body;
+        // Faculty is optional: omitted keeps the current one, ""/null clears it.
+        const facultyProvided = faculty_id !== undefined;
+        const facultyValue = faculty_id || null;
 
         await db.query('BEGIN');
 
@@ -83,10 +88,10 @@ const updateDepartment = async (req, res, next) => {
                      name_english = COALESCE($2, name_english),
                      alias_bangla = COALESCE($3, alias_bangla),
                      alias_english = COALESCE($4, alias_english),
-                     faculty_id = COALESCE($5, faculty_id),
+                     faculty_id = CASE WHEN $8::boolean THEN $5::uuid ELSE faculty_id END,
                      serial = $6
                  WHERE id = $7 RETURNING *`,
-                [name_bangla, name_english, alias_bangla, alias_english, faculty_id, targetSerial, id]
+                [name_bangla, name_english, alias_bangla, alias_english, facultyValue, targetSerial, id, facultyProvided]
             );
 
             await db.query('COMMIT');
@@ -102,9 +107,9 @@ const updateDepartment = async (req, res, next) => {
                      name_english = COALESCE($2, name_english),
                      alias_bangla = COALESCE($3, alias_bangla),
                      alias_english = COALESCE($4, alias_english),
-                     faculty_id = COALESCE($5, faculty_id)
+                     faculty_id = CASE WHEN $7::boolean THEN $5::uuid ELSE faculty_id END
                  WHERE id = $6 RETURNING *`,
-                [name_bangla, name_english, alias_bangla, alias_english, faculty_id, id]
+                [name_bangla, name_english, alias_bangla, alias_english, facultyValue, id, facultyProvided]
             );
 
             await db.query('COMMIT');
@@ -179,7 +184,7 @@ const uploadCsv = async (req, res, next) => {
                     let count = 0;
                     let nextSerial = null;
                     for (const row of results) {
-                        if (row.name_bangla && row.name_english && row.faculty_id) {
+                        if (row.name_bangla && row.name_english) {
                             let serial = row.serial ? parseInt(row.serial) : null;
                             if (serial === null) {
                                 if (nextSerial === null) {
@@ -199,7 +204,7 @@ const uploadCsv = async (req, res, next) => {
                                      alias_english = EXCLUDED.alias_english,
                                      faculty_id = EXCLUDED.faculty_id,
                                      serial = EXCLUDED.serial`,
-                                [row.name_bangla, row.name_english, row.alias_bangla, row.alias_english, row.faculty_id, serial]
+                                [row.name_bangla, row.name_english, row.alias_bangla, row.alias_english, row.faculty_id || null, serial]
                             );
                             count++;
                         }

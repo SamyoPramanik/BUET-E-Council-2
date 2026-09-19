@@ -301,6 +301,8 @@ export default function PdfPreviewPage() {
     const typeStr = (meeting.type || "").toLowerCase();
     const isSyndicate = typeStr === "syndicate" || typeStr.includes("syndicate");
     const councilLabel = isSyndicate ? "সিন্ডিকেটের" : "একাডেমিক কাউন্সিলের";
+    // Every heading names the council; skip it only if a custom title already does.
+    const meetingCouncilLabel = /কাউন্সিল|সিন্ডিকেট/.test(meetingSerialLabel) ? meetingSerialLabel : `${councilLabel} ${meetingSerialLabel}`;
     const dateVerb = docType === "resolution" || docType === "resolution-status" ? "অনুষ্ঠিত" : "অনুষ্ঠিতব্য";
 
     if (docType === "suppli-agenda") {
@@ -317,7 +319,7 @@ export default function PdfPreviewPage() {
     }
     return {
       university: true,
-      subtitle: `${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}`,
+      subtitle: `${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel} ${docLabel}`,
     };
   })();
 

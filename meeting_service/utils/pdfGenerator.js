@@ -933,6 +933,8 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
         const typeStr = (meeting.type || '').toLowerCase();
         const isSyndicate = typeStr === 'syndicate' || typeStr.includes('syndicate');
         const councilLabel = isSyndicate ? 'সিন্ডিকেটের' : 'একাডেমিক কাউন্সিলের';
+        // Every heading names the council; skip it only if a custom title already does.
+        const meetingCouncilLabel = /কাউন্সিল|সিন্ডিকেট/.test(meetingSerialLabel) ? meetingSerialLabel : `${councilLabel} ${meetingSerialLabel}`;
 
         // Supplementary agenda items (is_suppli) are printed after the main
         // agenda/resolution items under their own heading, never interleaved.
@@ -1089,7 +1091,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
             <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${dateShort} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${formattedSerial}তম জরুরী (Immediate) সভার ${docLabel}</div>
             ` : `
             <div class="text-center header-title" style="text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে ${dateVerb} ${meetingSerialLabel} ${docLabel}</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel} ${docLabel}</div>
             `)}
 
             ${cacheVariant === 'resolution-status' ? '' : (isResolution ? `

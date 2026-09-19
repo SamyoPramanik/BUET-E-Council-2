@@ -1090,6 +1090,13 @@ Implementation: [`frontend/components/RichTextEditor.tsx`](frontend/components/R
 
 The agenda/resolution editor is a Microsoft Word–style ribbon UI built on TipTap, used everywhere rich text is authored (agenda bodies, supplementary agendas, resolutions). The ribbon has six tabs: **Home** (font/paragraph/styles), **Insert** (tables, links, equations, symbols, callouts), **Page Layout**, **Table Tools** (contextual — only shown with the cursor inside a table), **Bijoy & Tools** (Bijoy→Unicode conversion, Bangla virtual keyboard), and **View**.
 
+#### Home Tab — Font & Spacing Controls
+
+- **Font family**: Calibri (Body), Inter, Arial, Times New Roman and the Unicode Bangla fonts (Noto Sans, Kalpurush, SolaimanLipi). There is deliberately no Bijoy/SutonnyMJ option — all text is Unicode; Bijoy input is converted on paste or via the **Bijoy & Tools** tab.
+- **Font size** (`FontSizeControl`): preset dropdown plus a free-text px box. Any positive value is accepted and applied as soon as it is a complete number; the box keeps a local draft while focused and never calls `editor.focus()`. When the cursor is in text with no explicit size, the box shows the computed rendered size, so clicking text tells you its size.
+- **Line spacing** (`LineSpacingControl`): same draft-while-focused pattern for custom values.
+- **Fullscreen**: the ribbon body gets the `ribbon-fullscreen` class so its groups stretch across the full width.
+
 #### Page Layout Tab
 
 - **Page Setup**: Margins (Normal/Narrow/Moderate/Wide presets or custom mm), Orientation (Portrait/Landscape), Size (A4/Letter/Legal/A3) — these drive the "Word A4 Page" view's actual rendered dimensions (`width`/`min-height`/`padding` computed from `PageSettings` state), not just cosmetic labels.
@@ -1192,6 +1199,8 @@ docker compose --profile embeddings build
 # 2. Build and start containers including embedding profile
 docker compose --profile embeddings up -d --build
 ```
+
+> **Deployed VM:** the `embeddings` profile also contains `resolution_ai` (Ollama), not just the embedding service and worker. Enable it persistently with `COMPOSE_PROFILES=embeddings` in the VM's `.env`. `.github/workflows/deploy.yml` rewrites `.env` and runs plain `docker compose up`, so that line must also be added inside the workflow's `.env` block or a deploy will stop the embedding services again. Without the profile, search silently falls back to keyword-only.
 
 #### Container Management Commands
 ```bash

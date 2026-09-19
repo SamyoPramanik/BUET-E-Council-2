@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-19 — Council Name in PDF Headings, Font Size Box & Editor Tweaks
+
+### Changes
+
+**Council name in every agenda / resolution heading (`pdfGenerator.js`, `pdf-preview/page.tsx`)**
+- The regular-meeting sub-title used to read `…তারিখে অনুষ্ঠিতব্য ৪৬০তম সভার আলোচ্যসূচী` with no council. It now names the body: `…অনুষ্ঠিতব্য একাডেমিক কাউন্সিলের ৪৬০তম সভার আলোচ্যসূচী` (or `সিন্ডিকেটের` for syndicate meetings, chosen from `meeting.type`). The supplementary and immediate headings already named the council. A custom meeting title that already contains "কাউন্সিল"/"সিন্ডিকেট" is left as-is so the name is never doubled.
+- Bumped `PDF_TEMPLATE_VERSION` to `v58` so every cached PDF regenerates once. The first attempt at this change did not bump it, so meetings with an existing cached PDF kept the old heading.
+- `meeting.type` is now part of the PDF cache fingerprint (the heading depends on it), so switching a meeting between academic and syndicate refreshes its cached PDF. Archived agenda snapshots are stored separately and are unchanged.
+
+**Editor ribbon (`RichTextEditor.tsx`, `globals.css`)**
+- **Font size box**: the size control is now a preset dropdown plus a typeable box (`FontSizeControl`), accepting any px value (e.g. `13`, `9.5`). It commits once the number is complete and never steals focus, like the line-spacing box. Clicking text shows its size in the box — the explicit size if set, otherwise the size actually rendered at the cursor.
+- **Placeholders**: the font and size dropdowns show `Text font` / `Font size` (via the `CustomSelect` `placeholder` prop) when the current value matches no option, instead of "Select option...".
+- **Fullscreen**: in fullscreen the ribbon groups stretch to fill the full width (`.ribbon-fullscreen .word-group-box { flex: 1 1 auto }`).
+- **No Bijoy font**: the "Bangla (Bijoy Sutonny)" option was removed from the font dropdown so text is always Unicode. The Bijoy→Unicode converters are unchanged; documents saved earlier with a SutonnyMJ font mark keep it until converted.
+
+---
+
 ## 2026-09-15 — Rich-Text Table Sizing Fix in Generated PDFs
 
 ### Bug Fixes

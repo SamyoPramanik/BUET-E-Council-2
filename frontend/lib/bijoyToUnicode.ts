@@ -149,8 +149,15 @@ export function isBijoyText(text: string, fontIsBijoy?: boolean): boolean {
   // vowel-poor since most vowel sounds are drawn from the high-byte range
   // instead of a/e/i/o/u. Content here is only ever Bangla or English, so
   // no need to account for other languages' accented letters.
+  // A line dense with Bijoy-only characters (e.g. "Uv‡g© †iwR‡÷ªk‡bi Rb¨") is
+  // Bijoy no matter how vowel-rich its letter skeleton happens to be; the
+  // English protection below is for prose with the odd stray accent.
+  let signatureCount = 0;
+  for (let i = 0; i < trimmed.length; i++) if (hasBijoySignature(trimmed[i])) signatureCount++;
+  const denseSignature = signatureCount >= 4 && signatureCount / trimmed.replace(/\s/g, "").length >= 0.15;
+
   const letters = trimmed.replace(/[^a-zA-Z]/g, "");
-  if (letters.length >= 4) {
+  if (!denseSignature && letters.length >= 4) {
     let vowels = 0;
     for (const c of letters.toLowerCase()) {
       if ("aeiouy".includes(c)) vowels++;

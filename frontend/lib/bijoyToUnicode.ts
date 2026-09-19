@@ -43,7 +43,7 @@ const UNICODE_FONT_PATTERNS = [
   /AdorshoLipi/i,
 ];
 
-function fontIsBijoyName(name: string): boolean {
+export function fontIsBijoyName(name: string): boolean {
   return BIJOY_FONT_PATTERNS.some((p) => p.test(name));
 }
 
@@ -174,6 +174,26 @@ export function convertBijoyToUnicode(text: string): string {
   }
 }
 
+function stripBijoyFontFromAncestors(el: Element | null) {
+  const fontProps = /^(font-family|mso-ascii-font-family|mso-bidi-font-family|mso-fareast-font-family)$/i;
+  for (let cur = el; cur && cur.tagName !== "BODY"; cur = cur.parentElement) {
+    const face = cur.getAttribute("face");
+    if (face && fontIsBijoyName(face)) cur.removeAttribute("face");
+    const style = cur.getAttribute("style");
+    if (!style) continue;
+    const kept = style
+      .split(";")
+      .filter((decl) => {
+        const [prop, ...rest] = decl.split(":");
+        return !(fontProps.test(prop.trim()) && fontIsBijoyName(rest.join(":")));
+      })
+      .join(";")
+      .trim();
+    if (kept) cur.setAttribute("style", kept);
+    else cur.removeAttribute("style");
+  }
+}
+
 /**
  * Safely converts Bijoy text within an HTML string by traversing text nodes only,
  * preserving HTML tags (<p>, <table>, <td>, etc.).
@@ -192,6 +212,9 @@ export function convertHtmlBijoyToUnicode(html: string): string {
           const fontIsBijoy = inheritedFontIsBijoy(node.parentElement, node.nodeValue);
           if (isBijoyText(node.nodeValue, fontIsBijoy)) {
             node.nodeValue = convertBijoyToUnicode(node.nodeValue);
+            // The text is Unicode now; leaving the Bijoy font on it would render
+            // it in the wrong face and make a second conversion pass look valid.
+            stripBijoyFontFromAncestors(node.parentElement);
           }
         }
       } else {

@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import CustomSelect from './CustomSelect';
-import { isBijoyText, convertBijoyToUnicode, convertHtmlBijoyToUnicode } from '../lib/bijoyToUnicode';
+import { isBijoyText, convertBijoyToUnicode, convertHtmlBijoyToUnicode, fontIsBijoyName } from '../lib/bijoyToUnicode';
 import { convertMarkdownTablesToHtml } from '../lib/sanitize';
 import { rowResizing } from '../lib/tableRowResizing';
 import { tableListSignature, resequenceTableCellLists, resequenceAllTables } from '../lib/tableCellListNumbering';
@@ -4201,13 +4201,38 @@ const MenuBar = ({
                 <button
                   type="button"
                   onClick={() => {
-                    const { from, to, empty } = editor.state.selection;
+                    const { empty, ranges } = editor.state.selection;
                     if (!empty) {
-                      const selectedText = editor.state.doc.textBetween(from, to, ' ');
-                      if (selectedText) {
-                        const converted = convertBijoyToUnicode(selectedText);
-                        editor.chain().focus().insertContentAt({ from, to }, converted).run();
+                      // Convert text node by text node so table structure and other
+                      // marks survive, and skip anything already Unicode Bangla so a
+                      // repeated press can't re-convert (and garble) converted text.
+                      const { doc, tr, schema } = editor.state;
+                      const edits: { start: number; end: number; text: string; marks: readonly any[] }[] = [];
+                      const seen = new Set<number>();
+                      for (const range of ranges) {
+                        doc.nodesBetween(range.$from.pos, range.$to.pos, (node: any, pos: number) => {
+                          if (!node.isText || !node.text || seen.has(pos)) return;
+                          seen.add(pos);
+                          const start = Math.max(pos, range.$from.pos);
+                          const end = Math.min(pos + node.nodeSize, range.$to.pos);
+                          const text = node.text.slice(start - pos, end - pos);
+                          if (!text.trim() || /[\u0980-\u09FF]/.test(text)) return;
+                          const converted = convertBijoyToUnicode(text);
+                          if (converted === text) return;
+                          const marks = node.marks.filter(
+                            (m: any) => !(m.type.name === 'textStyle' && m.attrs.fontFamily && fontIsBijoyName(m.attrs.fontFamily))
+                          );
+                          edits.push({ start, end, text: converted, marks });
+                        });
+                      }
+                      if (edits.length) {
+                        edits.sort((a, b) => b.start - a.start).forEach((e) =>
+                          tr.replaceWith(e.start, e.end, schema.text(e.text, e.marks as any))
+                        );
+                        editor.view.dispatch(tr);
                         toast.success("Converted Bijoy ➔ Unicode");
+                      } else {
+                        toast.info("No Bijoy text found in the selection");
                       }
                     } else {
                       const htmlContent = editor.getHTML();

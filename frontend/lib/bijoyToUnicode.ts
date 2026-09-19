@@ -244,8 +244,12 @@ function convertKeepingEnglish(text: string, convert: (s: string) => string): st
 //   "KZ…©K", "cv‡k¦©") belongs before that mark: the reph attaches to the
 //   whole cluster, not to whatever the mark happens to follow.
 // - Word-processor typos can double the reph ("Uvg©©"), which is never valid.
+// - A lone "t" is Bijoy's visarga key (ঃ), which authors use as a colon
+//   ("gZvgZ t" for "মতামত :"). A real visarga only ever sits inside a word
+//   ("মূলতঃ"), never alone between spaces, so a standalone one is a colon.
 function normalizeBijoySource(text: string): string {
   return text
+    .replace(/(^|\s)t(?=\s|$)/g, "$1:")
     .replace(/ø/g, "¬")
     .replace(/©{2,}/g, "©")
     .replace(/([xyz…„¦¬ª«]+)©/g, "©$1");

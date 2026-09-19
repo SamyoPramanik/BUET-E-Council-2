@@ -194,17 +194,75 @@ function stripBijoyFontFromAncestors(el: Element | null) {
   }
 }
 
+const BENGALI_UNICODE = /[\u0980-\u09FF]/;
+// Words that look vowel-less to the fragment heuristic but are ordinary English
+// abbreviations found in Bangla council documents.
+const ENGLISH_ABBREVIATIONS = /^(st|stn|no|nos|sl|dr|md|mr|mrs|ms|prof|vs|etc|pg|ph|d|m|b|sc|sci|engg|dept|hr|kg|km|cm|mm|rs|tk)$/i;
+
+/**
+ * True when the text contains characters that only ever show up in Bijoy
+ * (SutonnyMJ) output: the Latin-1/Latin Extended range and a few typographic
+ * marks. Smart quotes and dashes are excluded because Word inserts them into
+ * ordinary English too.
+ */
+export function hasBijoySignature(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if ((c >= 128 && c <= 591) || c === 710 || c === 732 || c === 8224 || c === 8225 || c === 8240 || c === 8249 || c === 8250) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Judges a short leftover fragment (a table cell label such as "wWbm KwgwU/")
+ * that sits next to text already known to be Bijoy. Only used by the explicit
+ * "convert" button, never for paste.
+ */
+function isBijoyFragmentInBijoyContext(text: string): boolean {
+  if (!text.trim() || BENGALI_UNICODE.test(text)) return false;
+  if (hasBijoySignature(text)) return true;
+  const words = text.match(/[A-Za-z]+/g) || [];
+  if (words.length === 0) return false;
+  // Acronyms (CGPA, BPGS, CSE) and abbreviations (Stn., St. No.) are English.
+  if (words.every((w) => w === w.toUpperCase() || ENGLISH_ABBREVIATIONS.test(w))) return false;
+  const letters = words.join("");
+  if (letters.length < 3) return false;
+  let vowels = 0;
+  for (const c of letters.toLowerCase()) if ("aeiouy".includes(c)) vowels++;
+  return vowels / letters.length < 0.3;
+}
+
+function bijoyContextOf(node: Node): Element | null {
+  let cur: Element | null = node.parentElement;
+  let block: Element | null = null;
+  while (cur && cur.tagName !== "BODY") {
+    if (cur.tagName === "TR") return cur;
+    if (!block && /^(P|LI|DIV|H[1-6]|TD|TH)$/.test(cur.tagName)) block = cur;
+    cur = cur.parentElement;
+  }
+  return block;
+}
+
 /**
  * Safely converts Bijoy text within an HTML string by traversing text nodes only,
  * preserving HTML tags (<p>, <table>, <td>, etc.).
+ *
+ * With `lenient`, a second pass also converts short leftover fragments that sit
+ * in the same table row / paragraph as text that was confidently converted, so a
+ * cell like "‡gvU" or "wWbm KwgwU/" that the byte heuristic rejects on its own
+ * isn't stranded. Text that already contains Unicode Bangla is never touched.
  */
-export function convertHtmlBijoyToUnicode(html: string): string {
+export function convertHtmlBijoyToUnicode(html: string, opts: { lenient?: boolean } = {}): string {
   if (!html) return "";
   if (typeof window === "undefined") return convertBijoyToUnicode(html);
 
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, "text/html");
+    const converted = new Set<Element>();
+    const leftovers: Text[] = [];
 
     const walkTextNodes = (node: Node) => {
       if (node.nodeType === Node.TEXT_NODE) {
@@ -215,6 +273,10 @@ export function convertHtmlBijoyToUnicode(html: string): string {
             // The text is Unicode now; leaving the Bijoy font on it would render
             // it in the wrong face and make a second conversion pass look valid.
             stripBijoyFontFromAncestors(node.parentElement);
+            const ctx = bijoyContextOf(node);
+            if (ctx) converted.add(ctx);
+          } else if (opts.lenient) {
+            leftovers.push(node as Text);
           }
         }
       } else {
@@ -223,6 +285,32 @@ export function convertHtmlBijoyToUnicode(html: string): string {
     };
 
     walkTextNodes(doc.body);
+
+    const convertLeftover = (node: Text) => {
+      node.nodeValue = convertBijoyToUnicode(node.nodeValue || "");
+      stripBijoyFontFromAncestors(node.parentElement);
+    };
+    // Fragments carrying Bijoy-only characters are unambiguous; converting them
+    // first also marks their row/paragraph as Bijoy for the ambiguous ones.
+    const ambiguous: Text[] = [];
+    for (const node of leftovers) {
+      const text = node.nodeValue || "";
+      if (BENGALI_UNICODE.test(text)) continue;
+      if (hasBijoySignature(text)) {
+        const ctx = bijoyContextOf(node);
+        convertLeftover(node);
+        if (ctx) converted.add(ctx);
+      } else {
+        ambiguous.push(node);
+      }
+    }
+    for (const node of ambiguous) {
+      const ctx = bijoyContextOf(node);
+      if (ctx && converted.has(ctx) && isBijoyFragmentInBijoyContext(node.nodeValue || "")) {
+        convertLeftover(node);
+      }
+    }
+
     return doc.body.innerHTML;
   } catch (e) {
     return convertBijoyToUnicode(html);

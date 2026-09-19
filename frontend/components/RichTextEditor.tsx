@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import CustomSelect from './CustomSelect';
-import { isBijoyText, convertBijoyToUnicode, convertHtmlBijoyToUnicode, fontIsBijoyName } from '../lib/bijoyToUnicode';
+import { isBijoyText, convertBijoyToUnicode, convertHtmlBijoyToUnicode, fontIsBijoyName, hasBijoySignature } from '../lib/bijoyToUnicode';
 import { convertMarkdownTablesToHtml } from '../lib/sanitize';
 import { rowResizing } from '../lib/tableRowResizing';
 import { tableListSignature, resequenceTableCellLists, resequenceAllTables } from '../lib/tableCellListNumbering';
@@ -4222,7 +4222,7 @@ const MenuBar = ({
                           const bijoyMark = node.marks.some(
                             (m: any) => m.type.name === 'textStyle' && m.attrs.fontFamily && fontIsBijoyName(m.attrs.fontFamily)
                           );
-                          if (!isBijoyText(text, bijoyMark ? true : undefined)) return;
+                          if (!isBijoyText(text, bijoyMark ? true : undefined) && !hasBijoySignature(text)) return;
                           const converted = convertBijoyToUnicode(text);
                           if (converted === text) return;
                           const marks = node.marks.filter(
@@ -4242,7 +4242,7 @@ const MenuBar = ({
                       }
                     } else {
                       const htmlContent = editor.getHTML();
-                      const convertedHtml = convertHtmlBijoyToUnicode(htmlContent);
+                      const convertedHtml = convertHtmlBijoyToUnicode(htmlContent, { lenient: true });
                       editor.commands.setContent(convertedHtml, { emitUpdate: true });
                       toast.success("Converted Document Bijoy ➔ Unicode");
                     }

@@ -16,6 +16,7 @@ interface SearchableSelectProps {
   onAddNew?: (newValue: string) => void;
   placeholder?: string;
   emptyMessage?: string;
+  noneLabel?: string; // when set, shows a leading option that clears the value
 }
 
 export default function SearchableSelect({
@@ -24,7 +25,8 @@ export default function SearchableSelect({
   onChange,
   onAddNew,
   placeholder = "Select option...",
-  emptyMessage = "No options found."
+  emptyMessage = "No options found.",
+  noneLabel
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -107,7 +109,20 @@ export default function SearchableSelect({
             />
           </div>
           <div className="max-h-60 overflow-y-auto p-1 bg-popover">
-            {filteredOptions.length === 0 ? (
+            {noneLabel && (!search || noneLabel.toLowerCase().includes(search.toLowerCase())) && (
+              <div
+                className={`flex items-center px-2 py-2 text-sm rounded-sm cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors ${!value ? 'bg-accent/50 font-medium text-foreground' : 'text-muted-foreground'}`}
+                onClick={() => {
+                  onChange('');
+                  setIsOpen(false);
+                  setSearch('');
+                }}
+              >
+                <Check className={`w-4 h-4 mr-2 ${!value ? 'opacity-100 text-primary' : 'opacity-0'}`} />
+                {noneLabel}
+              </div>
+            )}
+            {filteredOptions.length === 0 && !noneLabel ? (
               <div className="py-3 px-2 text-sm text-muted-foreground text-center">
                 {emptyMessage}
               </div>

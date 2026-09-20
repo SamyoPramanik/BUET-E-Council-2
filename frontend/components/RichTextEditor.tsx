@@ -4360,12 +4360,9 @@ const MenuBar = ({
                   type="button"
                   onClick={() => {
                     const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
-                    const { from, to, empty } = editor.state.selection;
+                    const { empty } = editor.state.selection;
                     if (!empty) {
-                      const text = editor.state.doc.textBetween(from, to, ' ');
-                      const converted = text.replace(/[0-9]/g, (d: string) => banglaDigits[parseInt(d, 10)]);
-                      editor.chain().focus().insertContentAt({ from, to }, converted).run();
-                      toast.success("Converted Digits (123 ➔ ১২৩)");
+                      convertSelectionDigits(editor, banglaDigits);
                     } else {
                       const html = editor.getHTML();
                       const converted = html.replace(/[0-9]/g, (d: string) => banglaDigits[parseInt(d, 10)]);
@@ -5255,6 +5252,37 @@ function convertSelectionBijoy(editor: any, force: boolean) {
   );
   editor.view.dispatch(tr);
   toast.success("Converted Bijoy ➔ Unicode");
+}
+
+// Replaces 0-9 with Bangla digits in every range of the selection. A multi-cell
+// table selection has one range per cell, so this goes range by range (the
+// selection's single from/to would only cover one cell), text node by text node
+// so marks and table structure survive.
+function convertSelectionDigits(editor: any, banglaDigits: string[]) {
+  const { ranges } = editor.state.selection;
+  const { doc, tr, schema } = editor.state;
+  const edits: { start: number; end: number; text: string; marks: readonly any[] }[] = [];
+  const seen = new Set<number>();
+  for (const range of ranges) {
+    doc.nodesBetween(range.$from.pos, range.$to.pos, (node: any, pos: number) => {
+      if (!node.isText || !node.text || seen.has(pos)) return;
+      seen.add(pos);
+      const start = Math.max(pos, range.$from.pos);
+      const end = Math.min(pos + node.nodeSize, range.$to.pos);
+      const text = node.text.slice(start - pos, end - pos);
+      const converted = text.replace(/[0-9]/g, (d: string) => banglaDigits[parseInt(d, 10)]);
+      if (converted !== text) edits.push({ start, end, text: converted, marks: node.marks });
+    });
+  }
+  if (!edits.length) {
+    toast.info("No digits found in the selection");
+    return;
+  }
+  edits.sort((a, b) => b.start - a.start).forEach((e) =>
+    tr.replaceWith(e.start, e.end, schema.text(e.text, e.marks as any))
+  );
+  editor.view.dispatch(tr);
+  toast.success("Converted Digits (123 ➔ ১২৩)");
 }
 
 export default function RichTextEditor({

@@ -434,29 +434,56 @@ export const CustomHorizontalRule = HorizontalRule.extend({
 });
 
 export class CustomTableView extends TableView {
+  private resizeObserver: ResizeObserver | null = null;
+
   constructor(...args: ConstructorParameters<typeof TableView>) {
     super(...args);
     this.fitToPage();
+    // The wrapper's width is only known once it is on the page, and changes with
+    // the window, the margins and the zoom; redraw the columns whenever it does.
+    const wrapper = (this as any).dom as HTMLElement | undefined;
+    if (wrapper && typeof ResizeObserver !== 'undefined') {
+      let lastWidth = 0;
+      this.resizeObserver = new ResizeObserver(() => {
+        const w = wrapper.clientWidth;
+        if (w === lastWidth) return;
+        lastWidth = w;
+        this.update((this as any).node); // restores TipTap's own widths, then fits
+      });
+      this.resizeObserver.observe(wrapper);
+    }
   }
 
-  // A table whose every column has a width is drawn at the sum of those widths
-  // (TipTap writes an inline px width), which spills past the right edge of the
-  // page when the margins leave less room than that. The PDF shrinks such a table
-  // to fit; do the same here: columns become percentages of their sum, so they
-  // scale together, and the table is clamped to the text area with min().
+  destroy() {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+  }
+
+  // A table is drawn at the sum of its column widths (TipTap writes px widths, or
+  // a min-width when some columns have none), which runs past the right edge of
+  // the page when the margins leave less room than that. The PDF shrinks such a
+  // table to fit; do the same here: when the columns are wider than the text
+  // area they become percentages of their total, so they scale down together and
+  // the table fills the text area exactly. A table that fits is left as it was.
   // (Chromium ignores max-width on tables, and fixed px columns would keep it wide.)
   fitToPage() {
     const table = this.table as HTMLElement | undefined;
     const colgroup = (this as any).colgroup as HTMLElement | undefined;
-    if (!table || !colgroup) return;
-    const m = /^([\d.]+)px$/.exec(table.style.width || '');
-    if (!m) return;
+    const wrapper = (this as any).dom as HTMLElement | undefined;
+    if (!table || !colgroup || !wrapper) return;
     const cols = Array.from(colgroup.children) as HTMLElement[];
-    const widths = cols.map((c) => parseFloat(c.style.width));
-    if (!widths.length || widths.some((w) => !Number.isFinite(w) || w <= 0)) return;
+    // A column without a width carries TipTap's minimum width instead.
+    const widths = cols.map((c) => parseFloat(c.style.width) || parseFloat(c.style.minWidth) || 0);
+    if (!widths.length || widths.some((w) => w <= 0)) return;
     const total = widths.reduce((a, b) => a + b, 0);
-    cols.forEach((c, i) => { c.style.width = `${((widths[i] / total) * 100).toFixed(4)}%`; });
-    table.style.width = `min(${total}px, 100%)`;
+    const avail = wrapper.clientWidth;
+    if (!avail || total <= avail) return;
+    cols.forEach((c, i) => {
+      c.style.minWidth = '';
+      c.style.width = `${((widths[i] / total) * 100).toFixed(4)}%`;
+    });
+    table.style.width = '100%';
+    table.style.minWidth = '';
   }
 
   update(node: any) {

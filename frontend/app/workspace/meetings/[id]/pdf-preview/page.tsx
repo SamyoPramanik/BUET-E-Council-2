@@ -495,14 +495,15 @@ export default function PdfPreviewPage() {
     if (isEditingThis) {
       return (
         <div className="not-prose border border-primary rounded-md overflow-hidden bg-background text-left text-foreground">
-          {lockedPrefix && (
-            <div className="px-3 pt-2 font-bold select-none">{lockedPrefix}</div>
-          )}
+          {/* The PDF hangs the text beside the "প্রস্তাব নং A" label, so the editor draws
+              the same two columns (label + serial) and wraps where the PDF does. */}
           <RichTextEditor
             content={draft}
             onChange={setDraft}
             onSave={saveEdit}
             className="p-3 min-h-[160px]"
+            hangingLabel={lockedPrefix ? `প্রস্তাব নং${ac ? " " + ac : ""}` : undefined}
+            hangingPrefix={lockedPrefix || undefined}
           />
           <div className="flex justify-end gap-2 p-2 bg-muted border-t border-border">
             <button

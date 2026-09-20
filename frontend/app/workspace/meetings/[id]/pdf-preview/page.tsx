@@ -122,7 +122,7 @@ export default function PdfPreviewPage() {
   const pdfPreviewUrlRef = useRef<string | null>(null);
 
   // ---- Page layout controls --------------------------------------------
-  const [pageSize, setPageSize] = useState("A4");
+  const [pageSize, setPageSize] = useState("Legal");
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
   const [margins, setMargins] = useState({ top: 20, right: 20, bottom: 20, left: 20 });
   const [scalePct, setScalePct] = useState(100);

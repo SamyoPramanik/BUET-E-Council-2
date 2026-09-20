@@ -477,12 +477,12 @@ const warmUp = async () => {
 // ---------------------------------------------------------------------------
 // Optional per-request page-layout overrides (driven by the PDF Preview page).
 // When nothing is supplied every value falls back to the historical
-// A4 / 20mm / 1x defaults, so existing callers and cached PDFs are unaffected.
+// Legal / 20mm / 1x defaults, so existing callers and cached PDFs are unaffected.
 // ---------------------------------------------------------------------------
 const ALLOWED_PAGE_SIZES = ['A3', 'A4', 'A5', 'Letter', 'Legal', 'Tabloid'];
 
 const DEFAULT_PDF_LAYOUT = {
-    pageSize: 'A4',
+    pageSize: 'Legal',
     orientation: 'portrait',
     margin: { top: 20, right: 20, bottom: 20, left: 20 }, // millimetres
     scale: 1,          // proportional zoom of the whole document (0.7 - 1.6)
@@ -566,7 +566,7 @@ const renderPdf = async (html, layout) => {
         await page.evaluate(() => document.fonts.ready.then(() => true));
 
         const pdfBuffer = await page.pdf({
-            format: L.pageSize || 'A4',
+            format: L.pageSize || 'Legal',
             landscape: L.orientation === 'landscape',
             margin: {
                 top: `${L.margin.top}mm`,
@@ -599,7 +599,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v64';
+const PDF_TEMPLATE_VERSION = 'v65';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 

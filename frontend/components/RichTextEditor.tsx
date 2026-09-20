@@ -433,8 +433,34 @@ export const CustomHorizontalRule = HorizontalRule.extend({
 });
 
 export class CustomTableView extends TableView {
+  constructor(...args: ConstructorParameters<typeof TableView>) {
+    super(...args);
+    this.fitToPage();
+  }
+
+  // A table whose every column has a width is drawn at the sum of those widths
+  // (TipTap writes an inline px width), which spills past the right edge of the
+  // page when the margins leave less room than that. The PDF shrinks such a table
+  // to fit; do the same here: columns become percentages of their sum, so they
+  // scale together, and the table is clamped to the text area with min().
+  // (Chromium ignores max-width on tables, and fixed px columns would keep it wide.)
+  fitToPage() {
+    const table = this.table as HTMLElement | undefined;
+    const colgroup = (this as any).colgroup as HTMLElement | undefined;
+    if (!table || !colgroup) return;
+    const m = /^([\d.]+)px$/.exec(table.style.width || '');
+    if (!m) return;
+    const cols = Array.from(colgroup.children) as HTMLElement[];
+    const widths = cols.map((c) => parseFloat(c.style.width));
+    if (!widths.length || widths.some((w) => !Number.isFinite(w) || w <= 0)) return;
+    const total = widths.reduce((a, b) => a + b, 0);
+    cols.forEach((c, i) => { c.style.width = `${((widths[i] / total) * 100).toFixed(4)}%`; });
+    table.style.width = `min(${total}px, 100%)`;
+  }
+
   update(node: any) {
     const result = super.update(node);
+    if (result) this.fitToPage();
     if (result && this.table) {
       const borderStyle = node.attrs['data-border'] || 'full';
       const tableStyle = node.attrs['data-table-style'] || 'none';
@@ -1469,10 +1495,12 @@ export interface PageSettings {
 }
 
 export const DEFAULT_PAGE_SETTINGS: PageSettings = {
-  size: 'A4',
+  // Editor defaults: Legal page, 20 mm margins on every side (same as the PDF's
+  // own default margin).
+  size: 'Legal',
   orientation: 'portrait',
-  margins: { top: 25.4, right: 25.4, bottom: 25.4, left: 25.4 },
-  marginPreset: 'normal',
+  margins: { top: 20, right: 20, bottom: 20, left: 20 },
+  marginPreset: 'custom',
   pageColor: '',
   border: { enabled: false, style: 'solid', width: 1, color: '#800000' },
   watermark: { enabled: false, text: 'CONFIDENTIAL', color: '#94a3b8', opacity: 0.25 },
@@ -2153,8 +2181,18 @@ const MenuBar = ({
   const applyTableSpacing = (key: 'data-space-top' | 'data-space-bottom', raw: string) => {
     if (!editor) return;
     const n = Math.min(60, Math.max(0, Number(raw)));
-    if (!Number.isFinite(n)) return;
-    editor.chain().focus().updateAttributes('table', { [key]: String(n) }).run();
+    if (raw === '' || !Number.isFinite(n)) return;
+    const { selection } = editor.state;
+    for (let d = selection.$from.depth; d > 0; d--) {
+      if (selection.$from.node(d).type.name === 'table') {
+        const pos = selection.$from.before(d);
+        const tableNode = editor.state.doc.nodeAt(pos);
+        if (tableNode) {
+          editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...tableNode.attrs, [key]: String(n) }));
+        }
+        return;
+      }
+    }
   };
 
   // Table cells store free-form CSS in a single `style` attribute (row height,
@@ -4260,22 +4298,16 @@ const MenuBar = ({
                   <div className="flex items-center gap-2 my-auto text-[10px] font-semibold text-muted-foreground">
                     <label className="flex items-center gap-1" title="Space above the text in every cell (px)">
                       Top
-                      <input
-                        type="number" min={0} max={60}
-                        key={`top-${editor.getAttributes('table')['data-space-top'] ?? '1'}`}
-                        defaultValue={editor.getAttributes('table')['data-space-top'] ?? '1'}
-                        onBlur={(e) => applyTableSpacing('data-space-top', e.target.value)}
-                        className="w-11 px-1 py-0.5 rounded border border-border bg-background text-foreground text-xs"
+                      <TableSpacingInput
+                        value={editor.getAttributes('table')['data-space-top'] ?? '1'}
+                        onChange={(v) => applyTableSpacing('data-space-top', v)}
                       />
                     </label>
                     <label className="flex items-center gap-1" title="Space below the text in every cell (px)">
                       Bottom
-                      <input
-                        type="number" min={0} max={60}
-                        key={`bottom-${editor.getAttributes('table')['data-space-bottom'] ?? '1'}`}
-                        defaultValue={editor.getAttributes('table')['data-space-bottom'] ?? '1'}
-                        onBlur={(e) => applyTableSpacing('data-space-bottom', e.target.value)}
-                        className="w-11 px-1 py-0.5 rounded border border-border bg-background text-foreground text-xs"
+                      <TableSpacingInput
+                        value={editor.getAttributes('table')['data-space-bottom'] ?? '1'}
+                        onChange={(v) => applyTableSpacing('data-space-bottom', v)}
                       />
                     </label>
                   </div>
@@ -5212,6 +5244,22 @@ const WordRuler = ({ viewMode, pageWidthMm, marginLeftMm, marginRightMm }: { vie
   );
 };
 
+// Number box for a table's cell spacing. It applies on every change so the
+// spinner arrows work (they never blur the box), and keeps its own text so
+// clearing the box to type a new number doesn't snap back mid-edit.
+const TableSpacingInput = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => {
+  const [text, setText] = useState(String(value));
+  useEffect(() => { setText(String(value)); }, [value]);
+  return (
+    <input
+      type="number" min={0} max={60}
+      value={text}
+      onChange={(e) => { setText(e.target.value); onChange(e.target.value); }}
+      className="w-11 px-1 py-0.5 rounded border border-border bg-background text-foreground text-xs"
+    />
+  );
+};
+
 // Converts the current selection's Bijoy text to Unicode Bangla, text node by
 // text node so table structure and other marks survive. Text that already holds
 // Unicode Bangla is always skipped, so a repeated press can't garble converted
@@ -5303,7 +5351,7 @@ export default function RichTextEditor({
   // always calls the current callback without re-instantiating the editor.
   const onSaveRef = useRef(onSave);
   useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
-  const [viewMode, setViewMode] = useState<'fluid' | 'pageView'>('fluid');
+  const [viewMode, setViewMode] = useState<'fluid' | 'pageView'>('pageView');
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);

@@ -660,8 +660,20 @@ textarea:focus {
   box-shadow: 0 1px 0 0 var(--ring);
 }
 
+/* The editor writes in the same font the PDF prints with, so a line holds the
+   same words in both: SonarBangla for Bangla (the PDF embeds this same file,
+   meeting_service/utils/fonts/SonarBangla.ttf) and Arial / Helvetica for
+   everything else (the PDF's default sans-serif is metric-compatible). */
+@font-face {
+  font-family: 'PrimaryFont';
+  src: url('/fonts/SonarBangla.ttf') format('truetype');
+  unicode-range: U+0980-09FF, U+200C-200D;
+  font-display: swap;
+}
+
 /* Tiptap ProseMirror Dynamic Editor Focus & Container Styles */
 .ProseMirror {
+  font-family: 'PrimaryFont', Arial, Helvetica, sans-serif;
   min-height: 100%;
   outline: none !important;
 }

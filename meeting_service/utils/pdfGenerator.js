@@ -599,7 +599,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v67';
+const PDF_TEMPLATE_VERSION = 'v68';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -990,10 +990,10 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
             return `
             <div class="agenda-block" style="margin-bottom: 30px; page-break-before: auto;">
                 <div class="agenda-title" style="font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${isBibidha ? 'বিবিধ :' : 'প্রস্তাব নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</b></div>
-                <div class="agenda-content" style="margin-left: 30px; text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${styleRichTextHtml(displayContent, false)}</div>
+                <div class="agenda-content" style="text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${styleRichTextHtml(displayContent, false)}</div>
                 ${isResolution ? `
                 <div class="agenda-title" style="margin-top:15px; font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>সিদ্ধান্ত:</b></div>
-                <div class="agenda-resolution" style="margin-left: 30px; text-align: left; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${styleRichTextHtml(stripResolutionPrefix(ag.resolution || ''), false)}</b></div>
+                <div class="agenda-resolution" style="text-align: left; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${styleRichTextHtml(stripResolutionPrefix(ag.resolution || ''), false)}</b></div>
                 ` : ''}
             </div>
             `;
@@ -1057,7 +1057,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                     page-break-before: auto;
                 }
                 .agenda-title { font-weight: bold; margin-bottom: 5px; font-size: 14px;}
-                .agenda-content, .agenda-resolution { margin-left: 30px; text-align: left; font-size: 14px;}
+                .agenda-content, .agenda-resolution { text-align: left; font-size: 14px;}
                 .agenda-resolution { font-weight: bold; }
 
                 table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
@@ -1371,10 +1371,8 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                 // separate heading line, the number leads the body as a bold
                 // "প্রস্তাব নং <A/C> <serial>:" run — the same full label the
                 // 'heading' style prints, so nothing is lost by choosing inline.
-                // For a main proposal this is laid out as a hanging indent (see
-                // hangingNum below): "প্রস্তাব নং <A/C>" is a flush-left column
-                // and "<serial>:" + body flow in a second column, so wrapped
-                // lines align under the serial. Bibidha keeps a plain inline run.
+                // The label is the first bold run of the body's first paragraph, so the
+                // text wraps at the full text width, exactly as in the editor.
                 const inlineNum = pdfLayout.agendaNumberStyle === 'inline';
                 return targetAgendas.map(ag => {
                     const agSerialStr = ag.is_suppli
@@ -1443,9 +1441,9 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                         : fullSerial;
                     const inlineLabel = `প্রস্তাব নং${acBangla ? ' ' + acBangla : ''}`;
 
-                    const inlinePrefix = (inlineNum && !isBibidha) ? `${serialOnly}:` : '';
+                    const inlinePrefix = (inlineNum && !isBibidha) ? `${inlineLabel} ${serialOnly}:` : '';
                     const bodyHtml = inlinePrefix ? injectInlinePrefix(contentHtml || '', inlinePrefix) : contentHtml;
-                    const hangingNum = inlineNum && !isBibidha && !!bodyHtml;
+                    const hangingNum = false; // the label flows in the first line, so text wraps at the full text width
 
                     const pageBreakStyle = (isResolution && pdfLayout.separatePages)
                         ? 'page-break-before: always; break-before: page;'
@@ -1458,10 +1456,10 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                             ${(inlineNum && !isBibidha) ? '' : `<div class="agenda-title" style="font-weight: bold; font-size: 14px; margin-bottom: 8px;"><b>${titleStr}</b></div>`}
                             ${hangingNum
                               ? `<div class="agenda-content" style="display: flex; align-items: baseline; margin: 0 0 12px 0; text-align: left; font-size: 14px; line-height: 1.6;"><div style="flex: 0 0 auto; white-space: nowrap; font-weight: bold;"><b>${inlineLabel}</b>&nbsp;</div><div style="flex: 1 1 auto; min-width: 0;">${styleRichTextHtml(bodyHtml, false)}</div></div>`
-                              : (bodyHtml ? `<div class="agenda-content" style="${inlineNum ? '' : 'margin-left: 30px; '}text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px;">${styleRichTextHtml(bodyHtml, false)}</div>` : '')}
+                              : (bodyHtml ? `<div class="agenda-content" style="text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px;">${styleRichTextHtml(bodyHtml, false)}</div>` : '')}
                             ${isResolution ? `
                             <div class="agenda-title" style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 8px;"><b>সিদ্ধান্ত:</b></div>
-                            <div class="agenda-resolution" style="margin-left: 30px; text-align: left; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px;"><b>${styleRichTextHtml(convertMarkdownTablesToHtml(ag.resolution || ''), false)}</b></div>
+                            <div class="agenda-resolution" style="text-align: left; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px;"><b>${styleRichTextHtml(convertMarkdownTablesToHtml(ag.resolution || ''), false)}</b></div>
                             ` : ''}
                         </div>
                     </div>
@@ -1677,9 +1675,9 @@ const buildSingleResolutionHtml = async (meetingId, agendaId) => {
         <body>
             <div style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 20px; font-family: 'PrimaryFont', sans-serif;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়,ঢাকা</div>
             <div style="font-weight: bold; font-size: 14px; margin-bottom: 8px; font-family: 'PrimaryFont', sans-serif;">${titleStr}</div>
-            <div style="margin-left: 30px; text-align: justify; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', sans-serif;">${contentHtml}</div>
+            <div style="text-align: justify; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', sans-serif;">${contentHtml}</div>
             <div style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 8px; font-family: 'PrimaryFont', sans-serif;">সিদ্ধান্ত:</div>
-            <div style="margin-left: 30px; text-align: justify; font-size: 14px; line-height: 1.6; font-weight: bold; font-family: 'PrimaryFont', sans-serif;">${resolutionHtml}</div>
+            <div style="text-align: justify; font-size: 14px; line-height: 1.6; font-weight: bold; font-family: 'PrimaryFont', sans-serif;">${resolutionHtml}</div>
         </body>
         </html>`;
 };

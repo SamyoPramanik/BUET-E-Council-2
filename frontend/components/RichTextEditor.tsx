@@ -5597,7 +5597,7 @@ export default function RichTextEditor({
         <div
           className={
             viewMode === 'pageView'
-              ? "h-auto bg-card shadow-xl rounded-sm relative my-2 flex flex-col transition-all overflow-x-auto shrink-0"
+              ? "page-view-text h-auto bg-card shadow-xl rounded-sm relative my-2 flex flex-col transition-all overflow-x-auto shrink-0"
               : "w-full min-h-full h-auto bg-card p-6 rounded-xl flex flex-col transition-all overflow-x-auto"
           }
           style={viewMode === 'pageView' ? {

@@ -1478,3 +1478,10 @@ table[data-border="none"] th {
 .ProseMirror .multi-select-range {
   background-color: rgba(59, 130, 246, 0.35);
 }
+
+/* In Page View the page's own margins are the only padding: an editor given extra
+   padding (e.g. p-4) would make its text narrower than the PDF's, so lines would
+   wrap in different places. */
+.page-view-text .ProseMirror {
+  padding: 0 !important;
+}

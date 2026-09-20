@@ -1530,6 +1530,17 @@ const PAGE_SIZES_MM: Record<PageSize, [number, number]> = {
   A3: [297, 420],
 };
 
+// Width of the text area of the meeting's page (page width minus left / right
+// margins), in mm. The read-only views use it so a line wraps where it does in
+// the editor and the PDF.
+export function usePageTextWidthMm(): number {
+  const ctx = React.useContext(MeetingPageLayoutContext);
+  const st = ctx ? ctx.settings : DEFAULT_PAGE_SETTINGS;
+  const [w, h] = PAGE_SIZES_MM[st.size];
+  const pageW = st.orientation === 'landscape' ? h : w;
+  return Math.max(50, pageW - st.margins.left - st.margins.right);
+}
+
 const MARGIN_PRESETS: Record<'normal' | 'narrow' | 'moderate' | 'wide', PageMargins> = {
   normal: { top: 25.4, right: 25.4, bottom: 25.4, left: 25.4 },
   narrow: { top: 12.7, right: 12.7, bottom: 12.7, left: 12.7 },

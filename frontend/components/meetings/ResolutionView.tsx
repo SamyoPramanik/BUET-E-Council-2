@@ -3,12 +3,12 @@
 import { useState, useEffect } from "react";
 import { Edit3, FileText, FileCheck, Plus, Trash2, Eye, Download, X, Loader2, Sparkles } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
+import RichContentView from "./RichContentView";
 import AnnexureList from "./AnnexureList";
 import RevisionHistory from "./RevisionHistory";
 import TagMultiSelect from "../TagMultiSelect";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
-import { sanitizeHtml } from "../../lib/sanitize";
 import { toast } from "sonner";
 import TemplateDrawer from "../TemplateDrawer";
 import { useAuth } from "../../hooks/useAuth";
@@ -547,7 +547,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                     </div>
                   )}
                   <div className="text-muted-foreground bg-muted/30 p-4 rounded-md border-l-4 border-muted/50 prose prose-sm dark:prose-invert max-w-none">
-                    <div dangerouslySetInnerHTML={{ __html: displayContent ? sanitizeHtml(displayContent) : "<p class='italic opacity-50'>Empty agenda...</p>" }} />
+                    <RichContentView html={displayContent || "<p class='italic opacity-50'>Empty agenda...</p>"} className="text-muted-foreground" />
                   </div>
 
                   {/* Annexure List placed underneath the agenda content */}
@@ -640,10 +640,9 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                       {autofillPreviewHtml && (
                         <div className="border-t border-border bg-background p-3">
                           <div className="text-xs font-medium text-muted-foreground mb-1.5">AI draft preview — not yet applied</div>
-                          <div
-                            className="prose prose-sm dark:prose-invert max-w-none border border-dashed border-primary/40 rounded-md p-3 mb-2"
-                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(autofillPreviewHtml) }}
-                          />
+                          <div className="border border-dashed border-primary/40 rounded-md p-3 mb-2 overflow-x-auto">
+                            <RichContentView html={autofillPreviewHtml} />
+                          </div>
                           <div className="flex gap-2">
                             <button onClick={acceptAutofillPreview} className="px-3 py-1 text-xs bg-primary text-primary-foreground rounded-md">Accept</button>
                             <button onClick={discardAutofillPreview} className="px-3 py-1 text-xs text-muted-foreground hover:bg-muted rounded-md">Discard</button>
@@ -689,14 +688,9 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
                       </div>
                     </div>
                   ) : agenda.resolution ? (
-                    <div
-                      className="prose prose-sm dark:prose-invert max-w-none text-foreground bg-background border border-border p-5 rounded-md shadow-inner font-bold"
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(
-                          stripLeadingResolutionPrefix(agenda.resolution)
-                        )
-                      }}
-                    />
+                    <div className="bg-background border border-border p-5 rounded-md shadow-inner overflow-x-auto">
+                      <RichContentView html={stripLeadingResolutionPrefix(agenda.resolution)} className="font-bold" />
+                    </div>
                   ) : (
                     !readOnly && (
                       <div className="flex gap-3">

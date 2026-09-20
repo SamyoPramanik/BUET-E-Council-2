@@ -3,12 +3,12 @@
 import { useState, useEffect } from "react";
 import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree, Layers, Archive, Loader2 } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
+import RichContentView from "./RichContentView";
 import AnnexureList from "./AnnexureList";
 import RevisionHistory from "./RevisionHistory";
 import TagChipSelector from "../TagChipSelector";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
-import { sanitizeHtml } from "../../lib/sanitize";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useAuth } from "../../hooks/useAuth";
@@ -561,10 +561,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                     </div>
                   </div>
                   {!isOnlyBibidhaTitle && (
-                    <div
-                      className="prose prose-sm dark:prose-invert max-w-none text-foreground"
-                      dangerouslySetInnerHTML={{ __html: displayContent ? sanitizeHtml(displayContent) : "<p class='text-muted-foreground italic'>Empty content...</p>" }}
-                    />
+                    <RichContentView html={displayContent || "<p class='text-muted-foreground italic'>Empty content...</p>"} />
                   )}
                 </div>
               );
@@ -726,10 +723,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       </div>
                     ) : (
                       !isOnlyBibidhaTitle && (
-                        <div
-                          className="prose prose-sm dark:prose-invert max-w-none text-foreground"
-                          dangerouslySetInnerHTML={{ __html: displayContent ? sanitizeHtml(displayContent) : "<p class='text-muted-foreground italic'>Empty content...</p>" }}
-                        />
+                        <RichContentView html={displayContent || "<p class='text-muted-foreground italic'>Empty content...</p>"} />
                       )
                     )}
 

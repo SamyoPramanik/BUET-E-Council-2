@@ -5,9 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { ChevronDown } from "lucide-react";
 import { fetcher } from "../../../lib/api";
-import { sanitizeHtml } from "../../../lib/sanitize";
 import { toBanglaDigits, getSerialWidth } from "../../../lib/banglaNumerals";
 import Header from "../../../components/Header";
+import RichContentView from "../../../components/meetings/RichContentView";
+import MeetingPageLayoutProvider from "../../../components/meetings/MeetingPageLayoutProvider";
 
 // Component to render a single agenda and its annexures
 function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highlightType, mainAgendaCount = 0 }: { agenda: any, agendaPrefix: string | null, meetingStatus: string, highlightId: string | null, highlightType: string | null, mainAgendaCount?: number }) {
@@ -64,10 +65,7 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
         {isBibidha ? (isOnlyBibidhaTitle ? `বিবিধ : ${bibidhaSerial}` : `বিবিধ :`) : `প্রস্তাব নং ${(agendaPrefix || '') + displaySerial}`}
       </h3>
       {!isOnlyBibidhaTitle && (
-        <div
-          className="prose prose-sm dark:prose-invert max-w-none mb-4 text-muted-foreground"
-          dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayContent) }}
-        />
+        <RichContentView html={displayContent} className="mb-4 text-muted-foreground" />
       )}
 
       {meetingStatus === 'past' && agenda.resolution && (
@@ -77,10 +75,7 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
           className={`mt-4 pt-4 border-t border-border rounded-md transition-shadow ${isResolutionHighlight && showHighlight ? 'ring-2 ring-primary' : ''}`}
         >
           <h4 className="font-semibold mb-2 text-foreground">সিদ্ধান্ত:</h4>
-          <div
-            className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground"
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(agenda.resolution) }}
-          />
+          <RichContentView html={agenda.resolution} className="text-muted-foreground" />
         </div>
       )}
 
@@ -114,7 +109,19 @@ function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highligh
   );
 }
 
+// The read-only text follows the page layout saved on the meeting, so it wraps
+// where the editor and the PDF do.
 export default function PublicMeetingView() {
+  const params = useParams();
+  const { data: layoutRes } = useSWR(params?.id ? `/meetings/${params.id}` : null, fetcher);
+  return (
+    <MeetingPageLayoutProvider key={String(params?.id)} meetingId={String(params?.id)} saved={layoutRes?.data?.page_layout} ready={!!layoutRes?.data}>
+      <PublicMeetingContent />
+    </MeetingPageLayoutProvider>
+  );
+}
+
+function PublicMeetingContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const highlightId = searchParams.get('highlight');
@@ -281,10 +288,7 @@ export default function PublicMeetingView() {
           <div className="space-y-8">
             {meeting.description && (
               <section>
-                <div
-                  className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(meeting.description) }}
-                />
+                <RichContentView html={meeting.description} className="text-muted-foreground" />
               </section>
             )}
 
@@ -418,10 +422,7 @@ export default function PublicMeetingView() {
 
             {meeting.conclusion && (
               <section>
-                <div
-                  className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(meeting.conclusion) }}
-                />
+                <RichContentView html={meeting.conclusion} className="text-muted-foreground" />
               </section>
             )}
           </div>

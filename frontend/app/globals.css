@@ -672,7 +672,8 @@ textarea:focus {
 }
 
 /* Tiptap ProseMirror Dynamic Editor Focus & Container Styles */
-.ProseMirror {
+.ProseMirror,
+.rich-content {
   font-family: 'PrimaryFont', Arial, Helvetica, sans-serif;
   min-height: 100%;
   outline: none !important;
@@ -685,7 +686,8 @@ textarea:focus {
 /* Match the generated PDF (pdfGenerator.js), where every paragraph has no top
    margin and a 10px bottom margin. Tailwind Typography's default ~1em top and
    bottom margins made each Enter look like an extra blank line. */
-.ProseMirror p {
+.ProseMirror p,
+.rich-content p {
   margin-top: 0;
   margin-bottom: 0;
   /* No paragraph margin: a wrapped line and an Enter are spaced the same, by

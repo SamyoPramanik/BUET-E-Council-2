@@ -598,6 +598,8 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               const strippedText = displayContent.replace(/<[^>]*>/g, '').trim();
               const isOnlyBibidhaTitle = isBibidha && !strippedText;
               const catHeader = categoryHeaderMap.get(agenda.id);
+              // The PDF's "A" / "C" token for the flush-left label column.
+              const acToken = String(meeting.agenda_prefix || '').trim().split(/\s+/)[0] || '';
 
               return (
                 <div key={agenda.id}>
@@ -701,6 +703,8 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                           onChange={setEditContent}
                           onSave={() => { if (!isSaving) handleSave(); }}
                           className="p-4 min-h-[380px]"
+                          hangingLabel={isBibidha ? undefined : `প্রস্তাব নং${acToken ? " " + acToken : ""}`}
+                          hangingPrefix={isBibidha ? undefined : `${isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || index + 1, serialWidth)}:`}
                         />
 
                         <div className="bg-muted p-2 px-3 flex justify-between items-center gap-4 border-t border-border rounded-md">

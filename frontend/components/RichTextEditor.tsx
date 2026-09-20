@@ -23,6 +23,7 @@ import HorizontalRule from '@tiptap/extension-horizontal-rule';
 import { goToNextCell, addRowAfter, TableMap, CellSelection } from '@tiptap/pm/tables';
 import { TextSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import { MultiTextSelect } from '../lib/multiTextSelect';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Node, Extension, wrappingInputRule, mergeAttributes } from '@tiptap/core';
 import { 
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, 
@@ -430,6 +431,47 @@ export const CustomHorizontalRule = HorizontalRule.extend({
         },
       },
     };
+  },
+});
+
+// Bold, non-editable serial ("২৬০৬০১:") drawn at the start of the first paragraph,
+// as the PDF's inline number style prints it, so the first line breaks the same.
+// The text comes from `getPrefix` so it can change without rebuilding the editor.
+export const HangingPrefix = Extension.create({
+  name: 'hangingPrefix',
+  addOptions() {
+    return { getPrefix: (): string => '' };
+  },
+  addProseMirrorPlugins() {
+    const getPrefix = this.options.getPrefix;
+    return [
+      new Plugin({
+        key: new PluginKey('hangingPrefix'),
+        props: {
+          decorations(state) {
+            const prefix = getPrefix();
+            const first = state.doc.firstChild;
+            if (!prefix || !first || first.type.name !== 'paragraph') return null;
+            return DecorationSet.create(state.doc, [
+              Decoration.widget(
+                1,
+                () => {
+                  const wrap = document.createElement('span');
+                  wrap.contentEditable = 'false';
+                  wrap.className = 'hanging-prefix';
+                  const b = document.createElement('b');
+                  b.textContent = prefix;
+                  wrap.appendChild(b);
+                  wrap.appendChild(document.createTextNode(' '));
+                  return wrap;
+                },
+                { side: -1, key: `hanging-prefix-${prefix}` }
+              ),
+            ]);
+          },
+        },
+      }),
+    ];
   },
 });
 
@@ -5357,12 +5399,18 @@ export default function RichTextEditor({
   onChange,
   className = "p-4 min-h-[300px]",
   editable = true,
-  onSave
+  onSave,
+  hangingLabel,
+  hangingPrefix
 }: {
   content: string;
   onChange: (html: string) => void;
   className?: string;
   editable?: boolean;
+  /** PDF inline number style: the flush-left "প্রস্তাব নং A" column that the text hangs beside. */
+  hangingLabel?: string;
+  /** ...and the bold serial ("২৬০৬০১:") that leads the first paragraph. Page View only. */
+  hangingPrefix?: string;
   /** Invoked when the user presses Ctrl/Cmd+S while the editor has focus. */
   onSave?: () => void;
 }) {
@@ -5370,6 +5418,8 @@ export default function RichTextEditor({
   // always calls the current callback without re-instantiating the editor.
   const onSaveRef = useRef(onSave);
   useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
+  const hangingPrefixRef = useRef(hangingPrefix);
+  hangingPrefixRef.current = hangingPrefix;
   const [viewMode, setViewMode] = useState<'fluid' | 'pageView'>('pageView');
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
@@ -5437,6 +5487,7 @@ export default function RichTextEditor({
       FontSize,
       LineHeight,
       MultiTextSelect,
+      HangingPrefix.configure({ getPrefix: () => hangingPrefixRef.current || '' }),
       ParagraphShading,
       Indent,
       Color,
@@ -5636,7 +5687,16 @@ export default function RichTextEditor({
             </div>
           )}
 
-          <EditorContent editor={editor} className="min-h-full cursor-text flex-1 flex flex-col relative z-[1]" />
+          {viewMode === 'pageView' && hangingLabel ? (
+            // Same two columns as the PDF's inline number style, so the text is as
+            // wide as it is there and wraps in the same places.
+            <div className="flex items-baseline flex-1 relative z-[1]">
+              <div className="hanging-label shrink-0 whitespace-nowrap font-bold select-none">{hangingLabel}&nbsp;</div>
+              <EditorContent editor={editor} className="min-h-full min-w-0 cursor-text flex-1 flex flex-col" />
+            </div>
+          ) : (
+            <EditorContent editor={editor} className="min-h-full cursor-text flex-1 flex flex-col relative z-[1]" />
+          )}
         </div>
       </div>
 

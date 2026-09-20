@@ -1485,3 +1485,10 @@ table[data-border="none"] th {
 .page-view-text .ProseMirror {
   padding: 0 !important;
 }
+
+/* The PDF's flush-left "প্রস্তাব নং A" column (RichTextEditor hangingLabel). */
+.hanging-label {
+  font-family: 'PrimaryFont', Arial, Helvetica, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}

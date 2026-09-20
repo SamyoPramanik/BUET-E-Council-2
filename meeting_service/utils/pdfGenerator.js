@@ -599,7 +599,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v68';
+const PDF_TEMPLATE_VERSION = 'v69';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -1371,8 +1371,12 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                 // separate heading line, the number leads the body as a bold
                 // "প্রস্তাব নং <A/C> <serial>:" run — the same full label the
                 // 'heading' style prints, so nothing is lost by choosing inline.
-                // The label is the first bold run of the body's first paragraph, so the
-                // text wraps at the full text width, exactly as in the editor.
+                // For a main proposal this is a hanging indent (see hangingNum below):
+                // "প্রস্তাব নং <A/C>" is a flush-left column and "<serial>:" + body flow
+                // in a second column, so wrapped lines align under the serial. The
+                // editor draws the same two columns (RichTextEditor's hangingLabel /
+                // hangingPrefix), so its lines break where the PDF's do.
+                // Bibidha keeps a plain inline run.
                 const inlineNum = pdfLayout.agendaNumberStyle === 'inline';
                 return targetAgendas.map(ag => {
                     const agSerialStr = ag.is_suppli
@@ -1441,9 +1445,9 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                         : fullSerial;
                     const inlineLabel = `প্রস্তাব নং${acBangla ? ' ' + acBangla : ''}`;
 
-                    const inlinePrefix = (inlineNum && !isBibidha) ? `${inlineLabel} ${serialOnly}:` : '';
+                    const inlinePrefix = (inlineNum && !isBibidha) ? `${serialOnly}:` : '';
                     const bodyHtml = inlinePrefix ? injectInlinePrefix(contentHtml || '', inlinePrefix) : contentHtml;
-                    const hangingNum = false; // the label flows in the first line, so text wraps at the full text width
+                    const hangingNum = inlineNum && !isBibidha && !!bodyHtml;
 
                     const pageBreakStyle = (isResolution && pdfLayout.separatePages)
                         ? 'page-break-before: always; break-before: page;'

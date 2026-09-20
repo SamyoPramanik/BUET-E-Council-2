@@ -600,6 +600,14 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
               const catHeader = categoryHeaderMap.get(agenda.id);
               // The PDF's "A" / "C" token for the flush-left label column.
               const acToken = String(meeting.agenda_prefix || '').trim().split(/\s+/)[0] || '';
+              // The serial the PDF prints after the label: the whole "A ২৬০৬০১" minus its
+              // A / C token (same rule as pdfGenerator's serialOnly).
+              const fullSerial = (meeting.agenda_prefix || '') + (isSuppliView
+                ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), serialWidth)
+                : toBanglaDigits(agenda.agenda_serial || index + 1, serialWidth));
+              const serialOnly = acToken && fullSerial.startsWith(toBanglaDigits(acToken))
+                ? fullSerial.slice(toBanglaDigits(acToken).length).replace(/^\s+/, '')
+                : fullSerial;
 
               return (
                 <div key={agenda.id}>
@@ -704,7 +712,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                           onSave={() => { if (!isSaving) handleSave(); }}
                           className="p-4 min-h-[380px]"
                           hangingLabel={isBibidha ? undefined : `প্রস্তাব নং${acToken ? " " + acToken : ""}`}
-                          hangingPrefix={isBibidha ? undefined : `${isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || index + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || index + 1, serialWidth)}:`}
+                          hangingPrefix={isBibidha ? undefined : `${serialOnly}:`}
                         />
 
                         <div className="bg-muted p-2 px-3 flex justify-between items-center gap-4 border-t border-border rounded-md">

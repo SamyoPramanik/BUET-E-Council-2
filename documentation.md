@@ -494,13 +494,13 @@ Every `<table>` produced by the rich-text editor is re-sized for the PDF by `sty
 
 #### Per-Request Page-Layout Overrides
 
-`normalizePdfLayout(raw)` validates and clamps an optional layout object (parsed from the `GET /api/meetings/:id/pdf/:type` query string by `meetingController.generatePdf`) into a safe shape. When nothing is supplied, generation stays on the historical A4 / 20 mm / 1× defaults, so email attachments and status sync are unaffected.
+`normalizePdfLayout(raw)` validates and clamps an optional layout object (parsed from the `GET /api/meetings/:id/pdf/:type` query string by `meetingController.generatePdf`) into a safe shape. When nothing is supplied, generation stays on the Legal / 25.4 mm / 1× defaults, so email attachments and status sync are unaffected.
 
 | Field | Query param(s) | Range / values | Default |
 |---|---|---|---|
-| `pageSize` | `pageSize` | A3, A4, A5, Letter, Legal, Tabloid | A4 |
+| `pageSize` | `pageSize` | A3, A4, A5, Letter, Legal, Tabloid | Legal |
 | `orientation` | `orientation` | portrait, landscape | portrait |
-| `margin` | `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | 0–60 mm each | 20 mm |
+| `margin` | `marginTop`, `marginRight`, `marginBottom`, `marginLeft` | 0–60 mm each | 25.4 mm |
 | `scale` | `scale` | 0.7–1.6 | 1 |
 | `lineHeight` | `lineHeight` | 1–3, or empty for the template default | null |
 | `agendaNumberStyle` | `agendaNumberStyle` | `heading` (bold "প্রস্তাব নং <n>" line) or `inline` (bold `<prefix><n>:` run opening the body) | heading |
@@ -1099,7 +1099,7 @@ The agenda/resolution editor is a Microsoft Word–style ribbon UI built on TipT
 
 #### Page Layout Tab
 
-- **Page Setup**: Margins (Normal/Narrow/Moderate/Wide presets or custom mm), Orientation (Portrait/Landscape), Size (A4/Letter/Legal/A3) — these drive the "Word A4 Page" view's actual rendered dimensions (`width`/`min-height`/`padding` computed from `PageSettings` state), not just cosmetic labels.
+- **Page Setup**: Margins (Normal/Narrow/Moderate/Wide presets or custom mm), Orientation (Portrait/Landscape), Size (A4/Letter/Legal/A3). The editor opens in Page View on a Legal page with 25.4 mm margins, the same defaults as the PDF and the PDF Preview page — these drive the "Page View" view's actual rendered dimensions (`width`/`min-height`/`padding` computed from `PageSettings` state), not just cosmetic labels.
 - **Columns & Breaks**: 2/3-column text layout, Page Break, Column Break.
 - **Page Background**: Watermark (text/color/opacity, diagonal overlay), Page Color, Page Borders (style/width/color).
 
@@ -1147,7 +1147,7 @@ Full list lives in `KEYBOARD_SHORTCUTS_DATA` in `RichTextEditor.tsx` and is rend
 | `Tab` / `Shift + Tab` (in a table) | Move to next/previous cell |
 | `Shift + Enter` (in a table) | Move to the same column in the next row |
 | `Ctrl + Enter` | Insert a Page Break at the cursor |
-| `Ctrl + Alt + P` | Toggle Word A4 Page view / Fluid Canvas |
+| `Ctrl + Alt + P` | Toggle Page View / Fluid Canvas |
 | `Ctrl + Shift + F` | Toggle editor full-screen mode |
 | `Ctrl` / `Cmd + S` | Trigger the host view's save handler (via the `onSave` prop), from anywhere in the editing panel |
 

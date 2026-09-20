@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-20 — Editor and PDF Break Lines in the Same Places
+
+### Changes
+
+- **One text width everywhere.** The editor, the read-only views and the PDF now wrap text at the same width, so a line holds the same words in all of them. Page View has no padding beyond the page margins (the agenda edit box used to add `p-4` on top); the PDF's agenda / resolution text is no longer indented twice (the wrapper's 30px plus 30px on each paragraph); read-only text (agenda, resolution, AI draft preview, notice preview, public meeting page) is drawn by the new `RichContentView`, at the meeting page's text width (page width minus side margins).
+- **One font.** The editor loads the same `SonarBangla.ttf` the PDF embeds (`frontend/public/fonts/`, `@font-face` `PrimaryFont` limited to the Bangla range) with Arial / Helvetica for everything else. Sonar is about 30% narrower than the fonts the editor fell back to, which is why the PDF used to fit more words per line.
+- **Hanging label layout kept, and drawn in the editor.** The PDF's inline number style is still two columns ("প্রস্তাব নং A" | serial + text). `RichTextEditor` takes optional `hangingLabel` / `hangingPrefix` props and draws the same columns in Page View (the serial is a non-editable bold widget at the start of the first paragraph). Wired into the agenda edit box and the PDF Preview page's edit box. The resolution text is not hung in the PDF, so its editor needs nothing.
+- **Defaults.** The editor opens in Page View on a **Legal** page with **25.4 mm** margins; the PDF and the PDF Preview page use the same defaults (they were A4 / 20 mm). Saved meeting layouts are untouched.
+- **PDF Preview: Save as meeting layout** button saves the preview's size, orientation and margins on the meeting (the same `PUT /meetings/:id/page-layout` the editor uses).
+- **Line spacing.** Paragraphs have no margin; a wrapped line and an Enter are spaced the same, by the paragraph's line-height (the Line Spacing dropdown value is applied exactly).
+- **Tables.** New per-table **Cell Spacing** (top / bottom, px, default 1) in the Table ribbon, honoured by the PDF (`data-space-top` / `data-space-bottom`). In the editor a table with some unsized columns is scaled to fit the text area instead of running off the right edge (`CustomTableView.fitToPage`).
+- **Multiple selection.** Ctrl (Cmd) + select text in several places at once (`lib/multiTextSelect.ts`); formatting, Delete / Backspace, typing, paste, copy / cut and the Bijoy / Digits tools act on every region. Alignment and line spacing still apply to the first region only.
+- **Digits tool** (123 ➔ ১২৩) now converts every selected table cell, not just one.
+- Renamed "Word A4 Page" to **Page View**. `PDF_TEMPLATE_VERSION` is now `v71`.
+
+### Known behaviour
+
+- A table wider than the page makes Chromium shrink the **whole** PDF page to fit it (only when something overflows), so paragraphs on that page print smaller and wrap at different words than in the editor. Meetings without an over-wide table match the editor line for line. The PDF keeps this on purpose so every column stays visible.
+- Text copied out of a PDF, or from a terminal, can carry extra line breaks or reordered vowel signs; paste from a plain-text source when comparing.
+
+---
+
 ## 2026-09-19 — Tables Print the Way the Editor Draws Them
 
 ### Bug Fixes

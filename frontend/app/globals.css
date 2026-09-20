@@ -675,8 +675,11 @@ textarea:focus {
    bottom margins made each Enter look like an extra blank line. */
 .ProseMirror p {
   margin-top: 0;
-  margin-bottom: 10px;
+  margin-bottom: 0;
+  /* No paragraph margin: a wrapped line and an Enter are spaced the same, by
+     the paragraph's line-height (the Line Spacing dropdown value). */
 }
+
 
 /* Multi-Column Document & Section Layout Styles */
 /* ColumnGroup: Grid container rendered by TipTap as data-type="column-group" */
@@ -1443,4 +1446,16 @@ table[data-border="none"] th {
 }
 .ribbon-fullscreen .word-group-box {
   flex: 1 1 auto;
+}
+
+/* Table cells: top / bottom spacing set from the Table Design ribbon
+   (per table, px, default 1). Declared last so it beats the style rules above. */
+.ProseMirror table td,
+.ProseMirror table th,
+.prose table td,
+.prose table th,
+.meeting-table td,
+.meeting-table th {
+  padding-top: var(--cell-space-top, 1px);
+  padding-bottom: var(--cell-space-bottom, 1px);
 }

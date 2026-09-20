@@ -98,7 +98,13 @@ export const LineHeight = Extension.create({
         attributes: {
           lineHeight: {
             default: null,
-            parseHTML: element => element.style.lineHeight || null,
+            // The multiplier is written exactly as chosen (e.g. "1.5"). The old
+            // calc(N em + 10px) form is still read back as N.
+            parseHTML: element => {
+              const lh = element.style.lineHeight || '';
+              const m = lh.match(/^calc\(\s*([\d.]+)em\s*\+\s*10px\s*\)$/);
+              return m ? m[1] : (lh || null);
+            },
             renderHTML: attributes => {
               if (!attributes.lineHeight) return {};
               return { style: `line-height: ${attributes.lineHeight}` };
@@ -439,6 +445,8 @@ export class CustomTableView extends TableView {
       this.table.setAttribute('data-align', align);
       this.table.setAttribute('data-width-mode', widthMode);
       this.table.className = `meeting-table border-${borderStyle} table-style-${tableStyle} table-align-${align} table-width-${widthMode}`;
+      this.table.style.setProperty('--cell-space-top', `${node.attrs['data-space-top'] ?? '1'}px`);
+      this.table.style.setProperty('--cell-space-bottom', `${node.attrs['data-space-bottom'] ?? '1'}px`);
     }
     return result;
   }
@@ -458,6 +466,23 @@ export const CustomTable = Table.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
+      // Space (px) above the first and below the last line inside every cell.
+      'data-space-top': {
+        default: '1',
+        parseHTML: element => element.getAttribute('data-space-top') || '1',
+        renderHTML: attributes => {
+          const v = attributes['data-space-top'] ?? '1';
+          return { 'data-space-top': v, style: `--cell-space-top: ${v}px` };
+        },
+      },
+      'data-space-bottom': {
+        default: '1',
+        parseHTML: element => element.getAttribute('data-space-bottom') || '1',
+        renderHTML: attributes => {
+          const v = attributes['data-space-bottom'] ?? '1';
+          return { 'data-space-bottom': v, style: `--cell-space-bottom: ${v}px` };
+        },
+      },
       'data-border': {
         default: null,
         parseHTML: element => {
@@ -1353,7 +1378,7 @@ const KEYBOARD_SHORTCUTS_DATA = [
     category: "Page Layout",
     shortcuts: [
       { key: "Ctrl + Enter", desc: "Insert Page Break at Cursor" },
-      { key: "Ctrl + Alt + P", desc: "Toggle Word A4 Page View / Fluid Canvas" }
+      { key: "Ctrl + Alt + P", desc: "Toggle Page View / Fluid Canvas" }
     ]
   },
   {
@@ -2123,6 +2148,13 @@ const MenuBar = ({
       }
     }
     return true;
+  };
+
+  const applyTableSpacing = (key: 'data-space-top' | 'data-space-bottom', raw: string) => {
+    if (!editor) return;
+    const n = Math.min(60, Math.max(0, Number(raw)));
+    if (!Number.isFinite(n)) return;
+    editor.chain().focus().updateAttributes('table', { [key]: String(n) }).run();
   };
 
   // Table cells store free-form CSS in a single `style` attribute (row height,
@@ -3346,10 +3378,10 @@ const MenuBar = ({
                   className={`px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1.5 border cursor-pointer ${
                     viewMode === 'pageView' ? 'bg-primary text-primary-foreground border-primary shadow-xs' : 'bg-muted hover:bg-muted/80 text-foreground border-border'
                   }`}
-                  title="Word A4 Page View (Ctrl+Alt+P)"
+                  title="Page View (Ctrl+Alt+P)"
                 >
                   <FileText className="w-4 h-4" />
-                  <span>Word A4 Page</span>
+                  <span>Page View</span>
                 </button>
                 <button
                   type="button"
@@ -4221,6 +4253,33 @@ const MenuBar = ({
                     </button>
                   </div>
                   <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Table Width</span>
+                </div>
+
+                {/* CELL TOP / BOTTOM SPACING */}
+                <div className="word-group-box p-1.5 flex flex-col justify-between items-center">
+                  <div className="flex items-center gap-2 my-auto text-[10px] font-semibold text-muted-foreground">
+                    <label className="flex items-center gap-1" title="Space above the text in every cell (px)">
+                      Top
+                      <input
+                        type="number" min={0} max={60}
+                        key={`top-${editor.getAttributes('table')['data-space-top'] ?? '1'}`}
+                        defaultValue={editor.getAttributes('table')['data-space-top'] ?? '1'}
+                        onBlur={(e) => applyTableSpacing('data-space-top', e.target.value)}
+                        className="w-11 px-1 py-0.5 rounded border border-border bg-background text-foreground text-xs"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1" title="Space below the text in every cell (px)">
+                      Bottom
+                      <input
+                        type="number" min={0} max={60}
+                        key={`bottom-${editor.getAttributes('table')['data-space-bottom'] ?? '1'}`}
+                        defaultValue={editor.getAttributes('table')['data-space-bottom'] ?? '1'}
+                        onBlur={(e) => applyTableSpacing('data-space-bottom', e.target.value)}
+                        className="w-11 px-1 py-0.5 rounded border border-border bg-background text-foreground text-xs"
+                      />
+                    </label>
+                  </div>
+                  <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Cell Spacing</span>
                 </div>
 
                 {/* DRAW TABLE */}

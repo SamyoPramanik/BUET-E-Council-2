@@ -199,7 +199,11 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
         // break-spaces: the editor (ProseMirror) keeps every typed space, including
         // double / trailing ones, and lets a space wrap onto its own line in a
         // narrow cell; collapsing them made the PDF wrap differently.
-        const base = { 'line-height': '1.6', 'margin-top': '0', 'margin-bottom': '10px', 'text-align': 'left', 'font-size': '14px', 'white-space': 'break-spaces' };
+        // No paragraph margin: a wrapped line and an Enter are spaced the same, by the
+        // line-height (as in the editor). A calc(N em + 10px) value saved by an
+        // earlier build is read back as N.
+        match = match.replace(/calc\(\s*([\d.]+)em\s*\+\s*10px\s*\)/i, '$1');
+        const base = { 'line-height': '1.6', 'margin-top': '0', 'margin-bottom': '0', 'text-align': 'left', 'font-size': '14px', 'white-space': 'break-spaces' };
         if (isIndented) base['margin-left'] = `${indentPx}px`;
         return injectStyle(match, base);
     });
@@ -595,7 +599,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v62';
+const PDF_TEMPLATE_VERSION = 'v64';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -1058,6 +1062,8 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
 
                 table { border-collapse: collapse; width: 100%; margin-bottom: 10px; }
                 th, td { padding: 4px; text-align: left; border: none; }
+                /* Table Design > Cell Spacing (per table, default 1px) */
+                table[data-table-style] th, table[data-table-style] td { padding-top: var(--cell-space-top, 1px) !important; padding-bottom: var(--cell-space-bottom, 1px) !important; }
                 /* Editor tables (always carry data-table-style) look the way they do in
                    the editor (frontend/app/globals.css): same cell padding, theme-tinted
                    header row and Table Style gallery. Colours are the default maroon

@@ -22,6 +22,7 @@ import BulletList from '@tiptap/extension-bullet-list';
 import HorizontalRule from '@tiptap/extension-horizontal-rule';
 import { goToNextCell, addRowAfter, TableMap, CellSelection } from '@tiptap/pm/tables';
 import { TextSelection, Plugin, PluginKey } from '@tiptap/pm/state';
+import { MultiTextSelect } from '../lib/multiTextSelect';
 import { Node, Extension, wrappingInputRule, mergeAttributes } from '@tiptap/core';
 import { 
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, 
@@ -1389,6 +1390,13 @@ const KEYBOARD_SHORTCUTS_DATA = [
       { key: "Ctrl + E", desc: "Align Text Center" },
       { key: "Ctrl + R", desc: "Align Text Right" },
       { key: "Ctrl + J", desc: "Justify Paragraph Alignment" }
+    ]
+  },
+  {
+    category: "Selection",
+    shortcuts: [
+      { key: "Ctrl + Click / Drag (Cmd on Mac)", desc: "Select text in several places at once — hold Ctrl and select more text; formatting, Delete / Backspace, typing, paste, copy / cut and the Bijoy & Digits tools then apply to every selected region" },
+      { key: "Any arrow key or a plain click", desc: "Clear the multiple selection" }
     ]
   },
   {
@@ -5417,6 +5425,7 @@ export default function RichTextEditor({
       FontFamily,
       FontSize,
       LineHeight,
+      MultiTextSelect,
       ParagraphShading,
       Indent,
       Color,

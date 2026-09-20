@@ -1459,3 +1459,8 @@ table[data-border="none"] th {
   padding-top: var(--cell-space-top, 1px);
   padding-bottom: var(--cell-space-bottom, 1px);
 }
+
+/* Ctrl + select: the regions picked so far (lib/multiTextSelect.ts). */
+.ProseMirror .multi-select-range {
+  background-color: rgba(59, 130, 246, 0.35);
+}

@@ -599,7 +599,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v66';
+const PDF_TEMPLATE_VERSION = 'v67';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -990,10 +990,10 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
             return `
             <div class="agenda-block" style="margin-bottom: 30px; page-break-before: auto;">
                 <div class="agenda-title" style="font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${isBibidha ? 'বিবিধ :' : 'প্রস্তাব নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</b></div>
-                <div class="agenda-content" style="margin-left: 30px; text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${styleRichTextHtml(displayContent, true)}</div>
+                <div class="agenda-content" style="margin-left: 30px; text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${styleRichTextHtml(displayContent, false)}</div>
                 ${isResolution ? `
                 <div class="agenda-title" style="margin-top:15px; font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>সিদ্ধান্ত:</b></div>
-                <div class="agenda-resolution" style="margin-left: 30px; text-align: left; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${styleRichTextHtml(stripResolutionPrefix(ag.resolution || ''), true)}</b></div>
+                <div class="agenda-resolution" style="margin-left: 30px; text-align: left; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${styleRichTextHtml(stripResolutionPrefix(ag.resolution || ''), false)}</b></div>
                 ` : ''}
             </div>
             `;
@@ -1458,10 +1458,10 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                             ${(inlineNum && !isBibidha) ? '' : `<div class="agenda-title" style="font-weight: bold; font-size: 14px; margin-bottom: 8px;"><b>${titleStr}</b></div>`}
                             ${hangingNum
                               ? `<div class="agenda-content" style="display: flex; align-items: baseline; margin: 0 0 12px 0; text-align: left; font-size: 14px; line-height: 1.6;"><div style="flex: 0 0 auto; white-space: nowrap; font-weight: bold;"><b>${inlineLabel}</b>&nbsp;</div><div style="flex: 1 1 auto; min-width: 0;">${styleRichTextHtml(bodyHtml, false)}</div></div>`
-                              : (bodyHtml ? `<div class="agenda-content" style="${inlineNum ? '' : 'margin-left: 30px; '}text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px;">${styleRichTextHtml(bodyHtml, !inlineNum)}</div>` : '')}
+                              : (bodyHtml ? `<div class="agenda-content" style="${inlineNum ? '' : 'margin-left: 30px; '}text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px;">${styleRichTextHtml(bodyHtml, false)}</div>` : '')}
                             ${isResolution ? `
                             <div class="agenda-title" style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 8px;"><b>সিদ্ধান্ত:</b></div>
-                            <div class="agenda-resolution" style="margin-left: 30px; text-align: left; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px;"><b>${styleRichTextHtml(convertMarkdownTablesToHtml(ag.resolution || ''), true)}</b></div>
+                            <div class="agenda-resolution" style="margin-left: 30px; text-align: left; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px;"><b>${styleRichTextHtml(convertMarkdownTablesToHtml(ag.resolution || ''), false)}</b></div>
                             ` : ''}
                         </div>
                     </div>
@@ -1662,8 +1662,8 @@ const buildSingleResolutionHtml = async (meetingId, agendaId) => {
 
     const fontBase64 = FONT_BASE64;
     const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
-    const contentHtml = styleRichTextHtml(convertMarkdownTablesToHtml(ag.content || ''), true);
-    const resolutionHtml = styleRichTextHtml(convertMarkdownTablesToHtml(stripResolutionPrefix(ag.resolution || '')), true);
+    const contentHtml = styleRichTextHtml(convertMarkdownTablesToHtml(ag.content || ''), false);
+    const resolutionHtml = styleRichTextHtml(convertMarkdownTablesToHtml(stripResolutionPrefix(ag.resolution || '')), false);
 
     return `<!DOCTYPE html>
         <html>

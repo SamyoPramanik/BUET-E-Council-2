@@ -491,9 +491,24 @@ export class CustomTableView extends TableView {
     const table = this.table as HTMLElement | undefined;
     const colgroup = (this as any).colgroup as HTMLElement | undefined;
     if (!table || !colgroup) return;
-    const m = /^([\d.]+)px$/.exec(table.style.width || '');
-    if (!m) return;
     const cols = Array.from(colgroup.children) as HTMLElement[];
+    if (!/^([\d.]+)px$/.test(table.style.width || '')) {
+      // Some columns have no width: TipTap sets a min-width of the columns' sum, so
+      // the table can't be narrower than that. Drop it and cap each sized column at
+      // its share of the table instead (min(px, share%)): on a wide enough table
+      // that is its exact px width, on a narrow one the columns scale down together.
+      // Unsized columns keep their small minimum. Same rule as the PDF.
+      const sized = cols.map((c) => parseFloat(c.style.width));
+      if (!sized.length || sized.every((w) => !Number.isFinite(w))) return;
+      const floors = cols.map((c) => parseFloat(c.style.minWidth) || 0);
+      const totalPx = cols.reduce((a, _c, i) => a + (Number.isFinite(sized[i]) ? sized[i] : floors[i]), 0);
+      if (totalPx <= 0) return;
+      cols.forEach((c, i) => {
+        if (Number.isFinite(sized[i])) c.style.width = `min(${sized[i]}px, ${((sized[i] / totalPx) * 100).toFixed(4)}%)`;
+      });
+      table.style.minWidth = '';
+      return;
+    }
     const widths = cols.map((c) => parseFloat(c.style.width));
     if (!widths.length || widths.some((w) => !Number.isFinite(w) || w <= 0)) return;
     const total = widths.reduce((a, b) => a + b, 0);

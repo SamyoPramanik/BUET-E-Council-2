@@ -333,7 +333,18 @@ function styleRichTextHtml(htmlContent, isIndented = false) {
             const total = colWidths.reduce((a, b) => a + b, 0);
             colgroup = `<colgroup>${colWidths.map((w) => `<col style="width:${(w / total * 100).toFixed(4)}%;" />`).join('')}</colgroup>`;
         } else if (anyWidth) {
-            colgroup = `<colgroup>${colWidths.map((w) => (w != null ? `<col style="width:${w}px;" />` : '<col />')).join('')}</colgroup>`;
+            // Some columns sized, others not. Fixed px columns whose sum is wider than
+            // the page make the table overflow, and Chromium then shrinks the WHOLE
+            // page to fit it (every paragraph prints smaller, so lines hold more
+            // words than in the editor). So each sized column is capped at its share
+            // of the table: min(<px>, <share>%). On a wide enough table that is the
+            // exact px width; on a narrow one the columns scale down together and the
+            // unsized columns keep a small minimum (the editor's 25px) as their share.
+            const MIN_UNSIZED = 25;
+            const totalPx = colWidths.reduce((a, w) => a + (w != null ? w : MIN_UNSIZED), 0);
+            colgroup = `<colgroup>${colWidths.map((w) => (w != null
+                ? `<col style="width:min(${w}px, ${(w / totalPx * 100).toFixed(4)}%);" />`
+                : '<col />')).join('')}</colgroup>`;
         }
         // min-width:0 clears any authored `min-width:<sum>px` (prosemirror-tables
         // writes one) that would otherwise push the table past the page edge.
@@ -599,7 +610,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v69';
+const PDF_TEMPLATE_VERSION = 'v70';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 

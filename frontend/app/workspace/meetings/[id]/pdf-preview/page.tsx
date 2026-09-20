@@ -124,7 +124,7 @@ export default function PdfPreviewPage() {
   // ---- Page layout controls --------------------------------------------
   const [pageSize, setPageSize] = useState("Legal");
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
-  const [margins, setMargins] = useState({ top: 20, right: 20, bottom: 20, left: 20 });
+  const [margins, setMargins] = useState({ top: 25.4, right: 25.4, bottom: 25.4, left: 25.4 });
   const [scalePct, setScalePct] = useState(100);
   const [lineHeight, setLineHeight] = useState<number | "">("");
   const [separatePages, setSeparatePages] = useState(false);

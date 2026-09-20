@@ -477,14 +477,14 @@ const warmUp = async () => {
 // ---------------------------------------------------------------------------
 // Optional per-request page-layout overrides (driven by the PDF Preview page).
 // When nothing is supplied every value falls back to the historical
-// Legal / 20mm / 1x defaults, so existing callers and cached PDFs are unaffected.
+// Legal / 25.4mm / 1x defaults, so existing callers and cached PDFs are unaffected.
 // ---------------------------------------------------------------------------
 const ALLOWED_PAGE_SIZES = ['A3', 'A4', 'A5', 'Letter', 'Legal', 'Tabloid'];
 
 const DEFAULT_PDF_LAYOUT = {
     pageSize: 'Legal',
     orientation: 'portrait',
-    margin: { top: 20, right: 20, bottom: 20, left: 20 }, // millimetres
+    margin: { top: 25.4, right: 25.4, bottom: 25.4, left: 25.4 }, // millimetres
     scale: 1,          // proportional zoom of the whole document (0.7 - 1.6)
     lineHeight: null,   // null => keep the template's per-element line-heights
     // 'heading' => classic bold "প্রস্তাব নং <n>" line above an indented body.
@@ -599,7 +599,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v65';
+const PDF_TEMPLATE_VERSION = 'v66';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 

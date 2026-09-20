@@ -1503,12 +1503,12 @@ export interface PageSettings {
 }
 
 export const DEFAULT_PAGE_SETTINGS: PageSettings = {
-  // Editor defaults: Legal page, 20 mm margins on every side (same as the PDF's
-  // own default margin).
+  // Defaults: Legal page, 25.4 mm (1 inch) margins on every side. The PDF and the
+  // PDF Preview page use the same values.
   size: 'Legal',
   orientation: 'portrait',
-  margins: { top: 20, right: 20, bottom: 20, left: 20 },
-  marginPreset: 'custom',
+  margins: { top: 25.4, right: 25.4, bottom: 25.4, left: 25.4 },
+  marginPreset: 'normal',
   pageColor: '',
   border: { enabled: false, style: 'solid', width: 1, color: '#800000' },
   watermark: { enabled: false, text: 'CONFIDENTIAL', color: '#94a3b8', opacity: 0.25 },

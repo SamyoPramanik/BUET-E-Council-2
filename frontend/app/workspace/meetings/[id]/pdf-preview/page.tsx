@@ -149,6 +149,26 @@ export default function PdfPreviewPage() {
     }
   }, [meeting]);
 
+  // Save the size / orientation / margins chosen here as the meeting's page
+  // layout, so the editor shows the same page (text size, line height and the
+  // other preview-only options are not part of it).
+  const [savingLayout, setSavingLayout] = useState(false);
+  const saveAsMeetingLayout = async () => {
+    if (!id) return;
+    setSavingLayout(true);
+    try {
+      await api.put(`/meetings/${id}/page-layout`, {
+        page_layout: { size: pageSize, orientation, margins, marginPreset: "custom" },
+      });
+      await mutateMeeting();
+      toast.success("Saved as the meeting's page layout");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to save the page layout");
+    } finally {
+      setSavingLayout(false);
+    }
+  };
+
   const layoutQuery = useMemo(() => {
     const qs = new URLSearchParams({
       pageSize,
@@ -753,6 +773,18 @@ export default function PdfPreviewPage() {
               className="w-16 bg-input/20 border border-input rounded px-1.5 py-1"
             />
           </label>
+
+          {user && user.role !== "viewer" && (
+            <button
+              type="button"
+              onClick={saveAsMeetingLayout}
+              disabled={savingLayout}
+              title="Save this page size, orientation and margins on the meeting, so the editor uses the same page"
+              className="px-2.5 py-1 rounded bg-primary text-primary-foreground text-xs font-semibold disabled:opacity-50"
+            >
+              {savingLayout ? "Saving..." : "Save as meeting layout"}
+            </button>
+          )}
 
           {docType === "resolution" && (
             <label className="flex items-center gap-1.5 cursor-pointer text-xs select-none ml-1">

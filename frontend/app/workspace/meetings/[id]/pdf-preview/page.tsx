@@ -29,7 +29,7 @@ import {
 } from "../../../../../lib/meetingAccess";
 import { toBanglaDigits, getSerialWidth } from "../../../../../lib/banglaNumerals";
 import { sanitizeHtml } from "../../../../../lib/sanitize";
-import RichTextEditor from "../../../../../components/RichTextEditor";
+import RichTextEditor, { DEFAULT_PAGE_SETTINGS, MeetingPageLayoutContext, type PageSettings } from "../../../../../components/RichTextEditor";
 
 type DocType = "agenda" | "suppli-agenda" | "resolution" | "resolution-status";
 // id "meeting" is the sentinel for the meeting-level description / conclusion cells.
@@ -168,6 +168,21 @@ export default function PdfPreviewPage() {
       setSavingLayout(false);
     }
   };
+
+  // The edit box's editor draws the page the preview is set to (size, orientation,
+  // margins) — live, whether or not it has been saved on the meeting. Changing the
+  // page from inside that editor updates these same controls.
+  const editorLayout = useMemo(() => ({
+    settings: { ...DEFAULT_PAGE_SETTINGS, size: pageSize as PageSettings["size"], orientation, margins, marginPreset: "custom" as const },
+    setSettings: ((action: React.SetStateAction<PageSettings>) => {
+      const next = typeof action === "function"
+        ? (action as (p: PageSettings) => PageSettings)({ ...DEFAULT_PAGE_SETTINGS, size: pageSize as PageSettings["size"], orientation, margins, marginPreset: "custom" })
+        : action;
+      setPageSize(next.size);
+      setOrientation(next.orientation);
+      setMargins(next.margins);
+    }) as React.Dispatch<React.SetStateAction<PageSettings>>,
+  }), [pageSize, orientation, margins]);
 
   const layoutQuery = useMemo(() => {
     const qs = new URLSearchParams({
@@ -497,14 +512,16 @@ export default function PdfPreviewPage() {
         <div className="not-prose border border-primary rounded-md overflow-hidden bg-background text-left text-foreground">
           {/* The PDF hangs the text beside the "প্রস্তাব নং A" label, so the editor draws
               the same two columns (label + serial) and wraps where the PDF does. */}
-          <RichTextEditor
-            content={draft}
-            onChange={setDraft}
-            onSave={saveEdit}
-            className="p-3 min-h-[160px]"
-            hangingLabel={lockedPrefix ? `প্রস্তাব নং${ac ? " " + ac : ""}` : undefined}
-            hangingPrefix={lockedPrefix || undefined}
-          />
+          <MeetingPageLayoutContext.Provider value={editorLayout}>
+            <RichTextEditor
+              content={draft}
+              onChange={setDraft}
+              onSave={saveEdit}
+              className="p-3 min-h-[160px]"
+              hangingLabel={lockedPrefix ? `প্রস্তাব নং${ac ? " " + ac : ""}` : undefined}
+              hangingPrefix={lockedPrefix || undefined}
+            />
+          </MeetingPageLayoutContext.Provider>
           <div className="flex justify-end gap-2 p-2 bg-muted border-t border-border">
             <button
               onClick={cancelEdit}

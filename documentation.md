@@ -1146,10 +1146,18 @@ Full list lives in `KEYBOARD_SHORTCUTS_DATA` in `RichTextEditor.tsx` and is rend
 | `Ctrl + Alt + T` | Open Insert Table dialog |
 | `Tab` / `Shift + Tab` (in a table) | Move to next/previous cell |
 | `Shift + Enter` (in a table) | Move to the same column in the next row |
+| `Ctrl + M` / `Ctrl + Shift + M` | Increase / decrease the paragraph indent by 24 px — works inside a table, where `Tab` moves between cells |
+| `Ctrl + L` / `Ctrl + E` / `Ctrl + R` / `Ctrl + J` | Align left / center / right / justify (Word's keys; TipTap's `Ctrl + Shift + L/E/R/J` still work). The `TextAlign` extension has `priority: 1000` so `Ctrl + E` is not taken by inline code |
 | `Ctrl + Enter` | Insert a Page Break at the cursor |
 | `Ctrl + Alt + P` | Toggle Page View / Fluid Canvas |
 | `Ctrl + Shift + F` | Toggle editor full-screen mode |
 | `Ctrl` / `Cmd + S` | Trigger the host view's save handler (via the `onSave` prop), from anywhere in the editing panel |
+
+#### Paragraph Indentation
+
+The `Indent` extension stores indents as **exact px values** on paragraphs, headings and list items (`indent` → `margin-left`, `indentRight` → `margin-right`; a first-line `firstLine` → `text-indent` attribute still parses and prints but has no toolbar box). Tab / Ctrl+M / the Indent buttons step the left indent by 24 px; the **L** and **R** boxes beside the Indent buttons (`IndentControl`) take any value in **mm**, including decimals (`0.05`) and **negative** values (the text moves into the page margin, as in Word). Values are committed as they are typed and only a box the user typed in writes back on blur (`IndentField`).
+
+`setIndent`, `indent` and `outdent` walk every range of the selection (`forEachSelectedNode`), so a multi-cell table selection indents all its cells. `KeepSelectionVisible` draws a `.pm-blurred-selection` highlight while focus is in a toolbar box, since the browser hides the native selection then.
 
 #### Paste Handling & Bijoy Auto-Conversion
 
@@ -1167,6 +1175,7 @@ A full-bleed route (`/workspace/meetings/[id]/pdf-preview`, linked from the **Ma
 
 - **Layout controls** — page size, orientation, per-side margins (mm), whole-document scale, and line-height — are serialised into the `GET /api/meetings/:id/pdf/:type` query string. Server-side validation/clamping and cache isolation are described in [§3.4](#34-pdf-generation--typography-engine).
 - The on-screen preview mirrors the server layout via a matching `@page` rule and a CSS `zoom` on the rendered surface, so what the user sees tracks the eventual PDF.
+- The inline edit box's `RichTextEditor` is wrapped in a `MeetingPageLayoutContext.Provider` fed by the preview's own size / orientation / margins, so it draws the same page as the preview (live, saved or not); changing the page from inside that editor updates these controls.
 - **Inline editing**: agenda `content`, `resolution`, meeting `description`, and `conclusion` cells are editable in place (reusing `RichTextEditor`), gated by the same `lib/meetingAccess` helpers (`canEditAgenda`, `canEditResolution`, `canEditDescription`, `canEditConclusion`, …) as the main workspace. Saves `PATCH` through the normal agenda/meeting endpoints and revalidate the SWR cache.
 - `agendaNumberStyle: 'inline'` matches the preview's 3-column on-screen layout: the body opens with a bold, non-editable `<prefix-rest><serial>:` run instead of a separate "প্রস্তাব নং <n>" heading line.
 

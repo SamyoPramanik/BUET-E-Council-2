@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-21 — Word-style Alignment Keys and Typed Paragraph Indents
+
+### Changes
+
+- **Alignment keys.** Ctrl+L / E / R / J now align left / center / right / justify (the tooltips already promised them; only Ctrl+Shift+ worked). The `TextAlign` extension gets `priority: 1000` because inline code also claims Ctrl+E.
+- **Typed indents.** New **L** and **R** boxes beside the Indent buttons take an exact indent in **mm** (`1`, `0.05`, ...), negative values included (the text moves into the page margin, as in Word). Indents are now stored as exact px (`margin-left` / `margin-right`) instead of whole 24 px steps, so typed values survive save and reload; older content parses unchanged.
+- **Indent in tables.** Ctrl+M / Ctrl+Shift+M indent and outdent everywhere, including inside a table where Tab moves between cells.
+- **Selection.** The indent commands and boxes now apply to every selected table cell (only the last cell changed before). The text selection stays highlighted while focus is in a toolbar box.
+- **PDF Preview edit box** now draws the preview's page size and margins (it used the default Legal / 25.4 mm even after the margins were changed and saved).
+
+### Bug Fixes
+
+- Clicking into an indent box and leaving it no longer re-applies its value to every selected paragraph (it wiped other paragraphs' indents).
+
+### Not checked
+
+- How a negative indent prints in the PDF (text pushed past the page edge is clipped).
+
+---
 ## 2026-09-20 — Editor and PDF Break Lines in the Same Places
 
 ### Changes

@@ -2010,6 +2010,9 @@ const IndentField = ({ label, px, allowNegative, onCommit }: {
   const cur = px ? pxToMm(px) : '0';
   const [draft, setDraft] = useState(cur);
   const [focused, setFocused] = useState(false);
+  // Only a field the user actually typed in is written back; merely clicking into
+  // it (and out again) must not re-apply its value to every selected paragraph.
+  const edited = useRef(false);
   useEffect(() => { if (!focused) setDraft(cur); }, [cur, focused]);
   const re = allowNegative ? /^-?\d*\.?\d*$/ : /^\d*\.?\d*$/;
   return (
@@ -2020,15 +2023,17 @@ const IndentField = ({ label, px, allowNegative, onCommit }: {
           type="text"
           inputMode="decimal"
           value={focused ? draft : cur}
-          onFocus={(e) => { setFocused(true); setDraft(cur); e.currentTarget.select(); }}
+          onFocus={(e) => { edited.current = false; setFocused(true); setDraft(cur); e.currentTarget.select(); }}
           onBlur={() => {
             setFocused(false);
+            if (!edited.current) return;
             const n = parseFloat(draft);
             onCommit(Number.isFinite(n) ? Math.round(n * PX_PER_MM * 1000) / 1000 : 0);
           }}
           onChange={(e) => {
             const val = e.target.value.trim();
             if (val && !re.test(val)) return;
+            edited.current = true;
             setDraft(val);
             const n = parseFloat(val);
             if (Number.isFinite(n) && !/[.-]$/.test(val)) onCommit(Math.round(n * PX_PER_MM * 1000) / 1000);

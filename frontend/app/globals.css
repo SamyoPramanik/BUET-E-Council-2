@@ -1492,3 +1492,8 @@ table[data-border="none"] th {
   font-size: 14px;
   line-height: 1.6;
 }
+
+/* Selection kept visible while focus is in a toolbar box (see KeepSelectionVisible). */
+.ProseMirror .pm-blurred-selection {
+  background-color: rgba(128, 0, 0, 0.22);
+}

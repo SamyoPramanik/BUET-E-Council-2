@@ -176,6 +176,20 @@ const pxAttr = (prop: 'marginLeft' | 'marginRight' | 'textIndent') => (element: 
   return Number.isFinite(v) && v !== 0 ? Math.round(v * 1000) / 1000 : 0;
 };
 
+// Calls fn for every block in the selection. A table's multi-cell selection is a
+// list of ranges (one per cell), so each range is walked, not just from the first
+// cell's start to the last cell's end.
+const forEachSelectedNode = (state: any, doc: any, fn: (node: any, pos: number) => void) => {
+  const seen = new Set<number>();
+  for (const range of state.selection.ranges) {
+    doc.nodesBetween(range.$from.pos, range.$to.pos, (node: any, pos: number) => {
+      if (seen.has(pos)) return;
+      seen.add(pos);
+      fn(node, pos);
+    });
+  }
+};
+
 export const Indent = Extension.create({
   name: 'indent',
   addOptions() {
@@ -193,7 +207,7 @@ export const Indent = Extension.create({
             default: 0,
             parseHTML: pxAttr('marginLeft'),
             renderHTML: attributes => {
-              if (!attributes.indent || attributes.indent <= 0) return {};
+              if (!attributes.indent) return {};
               return { style: `margin-left: ${attributes.indent}px` };
             },
           },
@@ -201,7 +215,7 @@ export const Indent = Extension.create({
             default: 0,
             parseHTML: pxAttr('marginRight'),
             renderHTML: attributes => {
-              if (!attributes.indentRight || attributes.indentRight <= 0) return {};
+              if (!attributes.indentRight) return {};
               return { style: `margin-right: ${attributes.indentRight}px` };
             },
           },
@@ -221,9 +235,7 @@ export const Indent = Extension.create({
   addCommands() {
     return {
       indent: () => ({ tr, state, dispatch }: any) => {
-        const { selection } = state;
-        const { $from, $to } = selection;
-        tr.doc.nodesBetween($from.pos, $to.pos, (node: any, pos: number) => {
+        forEachSelectedNode(state, tr.doc, (node: any, pos: number) => {
           if (this.options.types.includes(node.type.name)) {
             const currentIndent = node.attrs.indent || 0;
             if (currentIndent < MAX_INDENT_PX) {
@@ -235,9 +247,7 @@ export const Indent = Extension.create({
         return true;
       },
       outdent: () => ({ tr, state, dispatch }: any) => {
-        const { selection } = state;
-        const { $from, $to } = selection;
-        tr.doc.nodesBetween($from.pos, $to.pos, (node: any, pos: number) => {
+        forEachSelectedNode(state, tr.doc, (node: any, pos: number) => {
           if (this.options.types.includes(node.type.name)) {
             const currentIndent = node.attrs.indent || 0;
             if (currentIndent > this.options.minLevel) {
@@ -251,8 +261,7 @@ export const Indent = Extension.create({
       // Exact values in px; a field left undefined is not touched. A paragraph
       // inside a list item is skipped (the list item carries the indent).
       setIndent: (values: { left?: number; right?: number; firstLine?: number }) => ({ tr, state, dispatch }: any) => {
-        const { $from, $to } = state.selection;
-        tr.doc.nodesBetween($from.pos, $to.pos, (node: any, pos: number) => {
+        forEachSelectedNode(state, tr.doc, (node: any, pos: number) => {
           if (!this.options.types.includes(node.type.name)) return;
           if (node.type.name === 'paragraph' && tr.doc.resolve(pos).parent.type.name === 'listItem') return;
           const attrs = { ...node.attrs };
@@ -472,6 +481,42 @@ export const CustomHorizontalRule = HorizontalRule.extend({
         },
       },
     };
+  },
+});
+
+// The browser stops drawing the text selection once focus moves out of the editor
+// (into the indent / font-size / line-spacing boxes), although the editor still
+// holds it and the box applies to it. Draw the selection ourselves while the
+// editor is unfocused so it stays visible.
+export const KeepSelectionVisible = Extension.create({
+  name: 'keepSelectionVisible',
+  addProseMirrorPlugins() {
+    const key = new PluginKey('keepSelectionVisible');
+    return [
+      new Plugin({
+        key,
+        state: {
+          init: () => false, // is the editor blurred?
+          apply: (tr, blurred) => {
+            const meta = tr.getMeta(key);
+            return meta === undefined ? blurred : meta;
+          },
+        },
+        props: {
+          handleDOMEvents: {
+            blur: (view) => { view.dispatch(view.state.tr.setMeta(key, true)); return false; },
+            focus: (view) => { view.dispatch(view.state.tr.setMeta(key, false)); return false; },
+          },
+          decorations(state) {
+            const { selection } = state;
+            if (!key.getState(state) || selection.empty || !(selection instanceof TextSelection)) return null;
+            return DecorationSet.create(state.doc, [
+              Decoration.inline(selection.from, selection.to, { class: 'pm-blurred-selection' }),
+            ]);
+          },
+        },
+      }),
+    ];
   },
 });
 
@@ -2028,7 +2073,9 @@ const IndentField = ({ label, px, allowNegative, onCommit }: {
             setFocused(false);
             if (!edited.current) return;
             const n = parseFloat(draft);
-            onCommit(Number.isFinite(n) ? Math.round(n * PX_PER_MM * 1000) / 1000 : 0);
+            const next = Number.isFinite(n) ? Math.round(n * PX_PER_MM * 1000) / 1000 : 0;
+            // Typing already committed every complete number; only a leftover ("-", "1.") needs this.
+            if (Math.abs(next - px) > 0.001) onCommit(next);
           }}
           onChange={(e) => {
             const val = e.target.value.trim();
@@ -2057,10 +2104,9 @@ const IndentControl = ({ editor }: { editor: any }) => {
     if (!attrs.type && (n.type.name === 'paragraph' || n.type.name === 'heading')) attrs = { ...n.attrs, type: 1 };
   }
   return (
-    <div className="flex items-center gap-1 px-1 border-l border-border" title="Paragraph indentation in mm — type any value, e.g. 1 or 0.05. First line: negative = hanging indent.">
-      <IndentField label="L" px={attrs.indent || 0} onCommit={(v) => editor.chain().setIndent({ left: v }).run()} />
-      <IndentField label="R" px={attrs.indentRight || 0} onCommit={(v) => editor.chain().setIndent({ right: v }).run()} />
-      <IndentField label="1st" px={attrs.firstLine || 0} allowNegative onCommit={(v) => editor.chain().setIndent({ firstLine: v }).run()} />
+    <div className="flex items-center gap-1 px-1 border-l border-border" title="Paragraph indentation in mm — type any value, e.g. 1 or 0.05. A negative value (e.g. -5) moves the text into the page margin.">
+      <IndentField label="L" allowNegative px={attrs.indent || 0} onCommit={(v) => editor.chain().setIndent({ left: v }).run()} />
+      <IndentField label="R" allowNegative px={attrs.indentRight || 0} onCommit={(v) => editor.chain().setIndent({ right: v }).run()} />
       <span className="text-[10px] text-muted-foreground">mm</span>
     </div>
   );
@@ -5615,6 +5661,7 @@ export default function RichTextEditor({
       FontSize,
       LineHeight,
       MultiTextSelect,
+      KeepSelectionVisible,
       HangingPrefix.configure({ getPrefix: () => hangingPrefixRef.current || '' }),
       ParagraphShading,
       Indent,

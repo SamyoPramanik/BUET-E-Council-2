@@ -166,13 +166,22 @@ export const ParagraphShading = Extension.create({
 });
 
 // Custom Indent Extension
+// Indents are stored as exact px values (margin-left / margin-right / text-indent
+// on the block), so a typed value survives save and reload. The Tab / toolbar
+// buttons step the left indent by INDENT_STEP_PX.
+const INDENT_STEP_PX = 24;
+const MAX_INDENT_PX = 1000;
+const pxAttr = (prop: 'marginLeft' | 'marginRight' | 'textIndent') => (element: HTMLElement) => {
+  const v = parseFloat(element.style[prop]);
+  return Number.isFinite(v) && v !== 0 ? Math.round(v * 1000) / 1000 : 0;
+};
+
 export const Indent = Extension.create({
   name: 'indent',
   addOptions() {
     return {
       types: ['paragraph', 'heading', 'listItem'],
       minLevel: 0,
-      maxLevel: 8,
     };
   },
   addGlobalAttributes() {
@@ -182,14 +191,27 @@ export const Indent = Extension.create({
         attributes: {
           indent: {
             default: 0,
-            parseHTML: element => {
-              const marginLeft = element.style.marginLeft;
-              if (!marginLeft) return 0;
-              return Math.round(parseInt(marginLeft, 10) / 24) || 0;
-            },
+            parseHTML: pxAttr('marginLeft'),
             renderHTML: attributes => {
               if (!attributes.indent || attributes.indent <= 0) return {};
-              return { style: `margin-left: ${attributes.indent * 24}px` };
+              return { style: `margin-left: ${attributes.indent}px` };
+            },
+          },
+          indentRight: {
+            default: 0,
+            parseHTML: pxAttr('marginRight'),
+            renderHTML: attributes => {
+              if (!attributes.indentRight || attributes.indentRight <= 0) return {};
+              return { style: `margin-right: ${attributes.indentRight}px` };
+            },
+          },
+          // First-line indent; negative = hanging indent (as in Word's Paragraph dialog).
+          firstLine: {
+            default: 0,
+            parseHTML: pxAttr('textIndent'),
+            renderHTML: attributes => {
+              if (!attributes.firstLine) return {};
+              return { style: `text-indent: ${attributes.firstLine}px` };
             },
           },
         },
@@ -204,8 +226,8 @@ export const Indent = Extension.create({
         tr.doc.nodesBetween($from.pos, $to.pos, (node: any, pos: number) => {
           if (this.options.types.includes(node.type.name)) {
             const currentIndent = node.attrs.indent || 0;
-            if (currentIndent < this.options.maxLevel) {
-              tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: currentIndent + 1 });
+            if (currentIndent < MAX_INDENT_PX) {
+              tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: Math.min(MAX_INDENT_PX, currentIndent + INDENT_STEP_PX) });
             }
           }
         });
@@ -219,9 +241,25 @@ export const Indent = Extension.create({
           if (this.options.types.includes(node.type.name)) {
             const currentIndent = node.attrs.indent || 0;
             if (currentIndent > this.options.minLevel) {
-              tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: currentIndent - 1 });
+              tr.setNodeMarkup(pos, undefined, { ...node.attrs, indent: Math.max(this.options.minLevel, currentIndent - INDENT_STEP_PX) });
             }
           }
+        });
+        if (dispatch) dispatch(tr);
+        return true;
+      },
+      // Exact values in px; a field left undefined is not touched. A paragraph
+      // inside a list item is skipped (the list item carries the indent).
+      setIndent: (values: { left?: number; right?: number; firstLine?: number }) => ({ tr, state, dispatch }: any) => {
+        const { $from, $to } = state.selection;
+        tr.doc.nodesBetween($from.pos, $to.pos, (node: any, pos: number) => {
+          if (!this.options.types.includes(node.type.name)) return;
+          if (node.type.name === 'paragraph' && tr.doc.resolve(pos).parent.type.name === 'listItem') return;
+          const attrs = { ...node.attrs };
+          if (values.left !== undefined) attrs.indent = values.left;
+          if (values.right !== undefined) attrs.indentRight = values.right;
+          if (values.firstLine !== undefined) attrs.firstLine = values.firstLine;
+          tr.setNodeMarkup(pos, undefined, attrs);
         });
         if (dispatch) dispatch(tr);
         return true;
@@ -1313,6 +1351,7 @@ declare module '@tiptap/core' {
     indent: {
       indent: () => ReturnType;
       outdent: () => ReturnType;
+      setIndent: (values: { left?: number; right?: number; firstLine?: number }) => ReturnType;
     };
     columnBreak: {
       insertColumnBreak: () => ReturnType;
@@ -1951,6 +1990,90 @@ const FontSizeControl = ({ editor }: { editor: any }) => {
         placeholder="14"
         className="w-10 px-1 py-1 text-xs text-center border border-border rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
       />
+    </div>
+  );
+};
+
+const PX_PER_MM = 96 / 25.4;
+const pxToMm = (px: number) => String(Math.round((px / PX_PER_MM) * 1000) / 1000);
+
+// One typed-value box for the indent panel. Keeps a LOCAL draft while focused
+// (never steals editor focus) and commits every complete number as it is typed.
+const IndentField = ({ label, px, allowNegative, onCommit }: {
+  label: string; px: number; allowNegative?: boolean; onCommit: (px: number) => void;
+}) => {
+  const cur = px ? pxToMm(px) : '0';
+  const [draft, setDraft] = useState(cur);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setDraft(cur); }, [cur, focused]);
+  const re = allowNegative ? /^-?\d*\.?\d*$/ : /^\d*\.?\d*$/;
+  return (
+    <label className="flex items-center justify-between gap-2 text-xs text-foreground">
+      <span>{label}</span>
+      <span className="flex items-center gap-1">
+        <input
+          type="text"
+          inputMode="decimal"
+          value={focused ? draft : cur}
+          onFocus={(e) => { setFocused(true); setDraft(cur); e.currentTarget.select(); }}
+          onBlur={() => {
+            setFocused(false);
+            const n = parseFloat(draft);
+            onCommit(Number.isFinite(n) ? Math.round(n * PX_PER_MM * 1000) / 1000 : 0);
+          }}
+          onChange={(e) => {
+            const val = e.target.value.trim();
+            if (val && !re.test(val)) return;
+            setDraft(val);
+            const n = parseFloat(val);
+            if (Number.isFinite(n) && !/[.-]$/.test(val)) onCommit(Math.round(n * PX_PER_MM * 1000) / 1000);
+          }}
+          className="w-16 px-1 py-1 text-xs text-center border border-border rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+        <span className="text-[10px] text-muted-foreground">mm</span>
+      </span>
+    </label>
+  );
+};
+
+// Word-style "Paragraph" indentation: type the left / right / first-line values.
+const IndentControl = ({ editor }: { editor: any }) => {
+  const [open, setOpen] = useState(false);
+  let attrs: any = {};
+  if (open) {
+    const { $from } = editor.state.selection;
+    // The list item carries the indent inside a list; otherwise the paragraph / heading does.
+    for (let d = $from.depth; d >= 0; d--) {
+      const n = $from.node(d);
+      if (n.type.name === 'listItem') { attrs = n.attrs; break; }
+      if (!attrs.type && (n.type.name === 'paragraph' || n.type.name === 'heading')) attrs = { ...n.attrs, type: 1 };
+    }
+  }
+  const left = attrs.indent || 0, right = attrs.indentRight || 0, first = attrs.firstLine || 0;
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`px-1.5 py-1 rounded hover:bg-muted text-xs cursor-pointer flex items-center gap-1 ${open ? 'bg-primary/20 text-primary' : 'text-muted-foreground'}`}
+        title="Paragraph indentation: type exact left / right / first-line values"
+      >
+        <IndentIcon className="w-4 h-4" />
+        <span>Indent…</span>
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-[100005] p-3 bg-popover border border-border rounded-xl shadow-xl flex flex-col gap-2 w-56">
+          <span className="text-[10px] font-bold uppercase text-muted-foreground">Paragraph Indentation</span>
+          <IndentField label="Left" px={left} onCommit={(v) => editor.chain().setIndent({ left: v }).run()} />
+          <IndentField label="Right" px={right} onCommit={(v) => editor.chain().setIndent({ right: v }).run()} />
+          <IndentField label="First line" px={first} allowNegative onCommit={(v) => editor.chain().setIndent({ firstLine: v }).run()} />
+          <p className="text-[10px] text-muted-foreground leading-snug">First line: positive indents it, negative makes a hanging indent.</p>
+          <div className="flex justify-between">
+            <button type="button" onClick={() => editor.chain().setIndent({ left: 0, right: 0, firstLine: 0 }).run()} className="text-xs px-2 py-1 rounded border border-border hover:bg-muted cursor-pointer">Reset</button>
+            <button type="button" onClick={() => { setOpen(false); editor.commands.focus(); }} className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground cursor-pointer">Done</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -3279,6 +3402,7 @@ const MenuBar = ({
                   </div>
 
                   <LineSpacingControl editor={editor} />
+                  <IndentControl editor={editor} />
 
                   {/* Shading / Background Color */}
                   <div className="relative">
@@ -5522,7 +5646,19 @@ export default function RichTextEditor({
       TableRow,
       CustomTableHeader,
       CustomTableCell,
-      TextAlign.configure({
+      // Word's alignment keys (Ctrl+L / E / R / J) on top of TipTap's own Ctrl+Shift+L / E / R / J.
+      TextAlign.extend({
+        addKeyboardShortcuts() {
+          const align = (a: string) => () => this.editor.commands.setTextAlign(a);
+          return {
+            ...this.parent?.(),
+            'Mod-l': align('left'),
+            'Mod-e': align('center'),
+            'Mod-r': align('right'),
+            'Mod-j': align('justify'),
+          };
+        },
+      }).configure({
         types: ['heading', 'paragraph', 'listItem', 'bulletList', 'orderedList'],
       }),
     ],

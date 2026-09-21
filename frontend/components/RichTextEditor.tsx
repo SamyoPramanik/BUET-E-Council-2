@@ -268,6 +268,9 @@ export const Indent = Extension.create({
   },
   addKeyboardShortcuts() {
     return {
+      // Work everywhere, including inside a table where Tab moves between cells.
+      'Mod-m': () => this.editor.commands.indent(),
+      'Mod-Shift-m': () => this.editor.commands.outdent(),
       'Tab': () => {
         if (this.editor.isActive('table')) {
           return false;
@@ -288,7 +291,7 @@ export const Indent = Extension.create({
 export const CustomTableCell = TableCell.extend({
   addAttributes() {
     return {
-      ...this.parent?.(),
+      ...(this as any).parent?.(),
       'data-text-direction': {
         default: 'horizontal',
         parseHTML: element => element.getAttribute('data-text-direction') || 'horizontal',
@@ -340,7 +343,7 @@ export const CustomTableCell = TableCell.extend({
 export const CustomTableHeader = TableHeader.extend({
   addAttributes() {
     return {
-      ...this.parent?.(),
+      ...(this as any).parent?.(),
       'data-text-direction': {
         default: 'horizontal',
         parseHTML: element => element.getAttribute('data-text-direction') || 'horizontal',
@@ -587,7 +590,7 @@ export const TableRowResizing = Extension.create({
 export const CustomTable = Table.extend({
   addAttributes() {
     return {
-      ...this.parent?.(),
+      ...(this as any).parent?.(),
       // Space (px) above the first and below the last line inside every cell.
       'data-space-top': {
         default: '1',
@@ -667,7 +670,7 @@ export const CustomTable = Table.extend({
   },
   addKeyboardShortcuts() {
     return {
-      ...this.parent?.(),
+      ...(this as any).parent?.(),
       Tab: ({ editor }) => {
         if (editor.isActive('table')) {
           return handleTableTabNavigationWithView(editor.view, false);
@@ -1482,6 +1485,8 @@ const KEYBOARD_SHORTCUTS_DATA = [
     shortcuts: [
       { key: "Tab", desc: "Increase Paragraph / List Indent (Shift Right) — moves to the next cell instead if the cursor is inside a table" },
       { key: "Shift + Tab", desc: "Decrease Paragraph / List Indent (Shift Left) — moves to the previous cell instead if the cursor is inside a table" },
+      { key: "Ctrl + M", desc: "Increase Indent — works inside a table too (Tab moves to the next cell there)" },
+      { key: "Ctrl + Shift + M", desc: "Decrease Indent — works inside a table too" },
       { key: "Ctrl + L", desc: "Align Text Left" },
       { key: "Ctrl + E", desc: "Align Text Center" },
       { key: "Ctrl + R", desc: "Align Text Right" },
@@ -2008,9 +2013,9 @@ const IndentField = ({ label, px, allowNegative, onCommit }: {
   useEffect(() => { if (!focused) setDraft(cur); }, [cur, focused]);
   const re = allowNegative ? /^-?\d*\.?\d*$/ : /^\d*\.?\d*$/;
   return (
-    <label className="flex items-center justify-between gap-2 text-xs text-foreground">
+    <label className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
       <span>{label}</span>
-      <span className="flex items-center gap-1">
+      <span className="flex items-center">
         <input
           type="text"
           inputMode="decimal"
@@ -2028,52 +2033,30 @@ const IndentField = ({ label, px, allowNegative, onCommit }: {
             const n = parseFloat(val);
             if (Number.isFinite(n) && !/[.-]$/.test(val)) onCommit(Math.round(n * PX_PER_MM * 1000) / 1000);
           }}
-          className="w-16 px-1 py-1 text-xs text-center border border-border rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-11 px-0.5 py-1 text-xs text-center border border-border rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
         />
-        <span className="text-[10px] text-muted-foreground">mm</span>
       </span>
     </label>
   );
 };
 
-// Word-style "Paragraph" indentation: type the left / right / first-line values.
+// Word-style paragraph indentation, inline beside the Indent buttons: type the
+// left / right / first-line values in mm.
 const IndentControl = ({ editor }: { editor: any }) => {
-  const [open, setOpen] = useState(false);
   let attrs: any = {};
-  if (open) {
-    const { $from } = editor.state.selection;
-    // The list item carries the indent inside a list; otherwise the paragraph / heading does.
-    for (let d = $from.depth; d >= 0; d--) {
-      const n = $from.node(d);
-      if (n.type.name === 'listItem') { attrs = n.attrs; break; }
-      if (!attrs.type && (n.type.name === 'paragraph' || n.type.name === 'heading')) attrs = { ...n.attrs, type: 1 };
-    }
+  const { $from } = editor.state.selection;
+  // The list item carries the indent inside a list; otherwise the paragraph / heading does.
+  for (let d = $from.depth; d >= 0; d--) {
+    const n = $from.node(d);
+    if (n.type.name === 'listItem') { attrs = n.attrs; break; }
+    if (!attrs.type && (n.type.name === 'paragraph' || n.type.name === 'heading')) attrs = { ...n.attrs, type: 1 };
   }
-  const left = attrs.indent || 0, right = attrs.indentRight || 0, first = attrs.firstLine || 0;
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className={`px-1.5 py-1 rounded hover:bg-muted text-xs cursor-pointer flex items-center gap-1 ${open ? 'bg-primary/20 text-primary' : 'text-muted-foreground'}`}
-        title="Paragraph indentation: type exact left / right / first-line values"
-      >
-        <IndentIcon className="w-4 h-4" />
-        <span>Indent…</span>
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 z-[100005] p-3 bg-popover border border-border rounded-xl shadow-xl flex flex-col gap-2 w-56">
-          <span className="text-[10px] font-bold uppercase text-muted-foreground">Paragraph Indentation</span>
-          <IndentField label="Left" px={left} onCommit={(v) => editor.chain().setIndent({ left: v }).run()} />
-          <IndentField label="Right" px={right} onCommit={(v) => editor.chain().setIndent({ right: v }).run()} />
-          <IndentField label="First line" px={first} allowNegative onCommit={(v) => editor.chain().setIndent({ firstLine: v }).run()} />
-          <p className="text-[10px] text-muted-foreground leading-snug">First line: positive indents it, negative makes a hanging indent.</p>
-          <div className="flex justify-between">
-            <button type="button" onClick={() => editor.chain().setIndent({ left: 0, right: 0, firstLine: 0 }).run()} className="text-xs px-2 py-1 rounded border border-border hover:bg-muted cursor-pointer">Reset</button>
-            <button type="button" onClick={() => { setOpen(false); editor.commands.focus(); }} className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground cursor-pointer">Done</button>
-          </div>
-        </div>
-      )}
+    <div className="flex items-center gap-1 px-1 border-l border-border" title="Paragraph indentation in mm — type any value, e.g. 1 or 0.05. First line: negative = hanging indent.">
+      <IndentField label="L" px={attrs.indent || 0} onCommit={(v) => editor.chain().setIndent({ left: v }).run()} />
+      <IndentField label="R" px={attrs.indentRight || 0} onCommit={(v) => editor.chain().setIndent({ right: v }).run()} />
+      <IndentField label="1st" px={attrs.firstLine || 0} allowNegative onCommit={(v) => editor.chain().setIndent({ firstLine: v }).run()} />
+      <span className="text-[10px] text-muted-foreground">mm</span>
     </div>
   );
 };
@@ -3326,7 +3309,7 @@ const MenuBar = ({
                     type="button"
                     onClick={() => editor.chain().focus().outdent().run()}
                     className="p-1.5 rounded hover:bg-muted text-muted-foreground cursor-pointer"
-                    title="Decrease Indent"
+                    title="Decrease Indent (Shift+Tab, or Ctrl+Shift+M — also works inside a table)"
                   >
                     <OutdentIcon className="w-4 h-4" />
                   </button>
@@ -3335,10 +3318,12 @@ const MenuBar = ({
                     type="button"
                     onClick={() => editor.chain().focus().indent().run()}
                     className="p-1.5 rounded hover:bg-muted text-muted-foreground cursor-pointer"
-                    title="Increase Indent"
+                    title="Increase Indent (Tab, or Ctrl+M — also works inside a table)"
                   >
                     <IndentIcon className="w-4 h-4" />
                   </button>
+
+                  <IndentControl editor={editor} />
 
                   {/* Sort (A-Z) */}
                   <button
@@ -3402,7 +3387,6 @@ const MenuBar = ({
                   </div>
 
                   <LineSpacingControl editor={editor} />
-                  <IndentControl editor={editor} />
 
                   {/* Shading / Background Color */}
                   <div className="relative">
@@ -5648,10 +5632,12 @@ export default function RichTextEditor({
       CustomTableCell,
       // Word's alignment keys (Ctrl+L / E / R / J) on top of TipTap's own Ctrl+Shift+L / E / R / J.
       TextAlign.extend({
+        // Above the inline-code extension, which also claims Ctrl+E.
+        priority: 1000,
         addKeyboardShortcuts() {
           const align = (a: string) => () => this.editor.commands.setTextAlign(a);
           return {
-            ...this.parent?.(),
+            ...(this as any).parent?.(),
             'Mod-l': align('left'),
             'Mod-e': align('center'),
             'Mod-r': align('right'),

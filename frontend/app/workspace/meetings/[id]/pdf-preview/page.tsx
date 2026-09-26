@@ -341,19 +341,19 @@ export default function PdfPreviewPage() {
               .trim(),
           );
 
-    const d = meeting.meeting_date ? new Date(meeting.meeting_date) : null;
+    const d = meeting?.meeting_date ? new Date(meeting.meeting_date) : null;
     const dateShort = d
       ? `${toBanglaDigits(d.getDate(), 2)}-${toBanglaDigits(String(d.getMonth() + 1).padStart(2, "0"), 2)}-${toBanglaDigits(d.getFullYear())}`
       : "";
     const meetingDate = d
       ? toBanglaDigits(d.toLocaleDateString("bn-BD", { year: "numeric", month: "long", day: "numeric" }))
       : "";
-    const serialNo = formatMeetingSerial(meeting.title || "Untitled");
+    const serialNo = formatMeetingSerial(meeting?.title || "Untitled");
     const serialNoDigits = serialNo.replace(/[^\d০-৯]/g, "");
     const formattedSerial = serialNoDigits ? toBanglaDigits(serialNoDigits, 2) : toBanglaDigits(serialNo, 2);
     const meetingSerialLabel =
       serialNo.includes("সভা") || serialNo.includes("কাউন্সিল") ? serialNo : `${serialNo}তম সভার`;
-    const typeStr = (meeting.type || "").toLowerCase();
+    const typeStr = (meeting?.type || "").toLowerCase();
     const isSyndicate = typeStr === "syndicate" || typeStr.includes("syndicate");
     const councilLabel = isSyndicate ? "সিন্ডিকেটের" : "একাডেমিক কাউন্সিলের";
     // Every heading names the council; skip it only if a custom title already does.
@@ -544,7 +544,7 @@ export default function PdfPreviewPage() {
 
     return (
       <div className="group relative">
-        <div className={`prose prose-sm max-w-none [&_*]:!my-1 ${bold ? "font-bold [&_*]:font-bold" : ""}`}>
+        <div className={`rich-content prose prose-sm max-w-none [&_*]:!my-1 ${bold ? "font-bold [&_*]:font-bold" : ""}`}>
           {lockedPrefix && <b className="select-none">{lockedPrefix} </b>}
           <span
             className={lockedPrefix ? "[&>p:first-child]:inline" : undefined}
@@ -626,7 +626,7 @@ export default function PdfPreviewPage() {
 
   const roHtml = (html: string | null | undefined, empty: string) => (
     <div
-      className="prose prose-sm max-w-none [&_*]:!my-1"
+      className="rich-content prose prose-sm max-w-none [&_*]:!my-1"
       dangerouslySetInnerHTML={{
         __html: html
           ? sanitizeHtml(html)

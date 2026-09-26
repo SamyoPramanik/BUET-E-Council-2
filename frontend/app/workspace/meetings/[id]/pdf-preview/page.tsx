@@ -821,12 +821,16 @@ export default function PdfPreviewPage() {
       {/* Preview area. "pdf" mode renders the real generated PDF (exactly what
           downloads / prints); "edit" mode is the inline-editing grid. */}
       {previewMode === "pdf" ? (
-        <div className="flex-1 min-h-0 relative bg-muted/40">
+        // Same page-card look as the editor's own Page View (RichTextEditor):
+        // a real page-sized (mm), centered, shadowed card on a muted scrollable
+        // backdrop, instead of an iframe stretched to fill the whole window.
+        <div className="flex-1 min-h-0 relative overflow-y-auto bg-muted/70 dark:bg-zinc-900 p-6 flex justify-center">
           {pdfPreviewUrl && (
             <iframe
               title="PDF preview"
-              src={`${pdfPreviewUrl}#toolbar=0&navpanes=0&view=FitH`}
-              className="absolute inset-0 h-full w-full border-0 bg-white"
+              src={`${pdfPreviewUrl}#toolbar=0&navpanes=0&view=Fit`}
+              className="bg-card shadow-xl rounded-sm border-0 my-2 shrink-0 block"
+              style={{ width: `${paperW}mm`, height: `${paperH}mm` }}
             />
           )}
           {pdfPreviewLoading && (

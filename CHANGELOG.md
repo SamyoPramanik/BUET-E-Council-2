@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-26 — PDF Preview: Matching Font, Real Page Size, No More Crash
+
+### Bug Fixes
+
+- **Edit grid used the wrong font.** The PDF Preview page's inline-editing grid (`renderCell`, `roHtml`) styled its read-only cells with plain Tailwind `prose prose-sm`, missing the `rich-content` class every other read-only view (`RichContentView`, added 2026-09-20) already carries. Without it, Bangla text fell back to a different system font instead of `PrimaryFont`/`SonarBangla.ttf`, so a line held different words than the editor and the real PDF. Measured ~3.5% wider text on the same sample without the class.
+- **Opening `/pdf-preview` directly could crash the page.** The heading block read `meeting.meeting_date` / `meeting.title` / `meeting.type` unguarded, before the `if (!meeting) return` further down — since it runs on every render regardless, a hard navigation to the page (before the `/meetings/:id` fetch resolves) threw `Cannot read properties of undefined`. Now optional-chained, matching the rest of the file.
+- **PDF tab was zoomed to fill the window.** The iframe was `absolute inset-0 h-full w-full` with PDF.js's `view=FitH`, so on a wide window the page was stretched edge-to-edge instead of looking like a page. It's now sized to the real page dimensions (`paperW`/`paperH`, mm) with `view=Fit`, and wrapped with the same centered/shadowed/rounded page-card look as the editor's own Page View, on a muted scrollable backdrop.
+
+### Not checked
+
+- The Resolution tab's on-screen grid appears to leave a large blank area next to a short document — not yet root-caused; may just be a short document's normal blank space, or a real width/structural difference between the grid's mock-up columns and the real PDF's resolution template (which isn't table-based).
+
+---
 ## 2026-09-21 — Word-style Alignment Keys and Typed Paragraph Indents
 
 ### Changes

@@ -174,6 +174,20 @@ const ensureTrgmIndexes = `
 `;
 pool.query(ensureTrgmIndexes).catch((err) => console.error('ensureTrgmIndexes error:', err.message));
 
+const ensureMsOauthConnection = `
+  CREATE TABLE IF NOT EXISTS ms_oauth_connection (
+      id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+      account_email TEXT NOT NULL,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+      connected_by UUID REFERENCES users (id) ON DELETE SET NULL,
+      connected_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+`;
+pool.query(ensureMsOauthConnection).catch((err) => console.error('ensureMsOauthConnection error:', err.message));
+
 module.exports = {
     query: (text, params) => pool.query(text, params),
     pool

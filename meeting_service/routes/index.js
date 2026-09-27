@@ -14,6 +14,7 @@ const storageRoutes = require('./storageRoutes');
 const auditLogRoutes = require('./auditLogRoutes');
 const categoryRoutes = require('./categoryRoutes');
 const noticesRoutes = require('./noticesRoutes');
+const msAuthRoutes = require('./msAuthRoutes');
 
 router.use('/meetings', meetingRoutes);
 router.use('/faculties', facultiesRoutes);
@@ -28,5 +29,6 @@ router.use('/storage', storageRoutes);
 router.use('/audit-logs', auditLogRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/notices', noticesRoutes);
+router.use('/ms-auth', msAuthRoutes);
 
 module.exports = router;

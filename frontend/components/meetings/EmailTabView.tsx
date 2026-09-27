@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import useSWR from "swr";
 import { fetcher } from "../../lib/api";
@@ -13,6 +13,7 @@ import {
   Plus,
   FolderOpen,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "../../hooks/useAuth";
 import { canEditEmail } from "../../lib/meetingAccess";
 import SendAgendaModal, { type EmailMode } from "./SendAgendaModal";
@@ -41,6 +42,25 @@ export default function EmailTabView({ meeting, mutate }: EmailTabViewProps) {
   const [activeDraft, setActiveDraft] = useState<any>(null);
   const [draftKey, setDraftKey] = useState(0);
   const currentUserEmail = user?.email || "admin@buet.ac.bd";
+
+  // Lands here after the Microsoft OAuth redirect (see SendAgendaModal's
+  // "Connect Outlook" button and meeting_service/controllers/msAuthController.js).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const msAuth = params.get("ms_auth");
+    if (!msAuth) return;
+
+    if (msAuth === "connected") {
+      toast.success("Outlook mailbox connected");
+    } else if (msAuth === "error") {
+      toast.error(params.get("reason") || "Failed to connect Outlook mailbox");
+    }
+
+    params.delete("ms_auth");
+    params.delete("reason");
+    const query = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  }, []);
 
   const { data: inviteesRes, isLoading } = useSWR(
     `/meetings/${meeting.id}/invitees`,

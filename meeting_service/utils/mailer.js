@@ -1,4 +1,6 @@
 const nodemailer = require('nodemailer');
+const { getValidAccessToken } = require('./msGraphAuth');
+const { sendMailViaGraph } = require('./msGraphMail');
 
 let transporter = null;
 
@@ -42,6 +44,15 @@ const getTransporter = () => {
  *        `content` is base64-encoded.
  */
 const sendMail = async ({ from, to, subject, html, attachments = [] }) => {
+    // Prefer the connected Outlook mailbox (see routes/msAuthRoutes.js) over
+    // static SMTP whenever one's been connected - no silent fallback, since
+    // a Graph failure shouldn't quietly re-send under the SMTP account's
+    // different identity.
+    const graphAccessToken = await getValidAccessToken();
+    if (graphAccessToken) {
+        return sendMailViaGraph({ accessToken: graphAccessToken, from, to, subject, html, attachments });
+    }
+
     const transport = getTransporter();
     if (!transport) {
         throw new Error('Email sending is disabled: SMTP_HOST is not configured');

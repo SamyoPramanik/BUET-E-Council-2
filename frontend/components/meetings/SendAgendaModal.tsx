@@ -3,9 +3,10 @@
 import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
-import { X, Mail, Send, Search, CheckCircle2, Paperclip, FileText, Building, ShieldCheck, Users, Bell } from "lucide-react";
+import { X, Mail, Send, Search, CheckCircle2, Paperclip, FileText, Building, ShieldCheck, Users, Bell, Link2, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import RichTextEditor from "../RichTextEditor";
+import { useAuth } from "../../hooks/useAuth";
 
 export type EmailMode = "notice" | "agenda" | "resolution" | "custom";
 
@@ -137,6 +138,16 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [attachAgendaPdf, setAttachAgendaPdf] = useState(true);
   const [extraAttachments, setExtraAttachments] = useState<File[]>([]);
+  const [isDisconnectingOutlook, setIsDisconnectingOutlook] = useState(false);
+
+  const { isAdmin } = useAuth();
+  // Shared Outlook mailbox connection (see meeting_service/routes/msAuthRoutes.js):
+  // once an admin connects it, every send here goes through it instead of SMTP.
+  const { data: msAuthStatusRes, mutate: mutateMsAuthStatus } = useSWR(
+    isOpen ? "/ms-auth/status" : null,
+    fetcher
+  );
+  const msAuthStatus = msAuthStatusRes?.data;
 
   // Determine if we're in notice, agenda, resolution, or custom mode
   const isNoticeMode = mode === "notice";
@@ -370,6 +381,24 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
     }
   };
 
+  const handleConnectOutlook = () => {
+    const returnTo = window.location.pathname + window.location.search;
+    window.location.href = `${api.defaults.baseURL}/ms-auth/connect?return_to=${encodeURIComponent(returnTo)}`;
+  };
+
+  const handleDisconnectOutlook = async () => {
+    setIsDisconnectingOutlook(true);
+    try {
+      await api.post("/ms-auth/disconnect");
+      toast.success("Outlook mailbox disconnected");
+      mutateMsAuthStatus();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to disconnect Outlook mailbox");
+    } finally {
+      setIsDisconnectingOutlook(false);
+    }
+  };
+
   const handleSend = async () => {
     setIsSending(true);
     try {
@@ -551,6 +580,47 @@ export default function SendAgendaModal({ isOpen, onClose, meeting, currentUserE
 
           {activeTab === "email" && (
             <div className="p-6 space-y-4">
+              {msAuthStatus?.configured && (
+                <div className="flex items-center gap-3 p-2.5 rounded-md border border-border bg-muted/20 text-sm">
+                  {msAuthStatus.connected ? (
+                    <>
+                      <Link2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="flex-1">
+                        Sending via Outlook: <span className="font-medium">{msAuthStatus.accountEmail}</span>
+                      </span>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={handleDisconnectOutlook}
+                          disabled={isDisconnectingOutlook}
+                          className="text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-50"
+                        >
+                          <Unlink className="w-3.5 h-3.5" />
+                          {isDisconnectingOutlook ? "Disconnecting..." : "Disconnect"}
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="flex-1 text-muted-foreground">
+                        Outlook not connected — emails will send via the default account
+                      </span>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={handleConnectOutlook}
+                          className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
+                        >
+                          <Link2 className="w-3.5 h-3.5" />
+                          Connect Outlook
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground">From</label>
                 <input

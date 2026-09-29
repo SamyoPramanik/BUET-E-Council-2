@@ -868,7 +868,13 @@ export default function PdfPreviewPage() {
             style={{
               zoom: scalePct / 100,
               lineHeight: lineHeight === "" ? undefined : lineHeight,
-              fontFamily: "'Kalpurush', 'PrimaryFont', serif",
+              // Same font stack as the editor (globals.css .ProseMirror) and the
+              // generated PDF: PrimaryFont (SonarBangla, embedded) for Bangla,
+              // Arial/Helvetica for everything else — so this read-only preview
+              // wraps where the editor and the PDF do, instead of falling back to
+              // whatever "Kalpurush" font happens to be installed on the viewer's
+              // own machine.
+              fontFamily: "'PrimaryFont', Arial, Helvetica, sans-serif",
             }}
           >
             {/* Document title block — computed identically to the generated PDF. */}

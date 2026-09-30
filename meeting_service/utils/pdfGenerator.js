@@ -1017,7 +1017,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                     padding: 0;
                 }
                 .text-center { text-align: center; }
-                .header-title { font-size: 19px; margin-bottom: 10px; }
+                .header-title { font-size: 20px; margin-bottom: 10px; }
                 .sub-title { font-size: 16px; text-decoration: underline; margin-bottom: 20px; }
                 .description { font-size: 14px; text-align: left; margin-bottom: 30px; }
                 .presentees-header { font-size: 14px; text-decoration: underline; margin-bottom: 15px; }
@@ -1153,14 +1153,14 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
         </head>
         <body>
             ${cacheVariant === 'suppli-agenda' ? `
-            <div class="text-center header-title" style="text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel}<br/>${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
             ` : (isImmediate ? `
-            <div class="text-center header-title" style="text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${dateShort} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${formattedSerial}তম জরুরী (Immediate) সভার ${docLabel}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${dateShort} তারিখে অনুষ্ঠিতব্য ${councilLabel}<br/>${formattedSerial}তম জরুরী (Immediate) সভার ${docLabel}</div>
             ` : `
-            <div class="text-center header-title" style="text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel} ${docLabel}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel.replace(/^(.*?(?:সিন্ডিকেটের|কাউন্সিলের))\s+/, '$1<br/>')} ${docLabel}</div>
             `)}
 
             ${cacheVariant === 'resolution-status' ? '' : (isResolution ? `
@@ -1239,7 +1239,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                             ? `${firstFull}`
                             : `${firstFull} হতে ${lastFull}`;
 
-                        const headerStr = `'${letter}' গ্রুপ (প্রস্তাব নং ${rangeText}): ${catName}`;
+                        const headerStr = `'${letter}' গ্রুপ প্রস্তাব নং ${rangeText}: (${catName})`;
                         categoryHeaderMap.set(firstAg.id, headerStr);
                         groupCount++;
                     }
@@ -1897,7 +1897,7 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
                     padding: 0;
                 }
                 .text-center { text-align: center; }
-                .header-title { font-size: 19px; margin-bottom: 10px; font-weight: bold; }
+                .header-title { font-size: 20px; margin-bottom: 10px; font-weight: bold; }
                 .sub-title { font-size: 16px; margin-bottom: 20px; }
                 
                 .section-title {
@@ -1922,7 +1922,7 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
             </style>
         </head>
         <body>
-            <div class="text-center header-title" style="text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
             <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${attendanceSubTitle}</div>
             ${sections}
         </body>
@@ -2088,7 +2088,7 @@ const generateNoticePdf = async (notice, presentees) => {
                 padding: 40px 50px;
             }
             .header-title {
-                font-size: 21px;
+                font-size: 20px;
                 font-weight: bold;
                 text-align: center;
                 margin-bottom: 30px;

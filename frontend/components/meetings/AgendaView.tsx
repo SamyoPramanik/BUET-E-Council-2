@@ -448,7 +448,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
           ? `${firstFull}`
           : `${firstFull} হতে ${lastFull}`;
 
-        const headerStr = `'${letter}' গ্রুপ (প্রস্তাব নং ${rangeText}): ${catName}`;
+        const headerStr = `'${letter}' গ্রুপ প্রস্তাব নং ${rangeText}: (${catName})`;
         categoryHeaderMap.set(firstAg.id, headerStr);
         groupCount++;
       }

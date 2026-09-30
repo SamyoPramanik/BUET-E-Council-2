@@ -363,18 +363,18 @@ export default function PdfPreviewPage() {
     if (docType === "suppli-agenda") {
       return {
         university: true,
-        subtitle: `${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।`,
+        subtitle: `${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel}\n${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।`,
       };
     }
     if (isEmergency) {
       return {
         university: true,
-        subtitle: `${dateShort} তারিখে অনুষ্ঠিতব্য ${councilLabel} ${formattedSerial}তম জরুরী (Immediate) সভার ${docLabel}`,
+        subtitle: `${dateShort} তারিখে অনুষ্ঠিতব্য ${councilLabel}\n${formattedSerial}তম জরুরী (Immediate) সভার ${docLabel}`,
       };
     }
     return {
       university: true,
-      subtitle: `${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel} ${docLabel}`,
+      subtitle: `${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel.replace(/^(.*?(?:সিন্ডিকেটের|কাউন্সিলের))\s+/, "$1\n")} ${docLabel}`,
     };
   })();
 
@@ -586,10 +586,10 @@ export default function PdfPreviewPage() {
       <Fragment key={ag.id}>
         {categoryHeaderRow(ag, 3)}
         <tr className="align-top">
-          <td className="border border-border px-2 py-1.5 text-center font-bold w-[14%] whitespace-nowrap">
+          <td className="border border-border px-2 py-1.5 text-center font-bold w-[14%] whitespace-nowrap text-[14px]">
             {isBibidha ? `বিবিধ : ${ac ? ac + " " : ""}${rest}${serial}` : "প্রস্তাব নং"}
           </td>
-          <td className="border border-border px-2 py-1.5 text-center whitespace-nowrap font-bold w-[10%]">
+          <td className="border border-border px-2 py-1.5 text-center whitespace-nowrap font-bold w-[10%] text-[14px]">
             {isBibidha ? " " : ac || " "}
           </td>
           <td className="border border-border px-3 py-1.5">
@@ -880,9 +880,9 @@ export default function PdfPreviewPage() {
             {/* Document title block — computed identically to the generated PDF. */}
             <div className="text-center font-bold mb-5 leading-snug">
               {heading.university && (
-                <div className="text-lg mb-2.5">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+                <div className="text-[20px] mb-2.5">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
               )}
-              <div className="underline">{heading.subtitle}</div>
+              <div className="underline text-[16px] whitespace-pre-line">{heading.subtitle}</div>
             </div>
 
             {docType === "resolution" ? (

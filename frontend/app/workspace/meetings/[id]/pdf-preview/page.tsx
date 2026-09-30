@@ -571,7 +571,7 @@ export default function PdfPreviewPage() {
     if (!header) return null;
     return (
       <tr>
-        <td colSpan={span} className="border border-border px-3 py-1.5 font-bold">
+        <td colSpan={span} className="border border-border px-3 py-1.5 font-bold text-[14pt]">
           {header}
         </td>
       </tr>
@@ -586,10 +586,10 @@ export default function PdfPreviewPage() {
       <Fragment key={ag.id}>
         {categoryHeaderRow(ag, 3)}
         <tr className="align-top">
-          <td className="border border-border px-2 py-1.5 text-center font-bold w-[14%] whitespace-nowrap text-[14px]">
+          <td className="border border-border px-2 py-1.5 text-center font-bold w-[14%] whitespace-nowrap text-[14pt]">
             {isBibidha ? `বিবিধ : ${ac ? ac + " " : ""}${rest}${serial}` : "প্রস্তাব নং"}
           </td>
-          <td className="border border-border px-2 py-1.5 text-center whitespace-nowrap font-bold w-[10%] text-[14px]">
+          <td className="border border-border px-2 py-1.5 text-center whitespace-nowrap font-bold w-[10%] text-[14pt]">
             {isBibidha ? " " : ac || " "}
           </td>
           <td className="border border-border px-3 py-1.5">
@@ -880,9 +880,9 @@ export default function PdfPreviewPage() {
             {/* Document title block — computed identically to the generated PDF. */}
             <div className="text-center font-bold mb-5 leading-snug">
               {heading.university && (
-                <div className="text-[20px] mb-2.5">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+                <div className="text-[20pt] mb-2.5">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
               )}
-              <div className="underline text-[16px] whitespace-pre-line">{heading.subtitle}</div>
+              <div className="underline text-[19pt] whitespace-pre-line">{heading.subtitle}</div>
             </div>
 
             {docType === "resolution" ? (

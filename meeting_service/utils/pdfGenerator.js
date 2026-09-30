@@ -603,7 +603,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v74';
+const PDF_TEMPLATE_VERSION = 'v75';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -993,7 +993,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
 
             return `
             <div class="agenda-block" style="margin-bottom: 30px; page-break-before: auto;">
-                <div class="agenda-title" style="font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${isBibidha ? 'বিবিধ :' : 'প্রস্তাব নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</b></div>
+                <div class="agenda-title" style="font-weight: bold; margin-bottom: 5px; font-size: 14pt; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${isBibidha ? 'বিবিধ :' : 'প্রস্তাব নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</b></div>
                 <div class="agenda-content" style="text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${styleRichTextHtml(displayContent, false)}</div>
                 ${isResolution ? `
                 <div class="agenda-title" style="margin-top:15px; font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>সিদ্ধান্ত:</b></div>
@@ -1017,8 +1017,8 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                     padding: 0;
                 }
                 .text-center { text-align: center; }
-                .header-title { font-size: 20px; margin-bottom: 10px; }
-                .sub-title { font-size: 16px; text-decoration: underline; margin-bottom: 20px; }
+                .header-title { font-size: 20pt; margin-bottom: 10px; }
+                .sub-title { font-size: 19pt; text-decoration: underline; margin-bottom: 20px; }
                 .description { font-size: 14px; text-align: left; margin-bottom: 30px; }
                 .presentees-header { font-size: 14px; text-decoration: underline; margin-bottom: 15px; }
                 .columns-container {
@@ -1047,7 +1047,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
 
                 .category-header {
                     font-weight: bold;
-                    font-size: 15px;
+                    font-size: 14pt;
                     margin-top: 25px;
                     margin-bottom: 15px;
                     break-after: avoid;
@@ -1060,7 +1060,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                     break-before: auto;
                     page-break-before: auto;
                 }
-                .agenda-title { font-weight: bold; margin-bottom: 5px; font-size: 14px;}
+                .agenda-title { font-weight: bold; margin-bottom: 5px; font-size: 14pt;}
                 .agenda-content, .agenda-resolution { text-align: left; font-size: 14px;}
                 .agenda-resolution { font-weight: bold; }
 
@@ -1153,14 +1153,14 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
         </head>
         <body>
             ${cacheVariant === 'suppli-agenda' ? `
-            <div class="text-center header-title" style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel}<br/>${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 20pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 19pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel}<br/>${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
             ` : (isImmediate ? `
-            <div class="text-center header-title" style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${dateShort} তারিখে অনুষ্ঠিতব্য ${councilLabel}<br/>${formattedSerial}তম জরুরী (Immediate) সভার ${docLabel}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 20pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 19pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${dateShort} তারিখে অনুষ্ঠিতব্য ${councilLabel}<br/>${formattedSerial}তম জরুরী (Immediate) সভার ${docLabel}</div>
             ` : `
-            <div class="text-center header-title" style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel.replace(/^(.*?(?:সিন্ডিকেটের|কাউন্সিলের))\s+/, '$1<br/>')} ${docLabel}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 20pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 19pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel.replace(/^(.*?(?:সিন্ডিকেটের|কাউন্সিলের))\s+/, '$1<br/>')} ${docLabel}</div>
             `)}
 
             ${cacheVariant === 'resolution-status' ? '' : (isResolution ? `
@@ -1449,7 +1449,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                         : fullSerial;
                     const inlineLabel = `প্রস্তাব নং${acBangla ? ' ' + acBangla : ''}`;
 
-                    const inlinePrefix = (inlineNum && !isBibidha) ? `${serialOnly}:` : '';
+                    const inlinePrefix = (inlineNum && !isBibidha) ? `<span style="font-size: 14pt;">${serialOnly}:</span>` : '';
                     const bodyHtml = inlinePrefix ? injectInlinePrefix(contentHtml || '', inlinePrefix) : contentHtml;
                     const hangingNum = inlineNum && !isBibidha && !!bodyHtml;
 
@@ -1459,11 +1459,11 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
 
                     return `
                     <div class="resolution-item" style="${pageBreakStyle}">
-                        ${catHeader ? `<div class="category-header" style="font-weight: bold; font-size: 15px; margin-top: 25px; margin-bottom: 15px;"><b>${catHeader}</b></div>` : ''}
+                        ${catHeader ? `<div class="category-header" style="font-weight: bold; font-size: 14pt; margin-top: 25px; margin-bottom: 15px;"><b>${catHeader}</b></div>` : ''}
                         <div class="agenda-block" style="margin-bottom: 30px;">
-                            ${(inlineNum && !isBibidha) ? '' : `<div class="agenda-title" style="font-weight: bold; font-size: 14px; margin-bottom: 8px;"><b>${titleStr}</b></div>`}
+                            ${(inlineNum && !isBibidha) ? '' : `<div class="agenda-title" style="font-weight: bold; font-size: 14pt; margin-bottom: 8px;"><b>${titleStr}</b></div>`}
                             ${hangingNum
-                              ? `<div class="agenda-content" style="display: flex; align-items: baseline; margin: 0 0 12px 0; text-align: left; font-size: 14px; line-height: 1.6;"><div style="flex: 0 0 auto; white-space: nowrap; font-weight: bold;"><b>${inlineLabel}</b>&nbsp;</div><div style="flex: 1 1 auto; min-width: 0;">${styleRichTextHtml(bodyHtml, false)}</div></div>`
+                              ? `<div class="agenda-content" style="display: flex; align-items: baseline; margin: 0 0 12px 0; text-align: left; font-size: 14px; line-height: 1.6;"><div style="flex: 0 0 auto; white-space: nowrap; font-weight: bold; font-size: 14pt;"><b>${inlineLabel}</b>&nbsp;</div><div style="flex: 1 1 auto; min-width: 0;">${styleRichTextHtml(bodyHtml, false)}</div></div>`
                               : (bodyHtml ? `<div class="agenda-content" style="text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px;">${styleRichTextHtml(bodyHtml, false)}</div>` : '')}
                             ${isResolution ? `
                             <div class="agenda-title" style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 8px;"><b>সিদ্ধান্ত:</b></div>
@@ -1897,8 +1897,8 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
                     padding: 0;
                 }
                 .text-center { text-align: center; }
-                .header-title { font-size: 20px; margin-bottom: 10px; font-weight: bold; }
-                .sub-title { font-size: 16px; margin-bottom: 20px; }
+                .header-title { font-size: 20pt; margin-bottom: 10px; font-weight: bold; }
+                .sub-title { font-size: 19pt; margin-bottom: 20px; }
                 
                 .section-title {
                     font-size: 16px;
@@ -1922,8 +1922,8 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
             </style>
         </head>
         <body>
-            <div class="text-center header-title" style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${attendanceSubTitle}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 20pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 19pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${attendanceSubTitle}</div>
             ${sections}
         </body>
         </html>
@@ -2088,7 +2088,7 @@ const generateNoticePdf = async (notice, presentees) => {
                 padding: 40px 50px;
             }
             .header-title {
-                font-size: 20px;
+                font-size: 20pt;
                 font-weight: bold;
                 text-align: center;
                 margin-bottom: 30px;

@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { convertBijoyToUnicode } from './bijoyToUnicode.ts';
+import { convertBijoyToUnicode, inheritedFontIsBijoy } from './bijoyToUnicode.ts';
 
 const cases: [string, string, string][] = [
   ['reph after ী', 'wkÿv_x© RyjvB 2025', 'শিক্ষার্থী জুলাই 2025'],
@@ -67,4 +67,27 @@ test('a lone "t" is a colon, but a visarga inside a word stays', () => {
   assert.equal(convertBijoyToUnicode('gZvgZ t Forwarded.').normalize('NFC'), 'মতামত : Forwarded.'.normalize('NFC'));
   assert.equal(convertBijoyToUnicode('gZvgZ t').normalize('NFC'), 'মতামত :'.normalize('NFC'));
   assert.ok(convertBijoyToUnicode('g~jZt').endsWith('ঃ'));
+});
+
+test('short everyday English words are kept, not turned into Bangla gibberish', () => {
+  assert.equal(convertBijoyToUnicode('Zvi welqwU is in the list of students').normalize('NFC'), 'তার বিষয়টি is in the list of students');
+  assert.equal(convertBijoyToUnicode('Meeting held on Monday with Dr. Rahman'), 'Meeting held on Monday with Dr. Rahman');
+  assert.equal(convertBijoyToUnicode('†Kvm© is on the plan by us').normalize('NFC'), 'কোর্স is on the plan by us');
+});
+
+// Word's own font tags settle it: ASCII text in Times New Roman is English even
+// when the run's complex-script slot names a Bijoy font.
+const fakeEl = (style: string, parent: any = null): any => ({ getAttribute: (n: string) => (n === 'style' ? style : null), parentElement: parent });
+test('English run in Times New Roman is not Bijoy, even with a Bijoy bidi font', () => {
+  const tnr = fakeEl('font-family:"Times New Roman",serif;mso-bidi-font-family:SutonnyMJ');
+  assert.equal(inheritedFontIsBijoy(tnr, 'Thesis'), false);
+  assert.equal(inheritedFontIsBijoy(tnr, 'special case'), false);
+  assert.equal(inheritedFontIsBijoy(fakeEl('font-family:Calibri'), 'held on'), false);
+});
+test('a Bijoy fragment in a Times New Roman + Bijoy-bidi run still converts', () => {
+  const tnr = fakeEl('font-family:"Times New Roman",serif;mso-bidi-font-family:SutonnyMJ');
+  assert.equal(inheritedFontIsBijoy(tnr, 'Zvi'), true);
+});
+test('a run set in SutonnyMJ is Bijoy', () => {
+  assert.equal(inheritedFontIsBijoy(fakeEl('font-family:SutonnyMJ'), 'Zvi'), true);
 });

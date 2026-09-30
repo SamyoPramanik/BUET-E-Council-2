@@ -77,7 +77,7 @@ function grabStyleProp(style: string, prop: string): string | undefined {
  * complex-script slot was ever set to a Bijoy font — was invisible to a
  * plain `font-family` check alone.
  */
-function inheritedFontIsBijoy(el: Element | null, text: string): boolean | undefined {
+export function inheritedFontIsBijoy(el: Element | null, text: string): boolean | undefined {
   const hasNonAscii = /[^\x00-\x7e]/.test(text);
   let cur: Element | null = el;
   while (cur) {
@@ -87,6 +87,23 @@ function inheritedFontIsBijoy(el: Element | null, text: string): boolean | undef
       if (fontIsUnicodeBanglaName(face)) return false;
     }
     const style = cur.getAttribute?.("style") || "";
+    // Plain ASCII text is drawn with the run's own (ascii) font; the
+    // complex-script slot only applies to text with non-ASCII bytes. So an
+    // English word set in "Times New Roman" (or Calibri, Arial...) is English
+    // whatever its bidi slot says. Only when the run is Times New Roman with a
+    // Bijoy bidi slot AND the text doesn't read as English (a Bijoy fragment
+    // like "Zvi") do we fall through to the bidi check below.
+    if (!hasNonAscii) {
+      const plain = grabStyleProp(style, "font-family") || grabStyleProp(style, "mso-ascii-font-family");
+      if (plain) {
+        if (fontIsBijoyName(plain)) return true;
+        if (fontIsUnicodeBanglaName(plain)) return false;
+        const bidi = grabStyleProp(style, "mso-bidi-font-family");
+        if (!(bidi && fontIsBijoyName(bidi))) return false;
+        const words = text.match(/[A-Za-z]+/g) || [];
+        if (words.length && words.every(isEnglishWord)) return false;
+      }
+    }
     const props = hasNonAscii
       ? ["mso-bidi-font-family", "font-family", "mso-ascii-font-family", "mso-fareast-font-family"]
       : ["font-family", "mso-ascii-font-family", "mso-bidi-font-family", "mso-fareast-font-family"];
@@ -177,6 +194,18 @@ const ENGLISH_ALLOWLIST = new Set([
   "faculty", "roll", "withdraw", "backlog", "fall", "spring",
   "proctor", "provost", "pro", "registrar", "treasurer",
   "of", "vice", "post", "bio", "chemistry", "civil", "physics", "naval", "planning", "ministry", "test",
+  // Everyday English words, short ones especially: the vowel-density test below
+  // can't tell "is" / "by" / "held" from Bijoy keystrokes, and each of these
+  // would otherwise come out as Bangla gibberish. None is a real Bijoy word ("me", "be", "my", "we", "new" are, so they are left out).
+  "a", "an", "as", "at", "by", "do", "go", "if", "in", "is", "it", "no", "on", "or",
+  "so", "to", "up", "us", "am", "are", "was", "were", "has", "had", "his", "her", "its", "our", "you",
+  "who", "how", "why", "all", "any", "can", "may", "but", "yet", "out", "off", "per", "via", "old",
+  "with", "from", "that", "this", "than", "then", "them", "they", "will", "shall", "been", "held", "list",
+  "plan", "work", "part", "each", "such", "into", "upon", "also", "only", "both", "more", "most", "must",
+  "which", "where", "while", "their", "there", "these", "those", "after", "before", "under", "about",
+  "students", "student", "meeting", "council", "syndicate", "academic", "agenda", "resolution", "committee",
+  "department", "university", "approved", "decision", "report", "annex", "annexure", "attached", "subject",
+  "reference", "notice", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
 ]);
 // Abbreviations that are only English when written with their full stop
 // ("No." / "Dr."): without it they are as likely to be a short Bijoy word.
@@ -204,7 +233,7 @@ function isEnglishWord(word: string): boolean {
   const hasV = /v/i.test(word);
   if (hasV && (word.length < 6 || /[bcdfghjklmnpqrstwxz]v/i.test(word))) return false;
   const vowels = (word.match(/[aeiou]/gi) || []).length;
-  return vowels / word.length >= (hasV ? 0.35 : 0.3);
+  return vowels / word.length >= (hasV ? 0.35 : 0.25);
 }
 
 /**

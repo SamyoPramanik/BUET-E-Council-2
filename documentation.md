@@ -508,6 +508,13 @@ Every `<table>` produced by the rich-text editor is re-sized for the PDF by `sty
 
 A non-default layout is hashed into its own PDF cache key (`<type>--l<sha1>`) and added as a `layout` dimension of the content fingerprint, so it never clobbers the canonical default-layout PDF; custom-layout variants are cache-only and are **not** mirrored to the meeting filesystem.
 
+#### Heading Sizes, Subtitle & Category Header
+
+- Sizes are in **points** (Word-style), not px: university heading `.header-title` 20pt, meeting subtitle `.sub-title` 19pt, category header 14pt, "প্রস্তাব নং" title / inline label / inline serial 14pt. The PDF Preview page and the editor's `.hanging-label` / `.hanging-prefix` use the same values.
+- The subtitle breaks after the council name (`<br/>` in the PDF, `\n` + `whitespace-pre-line` in the preview).
+- The category header is `'<letter>' গ্রুপ প্রস্তাব নং <first> হতে <last> পর্যন্ত (<category>)`; a one-proposal group ends with `:` instead of "পর্যন্ত". Brackets already present in `category_name` are stripped before the single pair is added. Built in three places: `pdfGenerator.js`, `AgendaView.tsx`, `ResolutionView.tsx`.
+- **Cache:** generated PDFs are cached under `PDF_TEMPLATE_VERSION` (currently `v75`). Bump it whenever a template's appearance changes, or old PDFs keep being served.
+
 #### Notice PDF Features
 
 - **Dynamic body generation**: Auto-generates notice body based on type (invitation/agenda/resolution) and meeting status
@@ -1165,6 +1172,10 @@ The `Indent` extension stores indents as **exact px values** on paragraphs, head
 
 Bijoy conversion for rich pastes instead happens via `editorProps.transformPastedHTML: convertHtmlBijoyToUnicode` ([`frontend/lib/bijoyToUnicode.ts`](frontend/lib/bijoyToUnicode.ts)), which parses the pasted HTML with `DOMParser`, walks every text node, and Bijoy-converts only the nodes that match the heuristic (or sit in a Bijoy paragraph/cell) — never the surrounding tags. A word that Word split across several adjacent runs is joined and converted as one unit (breaks at `<br>`/blocks/cells are respected), and `convertBijoyToUnicode` normalizes reph placement, `ø`, and keeps embedded English words (`Forwarded`, `Add/Drop`, `Thesis-G`→`Thesis-এ`). This node-scoped approach is deliberate: an earlier version ran the same heuristic against the clipboard's flattened plain-text representation of the *whole* selection, so pasting a table replaced the entire selection with one converted plain-text node (destroying the table), and concatenating unrelated cells' text together could break apart Bengali juktakkhor (conjunct) sequences or false-positive ordinary English into Bangla-looking gibberish.
 
+**English inside Bijoy text.** `inheritedFontIsBijoy` (exported) follows Word's font slots: text with non-ASCII bytes uses the complex-script (`mso-bidi-font-family`) font, but *plain ASCII* text uses the run's own `font-family` / `mso-ascii-font-family`, so an English run in Times New Roman / Calibri / Arial is English whatever its bidi slot says (only a non-English ASCII fragment in a Times New Roman + Bijoy-bidi run still converts). When there is no font tag, `convertKeepingEnglish` relies on `ENGLISH_ALLOWLIST` (everyday and council words, short ones included) and a vowel-density test (≥0.25, ≥0.35 for words containing `v`). Words that are also real Bijoy (`me`, `be`, `my`, `we`, `new`) are deliberately not in the list.
+
+**Ctrl multi-select** (`lib/multiTextSelect.ts`): formatting, Bijoy / digit tools, Delete, typing, paste, copy, cut and case conversion act on every selected range. "Sort Lines" still reads one range.
+
 ---
 
 ### 5.9 PDF Preview — Interactive Layout & Inline Editing
@@ -1180,6 +1191,14 @@ A full-bleed route (`/workspace/meetings/[id]/pdf-preview`, linked from the **Ma
 - **"Edit" grid's read-only cells** (`renderCell`, `roHtml`) carry the `rich-content` class (see `RichContentView`, §5.x) so Bangla text uses the same `PrimaryFont`/`SonarBangla.ttf` the editor and the PDF use; without it a line wraps at different words. The heading block (university/date/serial line) reads `meeting.*` with optional chaining since it computes unconditionally on every render, before the page's own `if (!meeting)` loading guard.
 - **Inline editing**: agenda `content`, `resolution`, meeting `description`, and `conclusion` cells are editable in place (reusing `RichTextEditor`), gated by the same `lib/meetingAccess` helpers (`canEditAgenda`, `canEditResolution`, `canEditDescription`, `canEditConclusion`, …) as the main workspace. Saves `PATCH` through the normal agenda/meeting endpoints and revalidate the SWR cache.
 - `agendaNumberStyle: 'inline'` matches the preview's 3-column on-screen layout: the body opens with a bold, non-editable `<prefix-rest><serial>:` run instead of a separate "প্রস্তাব নং <n>" heading line.
+
+---
+
+### 5.11 Skeleton Loading Placeholders
+
+Implementation: [`frontend/components/Skeleton.tsx`](frontend/components/Skeleton.tsx), `loading.tsx` files under `frontend/app`.
+
+Grey pulsing blocks in the layout of the coming content replace bare "Loading..." text: `PageSkeleton` (title, toolbar, list/table rows), `MeetingSkeleton` (header card, tab strip, panel) and `WorkspaceSkeleton` (sidebar + page, used while the signed-in user is resolved in `WorkspaceLayoutWrapper`). Next.js `loading.tsx` files cover the app root, `/workspace`, `/viewer`, `/search`, `/profile`, `/workspace/meetings/[id]` and `/meetings/[id]`; the per-page `if (!response)` fallbacks use the same components. Small spinners inside modals and the PDF preview are unchanged.
 
 ---
 

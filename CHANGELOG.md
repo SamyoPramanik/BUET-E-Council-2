@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-30 — PDF Heading Sizes, Category Header, Bijoy English, Skeleton Loading
+
+### Changes
+
+- **Heading sizes in points (Word-style).** In every PDF template and in the PDF Preview page: the university line "বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা" is **20pt**, the meeting subtitle **19pt**, the category header and the "প্রস্তাব নং <A/C>" label / serial **14pt**. Earlier sizes were px (the main templates were 22px for the heading). The editor's hanging label and serial (`.hanging-label`, `.hanging-prefix`) match.
+- **Two-line subtitle.** "<date> তারিখে অনুষ্ঠিতব্য <council>" / "<n>নং সভার আলোচ্যসূচী" breaks after the council name (regular, supplementary and immediate meetings, PDF and preview).
+- **Category header.** `'ক' গ্রুপ প্রস্তাব নং <first> হতে <last> পর্যন্ত (<category>)`: brackets only around the category name (any brackets already stored in the name are stripped, so there are no doubled brackets), and "পর্যন্ত" replaces the colon for a range. A single-proposal group keeps the colon.
+- **Skeleton loading.** New `components/Skeleton.tsx` (`Skeleton`, `PageSkeleton`, `MeetingSkeleton`, `WorkspaceSkeleton`) and `loading.tsx` for the app root, workspace, viewer, search, profile and both meeting routes. Page-level "Loading..." fallbacks use them.
+- **Ctrl multi-select.** Case conversion, copy and cut now act on every selected region (they only read the first one before).
+
+### Bug Fixes
+
+- **Bijoy conversion turned English into gibberish.** ASCII text in Times New Roman (or any non-Bijoy font) is now English even when the run's `mso-bidi-font-family` names a Bijoy font (the bidi slot only applies to non-ASCII text). A Bijoy fragment in such a run (`Zvi`) still converts. Without a font tag, a list of common short English words (`is`, `in`, `by`, `held`, `with`...) and a vowel threshold of 0.25 keep English intact. `me`, `be`, `my`, `we`, `new` are left out because they are also real Bijoy words. Tests added in `lib/bijoyToUnicode.test.ts`.
+- **Old PDFs kept showing after template changes.** `PDF_TEMPLATE_VERSION` was not bumped for the heading/subtitle change, so cached PDFs were served. It is now `v75`; bump it on every template change.
+
+### Not checked
+
+- None of this was viewed in a browser or a generated PDF; type-check, build and unit tests pass.
+
+---
 ## 2026-09-26 — PDF Preview: Matching Font, Real Page Size, No More Crash
 
 ### Bug Fixes

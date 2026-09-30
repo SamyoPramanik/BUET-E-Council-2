@@ -11,6 +11,7 @@ import { Plus } from "lucide-react";
 import RichTextEditor from "../../../components/RichTextEditor";
 import CustomSelect from "../../../components/CustomSelect";
 import { useAuth } from "../../../hooks/useAuth";
+import { PageSkeleton } from "../../../components/Skeleton";
 
 export default function ManageTemplatesPage() {
   const { canManageTemplates: canEdit } = useAuth();
@@ -134,7 +135,7 @@ export default function ManageTemplatesPage() {
   };
 
   if (error) return <div className="p-8 text-destructive">Failed to load templates.</div>;
-  if (!response) return <div className="p-8 text-muted-foreground animate-pulse">Loading templates...</div>;
+  if (!response) return <PageSkeleton />;
 
   return (
     <div className="space-y-6">

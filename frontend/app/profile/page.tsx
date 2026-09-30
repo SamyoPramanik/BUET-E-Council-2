@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { useRouter } from "next/navigation";
 import api, { fetcher } from "../../lib/api";
 import { toast } from "sonner";
+import { PageSkeleton } from "../../components/Skeleton";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -67,7 +68,7 @@ export default function ProfilePage() {
   };
 
   if (error) return <div className="p-8">Failed to load profile</div>;
-  if (!response) return <div className="p-8">Loading...</div>;
+  if (!response) return <PageSkeleton />;
 
   const user = response.data;
 

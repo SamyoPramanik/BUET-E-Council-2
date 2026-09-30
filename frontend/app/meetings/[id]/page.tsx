@@ -9,6 +9,7 @@ import { toBanglaDigits, getSerialWidth } from "../../../lib/banglaNumerals";
 import Header from "../../../components/Header";
 import RichContentView from "../../../components/meetings/RichContentView";
 import MeetingPageLayoutProvider from "../../../components/meetings/MeetingPageLayoutProvider";
+import { MeetingSkeleton } from "../../../components/Skeleton";
 
 // Component to render a single agenda and its annexures
 function AgendaItem({ agenda, agendaPrefix, meetingStatus, highlightId, highlightType, mainAgendaCount = 0 }: { agenda: any, agendaPrefix: string | null, meetingStatus: string, highlightId: string | null, highlightType: string | null, mainAgendaCount?: number }) {
@@ -166,7 +167,7 @@ function PublicMeetingContent() {
   if (!meetingRes) return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <div className="p-8 text-muted-foreground mx-auto max-w-7xl">Loading meeting details...</div>
+      <MeetingSkeleton />
     </div>
   );
 

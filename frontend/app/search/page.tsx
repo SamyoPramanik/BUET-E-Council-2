@@ -1,5 +1,6 @@
 "use client";
 
+import { PageSkeleton } from "../../components/Skeleton";
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSWR, { SWRConfig } from "swr";
@@ -481,7 +482,7 @@ function SearchPageInner() {
 export default function SearchPage() {
   return (
     <SWRConfig value={{ provider: localStorageProvider }}>
-      <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading search...</div>}>
+      <Suspense fallback={<PageSkeleton />}>
         <SearchPageInner />
       </Suspense>
     </SWRConfig>

@@ -5,6 +5,7 @@ import Sidebar from "./Sidebar";
 import SidebarToggleButton from "./SidebarToggleButton";
 import { useAuth } from "../hooks/useAuth";
 import { useEffect, useState } from "react";
+import { WorkspaceSkeleton } from "./Skeleton";
 
 export default function WorkspaceLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -24,7 +25,7 @@ export default function WorkspaceLayoutWrapper({ children }: { children: React.R
   }, [error, role, isLoading, router]);
 
   if (isLoading || !role || role === 'viewer') {
-    return <div className="flex flex-1 items-center justify-center min-h-screen">Loading...</div>;
+    return <WorkspaceSkeleton />;
   }
 
   // Check if we are inside a specific meeting's workspace

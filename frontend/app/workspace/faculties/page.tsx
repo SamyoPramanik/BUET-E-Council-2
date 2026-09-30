@@ -8,6 +8,7 @@ import DataTable from "../../../components/DataTable";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
 import { useAuth } from "../../../hooks/useAuth";
+import { PageSkeleton } from "../../../components/Skeleton";
 
 export default function ManageFacultiesPage() {
   const { canEdit } = useAuth();
@@ -130,7 +131,7 @@ export default function ManageFacultiesPage() {
   };
 
   if (error) return <div className="p-8">Failed to load faculties</div>;
-  if (!response) return <div className="p-8">Loading...</div>;
+  if (!response) return <PageSkeleton />;
 
   const facultiesData = (response?.data || []).map((f: any, idx: number) => ({
     ...f,

@@ -10,6 +10,7 @@ import { useConfirm } from "../../../hooks/useConfirm";
 import { useAuth } from "../../../hooks/useAuth";
 import { Sparkles, Loader2 } from "lucide-react";
 import { translateText, autoFillBilingualFields } from "../../../lib/translator";
+import { PageSkeleton } from "../../../components/Skeleton";
 
 export default function ManageOfficesPage() {
   const { canEdit } = useAuth();
@@ -145,7 +146,7 @@ export default function ManageOfficesPage() {
   };
 
   if (error) return <div className="p-8">Failed to load offices</div>;
-  if (!response) return <div className="p-8">Loading...</div>;
+  if (!response) return <PageSkeleton />;
 
   return (
     <div className="space-y-6">

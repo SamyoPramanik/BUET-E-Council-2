@@ -6,6 +6,7 @@ import api, { fetcher } from "../../../lib/api";
 import { Laptop, Smartphone, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
+import { PageSkeleton } from "../../../components/Skeleton";
 
 export default function SessionsPage() {
   const { data: response, error, mutate } = useSWR('/auth/sessions', fetcher);
@@ -31,7 +32,7 @@ export default function SessionsPage() {
   };
 
   if (error) return <div className="p-8">Failed to load sessions</div>;
-  if (!response) return <div className="p-8">Loading...</div>;
+  if (!response) return <PageSkeleton />;
 
   const sessions = response.data?.sessions || [];
 

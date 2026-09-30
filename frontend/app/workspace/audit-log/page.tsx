@@ -4,6 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "../../../lib/api";
 import { useAuth } from "../../../hooks/useAuth";
+import { PageSkeleton } from "../../../components/Skeleton";
 
 const ACTION_STYLES: Record<string, string> = {
   create: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
@@ -42,7 +43,7 @@ export default function AuditLogPage() {
   const archives = archivesResponse?.data || [];
 
   if (isLoading) {
-    return <div className="p-8 text-muted-foreground">Loading...</div>;
+    return <PageSkeleton />;
   }
 
   if (!isAdmin) {

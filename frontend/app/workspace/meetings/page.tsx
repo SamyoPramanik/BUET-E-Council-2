@@ -12,6 +12,7 @@ import { useConfirm } from "../../../hooks/useConfirm";
 import JsonImportDialog from "../../../components/meetings/JsonImportDialog";
 import { FileJson, Calendar, CheckCircle2, Lock, ArrowRightLeft, FileText } from "lucide-react";
 import { useAuth } from "../../../hooks/useAuth";
+import { PageSkeleton } from "../../../components/Skeleton";
 
 export default function ManageMeetingsPage() {
   const { canCreateMeeting, isAdmin, user } = useAuth();
@@ -97,7 +98,7 @@ export default function ManageMeetingsPage() {
   };
 
   if (error) return <div className="p-8">Failed to load meetings</div>;
-  if (!response) return <div className="p-8">Loading...</div>;
+  if (!response) return <PageSkeleton />;
 
   const allMeetings = response.data || [];
 

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useConfirm } from "../../../hooks/useConfirm";
 import { Plus } from "lucide-react";
 import { useAuth } from "../../../hooks/useAuth";
+import { PageSkeleton } from "../../../components/Skeleton";
 
 export default function ManageCategoriesPage() {
   const { canManageTemplates: canEdit } = useAuth();
@@ -126,7 +127,7 @@ export default function ManageCategoriesPage() {
   };
 
   if (error) return <div className="p-8 text-destructive">Failed to load categories.</div>;
-  if (!response) return <div className="p-8 text-muted-foreground animate-pulse">Loading categories...</div>;
+  if (!response) return <PageSkeleton />;
 
   return (
     <div className="space-y-6">

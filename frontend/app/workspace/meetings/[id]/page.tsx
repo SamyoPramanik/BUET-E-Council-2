@@ -19,6 +19,7 @@ import ArchivedAgendaView from "../../../../components/meetings/ArchivedAgendaVi
 
 import MeetingPageLayoutProvider from "../../../../components/meetings/MeetingPageLayoutProvider";
 import { useAuth } from "../../../../hooks/useAuth";
+import { MeetingSkeleton } from "../../../../components/Skeleton";
 
 // Every editor on the page shares one page setup (Page Layout tab), saved with
 // the meeting so the PDF prints on the same page.
@@ -43,7 +44,7 @@ function MeetingWorkspaceBody() {
   const { data: response, error, mutate } = useSWR(`/meetings/${params.id}`, fetcher);
 
   if (error) return <div className="p-8 text-destructive font-medium">Error loading meeting data.</div>;
-  if (!response) return <div className="p-8 text-muted-foreground">Loading workspace...</div>;
+  if (!response) return <MeetingSkeleton />;
 
   const meeting = response.data;
   const isViewer = user?.role === 'viewer';

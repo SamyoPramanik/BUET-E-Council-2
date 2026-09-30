@@ -11,6 +11,7 @@ import { useConfirm } from "../../../hooks/useConfirm";
 import { useAuth } from "../../../hooks/useAuth";
 import { Sparkles, Loader2 } from "lucide-react";
 import { translateText } from "../../../lib/translator";
+import { PageSkeleton } from "../../../components/Skeleton";
 
 export default function ManageDepartmentsPage() {
   const { canEdit } = useAuth();
@@ -181,7 +182,7 @@ export default function ManageDepartmentsPage() {
   };
 
   if (error) return <div className="p-8">Failed to load departments</div>;
-  if (!response) return <div className="p-8">Loading...</div>;
+  if (!response) return <PageSkeleton />;
 
   const departmentsData = (response?.data || []).map((d: any, idx: number) => ({
     ...d,

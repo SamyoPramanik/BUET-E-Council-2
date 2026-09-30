@@ -425,7 +425,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
           ? `${firstFull}`
           : `${firstFull} হতে ${lastFull}`;
 
-        const headerStr = `'${letter}' গ্রুপ প্রস্তাব নং ${rangeText}: (${catName})`;
+        const headerStr = `'${letter}' গ্রুপ প্রস্তাব নং ${rangeText}: (${String(catName ?? "").trim().replace(/^[\s(（]+|[\s)）]+$/g, "")})`;
         categoryHeaderMap.set(firstAg.id, headerStr);
         groupCount++;
       }

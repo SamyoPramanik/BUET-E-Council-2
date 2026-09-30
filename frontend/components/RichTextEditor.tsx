@@ -2707,12 +2707,12 @@ const MenuBar = ({
 
   // Cut Action
   const handleCut = () => {
-    const { from, to, empty } = editor.state.selection;
+    const { ranges, empty } = editor.state.selection;
     if (empty) {
       toast.info("Select text first to cut");
       return;
     }
-    const selectedText = editor.state.doc.textBetween(from, to, ' ');
+    const selectedText = ranges.map((r: any) => editor.state.doc.textBetween(r.$from.pos, r.$to.pos, ' ')).join('\n');
     navigator.clipboard.writeText(selectedText);
     editor.chain().focus().deleteSelection().run();
     toast.success("Cut text to clipboard");
@@ -2720,12 +2720,12 @@ const MenuBar = ({
 
   // Copy Action
   const handleCopy = () => {
-    const { from, to, empty } = editor.state.selection;
+    const { ranges, empty } = editor.state.selection;
     if (empty) {
       toast.info("Select text first to copy");
       return;
     }
-    const selectedText = editor.state.doc.textBetween(from, to, ' ');
+    const selectedText = ranges.map((r: any) => editor.state.doc.textBetween(r.$from.pos, r.$to.pos, ' ')).join('\n');
     navigator.clipboard.writeText(selectedText);
     toast.success("Copied text to clipboard");
   };
@@ -2791,13 +2791,11 @@ const MenuBar = ({
   };
 
   const handleTextCaseChange = (mode: 'upper' | 'lower' | 'title' | 'sentence' | 'bangla_title') => {
-    const { from, to, empty } = editor.state.selection;
+    const { ranges, empty } = editor.state.selection;
     if (empty) {
       toast.info("Select text first to change case or style");
       return;
     }
-    const text = editor.state.doc.textBetween(from, to, ' ');
-    if (!text) return;
 
     if (mode === 'bangla_title') {
       editor.chain().focus().setFontSize('20px').setBold().toggleUnderline().run();
@@ -2805,16 +2803,27 @@ const MenuBar = ({
       return;
     }
 
-    let converted = text;
-    if (mode === 'upper') converted = text.toUpperCase();
-    else if (mode === 'lower') converted = text.toLowerCase();
-    else if (mode === 'title') {
-      converted = text.replace(/\w\S*/g, (w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-    } else if (mode === 'sentence') {
-      converted = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
-    }
-    editor.chain().focus().insertContentAt({ from, to }, converted).run();
-    toast.success(`Converted text case`);
+    const convert = (text: string) => {
+      if (mode === 'upper') return text.toUpperCase();
+      if (mode === 'lower') return text.toLowerCase();
+      if (mode === 'title') return text.replace(/\w\S*/g, (w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+      return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+    };
+
+    // Every selected region (Ctrl+select) is converted on its own, last to
+    // first so earlier positions stay valid.
+    const spans = ranges.map((r: any) => ({ from: r.$from.pos, to: r.$to.pos })).sort((a: any, b: any) => b.from - a.from);
+    const changed = editor.chain().focus().command(({ tr, state }: any) => {
+      let any = false;
+      for (const { from, to } of spans) {
+        const text = state.doc.textBetween(from, to, ' ');
+        if (!text) continue;
+        tr.insertText(convert(text), from, to);
+        any = true;
+      }
+      return any;
+    }).run();
+    if (changed) toast.success(`Converted text case`);
   };
 
   const openLinkModal = () => {

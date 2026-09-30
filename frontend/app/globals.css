@@ -1489,8 +1489,13 @@ table[data-border="none"] th {
 /* The PDF's flush-left "প্রস্তাব নং A" column (RichTextEditor hangingLabel). */
 .hanging-label {
   font-family: 'PrimaryFont', Arial, Helvetica, sans-serif;
-  font-size: 14px;
+  font-size: 14pt;
   line-height: 1.6;
+}
+
+/* The serial ("২০২১৬০২:") drawn before the first line, 14pt like the PDF's. */
+.hanging-prefix {
+  font-size: 14pt;
 }
 
 /* Selection kept visible while focus is in a toolbar box (see KeepSelectionVisible). */

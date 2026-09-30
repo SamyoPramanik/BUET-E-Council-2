@@ -94,7 +94,7 @@
 
 :root, .maroon {
   /* ── BUET Maroon Light Theme ── */
-  --background: #f5efea;
+  --background: #faf7f5;
   --foreground: #1c1017;
   --card: #ffffff;
   --card-foreground: #1c1017;
@@ -105,31 +105,31 @@
   /* BUET Maroon */
   --primary-foreground: #fff5f5;
 
-  --secondary: #efd3d3;
+  --secondary: #f5e6e6;
   /* soft rose tint */
   --secondary-foreground: #5c1a1a;
 
-  --muted: #e7dcd7;
+  --muted: #f2edeb;
   --muted-foreground: #6b5c58;
 
-  --accent: #facece;
+  --accent: #fceaea;
   /* warm blush */
   --accent-foreground: #4a1212;
 
   --destructive: #b91c1c;
   --destructive-foreground: #fef2f2;
 
-  --border: #dcc8c1;
-  --input: #d4c0b7;
+  --border: #e8ddd9;
+  --input: #e0d4cf;
   --ring: #800000;
 
-  --sidebar-background: #e8d3c8;
+  --sidebar-background: #f6f0ed;
   --sidebar-foreground: #3d2828;
   --sidebar-primary: #800000;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e7c4bb;
+  --sidebar-accent: #f0dfdb;
   --sidebar-accent-foreground: #1c1017;
-  --sidebar-border: #d3b8ae;
+  --sidebar-border: #e0d0ca;
 
   --radius: 0.5rem;
 }

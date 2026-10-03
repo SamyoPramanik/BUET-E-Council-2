@@ -1101,7 +1101,7 @@ The agenda/resolution editor is a Microsoft Word–style ribbon UI built on TipT
 #### Home Tab — Font & Spacing Controls
 
 - **Font family**: Calibri (Body), Inter, Arial, Times New Roman and the Unicode Bangla fonts (Noto Sans, Kalpurush, SolaimanLipi). There is deliberately no Bijoy/SutonnyMJ option — all text is Unicode; Bijoy input is converted on paste or via the **Bijoy & Tools** tab.
-- **Font size** (`FontSizeControl`): preset dropdown plus a free-text px box. Any positive value is accepted and applied as soon as it is a complete number; the box keeps a local draft while focused and never calls `editor.focus()`. When the cursor is in text with no explicit size, the box shows the computed rendered size, so clicking text tells you its size.
+- **Font size** (`FontSizeControl`): preset dropdown (Word's list: 8–36) plus a free-text **pt** box; sizes are saved as `Npt`. Older px content and pasted Word text read back as their real size in pt (`fontSizeToPt`, 1pt = 4/3 px), so retyping the number shown never changes the text. Any positive value is accepted and applied as soon as it is a complete number; the box keeps a local draft while focused and never calls `editor.focus()`. When the cursor is in text with no explicit size, the box shows the computed rendered size, so clicking text tells you its size.
 - **Line spacing** (`LineSpacingControl`): same draft-while-focused pattern for custom values.
 - **Fullscreen**: the ribbon body gets the `ribbon-fullscreen` class so its groups stretch across the full width.
 

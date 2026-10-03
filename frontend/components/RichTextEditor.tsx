@@ -1414,7 +1414,7 @@ declare module '@tiptap/core' {
   }
 }
 
-const FONT_SIZE_STEPS = ['10px', '11px', '12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px', '72px'];
+const FONT_SIZE_STEPS = ['8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '24pt', '28pt', '36pt', '48pt', '72pt'];
 
 const SYMBOL_CATEGORIES = [
   {
@@ -1738,10 +1738,10 @@ const WORD_QUICK_STYLES = [
     id: 'heading1', 
     name: 'Heading 1', 
     preview: 'Heading 1', 
-    desc: 'Title 26px Bold', 
+    desc: 'Title 20pt Bold', 
     action: (e: any) => {
       if (!e.state.selection.empty) {
-        e.chain().focus().setFontSize('26px').setBold().run();
+        e.chain().focus().setFontSize('20pt').setBold().run();
       } else {
         e.chain().focus().unsetFontSize().toggleHeading({ level: 1 }).run();
       }
@@ -1751,10 +1751,10 @@ const WORD_QUICK_STYLES = [
     id: 'heading2', 
     name: 'Heading 2', 
     preview: 'Heading 2', 
-    desc: 'Section 20px Bold', 
+    desc: 'Section 15pt Bold', 
     action: (e: any) => {
       if (!e.state.selection.empty) {
-        e.chain().focus().setFontSize('20px').setBold().run();
+        e.chain().focus().setFontSize('15pt').setBold().run();
       } else {
         e.chain().focus().unsetFontSize().toggleHeading({ level: 2 }).run();
       }
@@ -1764,10 +1764,10 @@ const WORD_QUICK_STYLES = [
     id: 'heading3', 
     name: 'Heading 3', 
     preview: 'Heading 3', 
-    desc: 'Subsection 17px', 
+    desc: 'Subsection 13pt', 
     action: (e: any) => {
       if (!e.state.selection.empty) {
-        e.chain().focus().setFontSize('17px').setBold().run();
+        e.chain().focus().setFontSize('13pt').setBold().run();
       } else {
         e.chain().focus().unsetFontSize().toggleHeading({ level: 3 }).run();
       }
@@ -1780,9 +1780,9 @@ const WORD_QUICK_STYLES = [
     desc: 'Main Doc Title', 
     action: (e: any) => {
       if (!e.state.selection.empty) {
-        e.chain().focus().setFontSize('32px').setBold().run();
+        e.chain().focus().setFontSize('24pt').setBold().run();
       } else {
-        e.chain().focus().setFontSize('32px').setBold().setTextAlign('center').run();
+        e.chain().focus().setFontSize('24pt').setBold().setTextAlign('center').run();
       }
     } 
   },
@@ -1793,9 +1793,9 @@ const WORD_QUICK_STYLES = [
     desc: 'Italic Subtitle', 
     action: (e: any) => {
       if (!e.state.selection.empty) {
-        e.chain().focus().setFontSize('18px').setItalic().run();
+        e.chain().focus().setFontSize('14pt').setItalic().run();
       } else {
-        e.chain().focus().setFontSize('18px').setItalic().setTextAlign('center').run();
+        e.chain().focus().setFontSize('14pt').setItalic().setTextAlign('center').run();
       }
     } 
   },
@@ -1966,21 +1966,33 @@ const LineSpacingControl = ({ editor }: { editor: any }) => {
   );
 };
 
-const FONT_SIZE_PRESETS = ["10", "11", "12", "14", "16", "18", "20", "24", "28", "32", "36"];
+// An explicit font-size ("14pt", "18.7px", ...) as a pt number, or null when it
+// isn't a plain px/pt value. The editor works in points like Word; older
+// content saved in px (and pasted Word text, which is already pt) both read
+// back as their real size in pt.
+const fontSizeToPt = (size: string): number | null => {
+  const m = /^\s*(\d*\.?\d+)\s*(px|pt)?\s*$/i.exec(size || '');
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  return Math.round((m[2] && m[2].toLowerCase() === 'px' ? n * 3 / 4 : n) * 10) / 10;
+};
 
-// Font-size control: a preset dropdown + a free-text box for any px value.
+const FONT_SIZE_PRESETS = ["8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36"];
+
+// Font-size control: a preset dropdown + a free-text box for any pt value.
 // Like LineSpacingControl, the box keeps a LOCAL draft while focused and never
 // calls editor.focus(), so multi-digit values can be typed. When the text at
 // the cursor has no explicit size, the box shows the size actually rendered
 // there, so clicking on any text tells you its font size.
 const FontSizeControl = ({ editor }: { editor: any }) => {
   const explicit: string = editor.getAttributes('textStyle').fontSize || '';
-  let cur = explicit ? String(parseFloat(explicit)) : '';
+  const explicitPt = explicit ? fontSizeToPt(explicit) : null;
+  let cur = explicitPt !== null ? String(explicitPt) : '';
   if (!cur) {
     try {
       const { node } = editor.view.domAtPos(editor.state.selection.from);
       const el: Element | null = node.nodeType === 1 ? (node as Element) : node.parentElement;
-      if (el) cur = String(Math.round(parseFloat(getComputedStyle(el).fontSize) * 10) / 10);
+      if (el) cur = String(Math.round(parseFloat(getComputedStyle(el).fontSize) * 0.75 * 10) / 10);
     } catch { /* view not mounted yet */ }
   }
   if (cur === 'NaN') cur = '';
@@ -1994,7 +2006,7 @@ const FontSizeControl = ({ editor }: { editor: any }) => {
 
   const applyFS = (val: string) => {
     if (!val) editor.chain().unsetFontSize().run();
-    else editor.chain().setFontSize(`${val}px`).run();
+    else editor.chain().setFontSize(`${val}pt`).run();
   };
 
   return (
@@ -2002,17 +2014,17 @@ const FontSizeControl = ({ editor }: { editor: any }) => {
       <div className="w-24">
         <CustomSelect
           placeholder="Font size"
-          value={explicit ? String(parseFloat(explicit)) : ''}
+          value={explicitPt !== null ? String(explicitPt) : ''}
           onChange={(val) => {
             setDraft(val);
             if (!val) editor.chain().focus().unsetFontSize().run();
-            else editor.chain().focus().setFontSize(`${val}px`).run();
+            else editor.chain().focus().setFontSize(`${val}pt`).run();
           }}
           options={[
             { value: "", label: "Size" },
             ...FONT_SIZE_PRESETS.map(v => ({ value: v, label: v })),
-            ...(explicit && !FONT_SIZE_PRESETS.includes(String(parseFloat(explicit)))
-              ? [{ value: String(parseFloat(explicit)), label: `${parseFloat(explicit)} Custom` }]
+            ...(explicitPt !== null && !FONT_SIZE_PRESETS.includes(String(explicitPt))
+              ? [{ value: String(explicitPt), label: `${explicitPt} Custom` }]
               : []),
           ]}
         />
@@ -2033,11 +2045,11 @@ const FontSizeControl = ({ editor }: { editor: any }) => {
           setDraft(val);
           if (!val) return;
           // Hold partial entries ("1", "1.") locally; commit once it's a
-          // complete positive number. Any size from 1px up is allowed.
+          // complete positive number. Any size from 1pt up is allowed.
           if (!val.endsWith('.') && parseFloat(val) > 0) applyFS(val);
         }}
-        title="Font size in px (type any value, e.g. 13 or 9.5). Shows the size of the text at the cursor."
-        placeholder="14"
+        title="Font size in pt (type any value, e.g. 13 or 9.5). Shows the size of the text at the cursor."
+        placeholder="11"
         className="w-10 px-1 py-1 text-xs text-center border border-border rounded bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
       />
     </div>
@@ -2672,9 +2684,9 @@ const MenuBar = ({
   const handleHeadingChange = (val: string) => {
     const { empty } = editor.state.selection;
     if (!empty) {
-      if (val === 'h1') editor.chain().focus().setFontSize('26px').setBold().run();
-      else if (val === 'h2') editor.chain().focus().setFontSize('20px').setBold().run();
-      else if (val === 'h3') editor.chain().focus().setFontSize('17px').setBold().run();
+      if (val === 'h1') editor.chain().focus().setFontSize('20pt').setBold().run();
+      else if (val === 'h2') editor.chain().focus().setFontSize('15pt').setBold().run();
+      else if (val === 'h3') editor.chain().focus().setFontSize('13pt').setBold().run();
       else editor.chain().focus().unsetFontSize().unsetBold().run();
       toast.success("Applied style to highlighted selection");
       return;
@@ -2688,19 +2700,19 @@ const MenuBar = ({
 
   // Grow Font Size Action
   const handleGrowFont = () => {
-    const currentSize = editor.getAttributes('textStyle').fontSize || '14px';
-    const num = parseInt(currentSize, 10) || 14;
-    const nextStep = FONT_SIZE_STEPS.find(s => parseInt(s, 10) > num) || `${num + 2}px`;
+    const currentSize = editor.getAttributes('textStyle').fontSize || '11pt';
+    const num = Math.round(fontSizeToPt(currentSize) ?? 11);
+    const nextStep = FONT_SIZE_STEPS.find(s => parseInt(s, 10) > num) || `${num + 2}pt`;
     editor.chain().focus().setFontSize(nextStep).run();
     toast.success(`Font size increased to ${nextStep}`);
   };
 
   // Shrink Font Size Action
   const handleShrinkFont = () => {
-    const currentSize = editor.getAttributes('textStyle').fontSize || '14px';
-    const num = parseInt(currentSize, 10) || 14;
+    const currentSize = editor.getAttributes('textStyle').fontSize || '11pt';
+    const num = Math.round(fontSizeToPt(currentSize) ?? 11);
     const prevSteps = FONT_SIZE_STEPS.filter(s => parseInt(s, 10) < num);
-    const prevStep = prevSteps.length > 0 ? prevSteps[prevSteps.length - 1] : '10px';
+    const prevStep = prevSteps.length > 0 ? prevSteps[prevSteps.length - 1] : '8pt';
     editor.chain().focus().setFontSize(prevStep).run();
     toast.success(`Font size decreased to ${prevStep}`);
   };
@@ -2798,7 +2810,7 @@ const MenuBar = ({
     }
 
     if (mode === 'bangla_title') {
-      editor.chain().focus().setFontSize('20px').setBold().toggleUnderline().run();
+      editor.chain().focus().setFontSize('15pt').setBold().toggleUnderline().run();
       toast.success("Applied Bangla Title Style");
       return;
     }

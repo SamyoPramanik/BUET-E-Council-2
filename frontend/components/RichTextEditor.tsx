@@ -3061,7 +3061,9 @@ const MenuBar = ({
                         { value: "Times New Roman, serif", label: "Times New Roman" },
                         { value: "Noto Sans Bengali, sans-serif", label: "Bangla (Noto Sans)" },
                         { value: "Kalpurush, sans-serif", label: "Bangla (Kalpurush)" },
-                        { value: "SolaimanLipi, sans-serif", label: "Bangla (SolaimanLipi)" }
+                        { value: "SolaimanLipi, sans-serif", label: "Bangla (SolaimanLipi)" },
+                        { value: "Nikosh, sans-serif", label: "Bangla (Nikosh)" },
+                        { value: "NikoshBAN, sans-serif", label: "Bangla (NikoshBAN)" }
                       ]}
                     />
                   </div>

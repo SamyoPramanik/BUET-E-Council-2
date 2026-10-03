@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree, Layers, Archive, Loader2 } from "lucide-react";
+import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree, Layers, Archive, Loader2, ChevronUp, ChevronDown, ArrowLeftRight } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import RichContentView from "./RichContentView";
 import AnnexureList from "./AnnexureList";
@@ -230,48 +230,83 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     return sequence;
   })();
 
-  // Undo history for drag-and-drop re-serialising: each entry is the order and
-  // serials the list had before one reorder (newest last).
-  const [undoStack, setUndoStack] = useState<{ id: string; agenda_serial: number }[][]>([]);
-  const [undoing, setUndoing] = useState(false);
+  // ---- Reordering: one path for drag-and-drop, Move up/down/above/below/Swap, Undo and Redo.
+  // History is a list of agenda-id orders, one entry per step, so every step can be
+  // undone (and redone) on its own.
+  const [past, setPast] = useState<string[][]>([]);
+  const [future, setFuture] = useState<string[][]>([]);
+  const [reordering, setReordering] = useState(false);
+  const [moveDialogId, setMoveDialogId] = useState<string | null>(null);
+  const [moveTargetId, setMoveTargetId] = useState('');
 
-  // Put the list back to a saved order: the original serials are written back as
-  // they were (not renumbered), and agendas deleted since are skipped.
-  const restoreSnapshot = async (snapshot: { id: string; agenda_serial: number }[]) => {
+  const currentIds = () => regularAgendas.map((a: any) => a.id);
+  const plainText = (a: any) => (a.content || '').replace(/<[^>]*>/g, '').trim();
+  const isBibidhaAgenda = (a: any) => !isSuppliView && (a.agenda_serial === 0 || plainText(a).startsWith('বিবিধ'));
+  const normCat = (a: any): string | null => {
+    const cId = a.category_id || null;
+    const cName = a.category_name ? String(a.category_name).trim() : '';
+    if (!cId || !cName || /^(uncategorized|un-categorized|অশ্রেণীভুক্ত|অশ্রেণিভুক্ত)$/i.test(cName)) return null;
+    return cId;
+  };
+  const agendaSerialLabel = (a: any) => {
+    const idx = regularAgendas.findIndex((x: any) => x.id === a.id);
+    return isBibidhaAgenda(a)
+      ? `বিবিধ : ${bibidhaSerial}`
+      : `প্রস্তাব নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (a.agenda_serial || idx + 1), serialWidth) : toBanglaDigits(a.agenda_serial || idx + 1, serialWidth))}`;
+  };
+
+  // Write an order (list of ids) to the cache and the server. Only agendas whose
+  // serial actually changes are sent. Agendas not named in `ids` (added or
+  // restored meanwhile) keep their relative order at the end.
+  const writeOrder = async (ids: string[]): Promise<boolean> => {
     const byId = new Map<string, any>(agendas.map((a: any) => [a.id, a]));
-    const kept = snapshot.filter(s => byId.has(s.id));
-    const keptIds = new Set(kept.map(s => s.id));
-    const restored = [
-      ...kept.map(s => ({ ...byId.get(s.id), agenda_serial: s.agenda_serial })),
-      ...agendas.filter((a: any) => !keptIds.has(a.id)),
-    ];
-    mutate({ ...response, data: restored }, false);
+    const ordered = ids.filter(id => byId.has(id));
+    const placed = new Set(ordered);
+    const full = [...ordered.map(id => byId.get(id)), ...agendas.filter((a: any) => !placed.has(a.id))];
+    const updated = full.map((a: any, idx: number) => ({ ...a, agenda_serial: idx + 1 }));
+    mutate({ ...response, data: updated }, false);
     try {
       await Promise.all(
-        kept
-          .filter(s => byId.get(s.id).agenda_serial !== s.agenda_serial)
-          .map(s => api.put(`/agendas/${s.id}`, { agenda_serial: s.agenda_serial }))
+        updated
+          .filter((a: any) => byId.get(a.id).agenda_serial !== a.agenda_serial)
+          .map((a: any) => api.put(`/agendas/${a.id}`, { agenda_serial: a.agenda_serial }))
       );
       mutate();
-    } catch (err) {
-      toast.error("Failed to undo the reorder");
+      return true;
+    } catch {
+      toast.error("Failed to reorder sequence");
       mutate();
-      throw err;
+      return false;
     }
   };
 
   const undoReorder = async () => {
-    if (readOnly || undoing || undoStack.length === 0) return;
-    const snapshot = undoStack[undoStack.length - 1];
-    setUndoing(true);
-    try {
-      await restoreSnapshot(snapshot);
-      setUndoStack(prev => prev.slice(0, -1));
+    if (readOnly || past.length === 0) return;
+    if (reordering) { toast.info("Saving the previous change — try again in a moment"); return; }
+    const target = past[past.length - 1];
+    const now = currentIds();
+    setReordering(true);
+    const ok = await writeOrder(target);
+    setReordering(false);
+    if (ok) {
+      setPast(prev => prev.slice(0, -1));
+      setFuture(prev => [...prev, now]);
       toast.success("Reorder undone");
-    } catch {
-      // restoreSnapshot already reported the failure; keep the entry to retry.
-    } finally {
-      setUndoing(false);
+    }
+  };
+
+  const redoReorder = async () => {
+    if (readOnly || future.length === 0) return;
+    if (reordering) { toast.info("Saving the previous change — try again in a moment"); return; }
+    const target = future[future.length - 1];
+    const now = currentIds();
+    setReordering(true);
+    const ok = await writeOrder(target);
+    setReordering(false);
+    if (ok) {
+      setFuture(prev => prev.slice(0, -1));
+      setPast(prev => [...prev.slice(-49), now]);
+      toast.success("Reorder redone");
     }
   };
 
@@ -284,36 +319,89 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
   const applyReorderedAgendas = async (newAgendas: any[]) => {
     if (readOnly) return;
-    const updatedAgendas = newAgendas.map((a: any, idx: number) => ({
-      ...a,
-      agenda_serial: idx + 1
-    }));
-
-    // Remember how it was, so this reorder can be undone.
-    const snapshot = regularAgendas.map((a: any) => ({ id: a.id, agenda_serial: a.agenda_serial }));
-    const changed = newAgendas.some((a: any, i: number) => a.id !== regularAgendas[i]?.id);
-
-    mutate({ ...response, data: updatedAgendas }, false);
-
-    try {
-      await Promise.all(
-        updatedAgendas.map((a: any) =>
-          api.put(`/agendas/${a.id}`, { agenda_serial: a.agenda_serial })
-        )
-      );
-      mutate();
-      if (changed) {
-        setUndoStack(prev => [...prev.slice(-19), snapshot]);
-        toast.success("Sequence reordered", {
-          action: { label: "Undo", onClick: () => undoRef.current() },
-        });
-      } else {
-        toast.success("Sequence reordered");
-      }
-    } catch (err) {
-      toast.error("Failed to reorder sequence");
-      mutate();
+    if (reordering) { toast.info("Saving the previous change — try again in a moment"); return; }
+    const before = currentIds();
+    const nextIds = newAgendas.map((a: any) => a.id);
+    if (nextIds.length === before.length && nextIds.every((id: string, i: number) => id === before[i])) return;
+    setReordering(true);
+    const ok = await writeOrder(nextIds);
+    setReordering(false);
+    if (ok) {
+      setPast(prev => [...prev.slice(-49), before]);
+      setFuture([]);
+      toast.success("Sequence reordered", { action: { label: "Undo", onClick: () => undoRef.current() } });
     }
+  };
+
+  // A category's agendas must stay together in one group.
+  const categoriesContiguous = (list: any[]) => {
+    const seen = new Set<string>();
+    let prevCat: string | null = null;
+    for (const a of list) {
+      const c = normCat(a);
+      if (c !== null && c !== prevCat && seen.has(c)) return false;
+      if (c !== null) seen.add(c);
+      prevCat = c;
+    }
+    return true;
+  };
+
+  // Move / swap an agenda by a button instead of dragging. It obeys the same rules
+  // as drag-and-drop (categories can't be mixed, বিবিধ stays last) and also won't
+  // split a category group.
+  const moveAgenda = async (id: string, how: 'up' | 'down' | 'above' | 'below' | 'swap', targetId?: string) => {
+    if (readOnly) return;
+    if (reordering) { toast.info("Saving the previous change — try again in a moment"); return; }
+    const list = [...regularAgendas];
+    const si = list.findIndex((a: any) => a.id === id);
+    if (si < 0) return;
+    const source = list[si];
+    if (isBibidhaAgenda(source)) { toast.error("বিবিধ always stays last"); return; }
+
+    let result: any[] | null = null;
+    if (how === 'up' || how === 'down') {
+      const dir = how === 'up' ? -1 : 1;
+      const neighbour = list[si + dir];
+      if (!neighbour || isBibidhaAgenda(neighbour)) return;
+      const sc = normCat(source);
+      const nc = normCat(neighbour);
+      if (sc !== null && nc !== null && sc !== nc) { toast.error("Agendas of different categories cannot be mixed"); return; }
+      const arr = [...list];
+      if (sc === null && nc !== null) {
+        // An uncategorized agenda hops over the whole neighbouring category group.
+        let ti = si + dir;
+        while (arr[ti + dir] && normCat(arr[ti + dir]) === nc && !isBibidhaAgenda(arr[ti + dir])) ti += dir;
+        const [m] = arr.splice(si, 1);
+        arr.splice(ti, 0, m);
+      } else {
+        [arr[si], arr[si + dir]] = [arr[si + dir], arr[si]];
+      }
+      result = arr;
+    } else {
+      const target = list.find((a: any) => a.id === targetId);
+      if (!target || target.id === id) return;
+      if (isBibidhaAgenda(target)) { toast.error("বিবিধ always stays last"); return; }
+      const sc = normCat(source);
+      const tc = normCat(target);
+      if (sc !== null && tc !== null && sc !== tc) { toast.error("Agendas of different categories cannot be mixed"); return; }
+      const arr = [...list];
+      if (how === 'swap') {
+        const ti = arr.findIndex((a: any) => a.id === target.id);
+        [arr[si], arr[ti]] = [arr[ti], arr[si]];
+      } else {
+        const [m] = arr.splice(si, 1);
+        const ti = arr.findIndex((a: any) => a.id === target.id);
+        arr.splice(how === 'above' ? ti : ti + 1, 0, m);
+      }
+      result = arr;
+    }
+
+    if (!result) return;
+    if (categoriesContiguous(list) && !categoriesContiguous(result)) {
+      toast.error("That would split a category group — keep each category's agendas together");
+      return;
+    }
+    await applyReorderedAgendas(result);
   };
 
   // Double-clicking an item in the right panel scrolls to that agenda's card and
@@ -435,6 +523,46 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+  };
+
+  // The list scrolls, so a long drag needs help: while dragging near its top or
+  // bottom edge, scroll it (faster the closer to the edge).
+  const listRef = useRef<HTMLDivElement>(null);
+  const autoScrollWhileDragging = (e: React.DragEvent) => {
+    const el = listRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const zone = 64;
+    const fromTop = e.clientY - rect.top;
+    const fromBottom = rect.bottom - e.clientY;
+    if (fromTop < zone) el.scrollTop -= Math.ceil(((zone - Math.max(fromTop, 0)) / zone) * 26);
+    else if (fromBottom < zone) el.scrollTop += Math.ceil(((zone - Math.max(fromBottom, 0)) / zone) * 26);
+  };
+
+  // Small up / down / "change position" buttons on each panel item (editors only).
+  const renderMoveControls = (agenda: any) => {
+    if (readOnly) return null;
+    const idx = regularAgendas.findIndex((a: any) => a.id === agenda.id);
+    const prev = regularAgendas[idx - 1];
+    const next = regularAgendas[idx + 1];
+    const canUp = !!prev && !isBibidhaAgenda(prev);
+    const canDown = !!next && !isBibidhaAgenda(next);
+    const btn = "p-1 rounded hover:bg-muted text-muted-foreground hover:text-primary disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-not-allowed";
+    const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+    return (
+      <div className="flex items-center shrink-0" onDoubleClick={stop} onClick={stop}>
+        <button type="button" className={btn} disabled={!canUp || reordering} title="Move up" onClick={() => moveAgenda(agenda.id, 'up')}>
+          <ChevronUp className="w-3.5 h-3.5" />
+        </button>
+        <button type="button" className={btn} disabled={!canDown || reordering} title="Move down" onClick={() => moveAgenda(agenda.id, 'down')}>
+          <ChevronDown className="w-3.5 h-3.5" />
+        </button>
+        <button type="button" className={btn} disabled={reordering} title="Change position: place above / below another agenda, or swap"
+          onClick={() => { setMoveTargetId(''); setMoveDialogId(agenda.id); }}>
+          <ArrowLeftRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
   };
 
   const renderCreateForm = () => (
@@ -872,28 +1000,43 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
         <div className="w-[30%] shrink-0 sticky top-8">
           <div className="bg-sidebar/50 border border-border rounded-lg p-5 shadow-sm backdrop-blur-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">{readOnly ? 'Agenda Sequence' : 'Reorder Sequence'}</h3>
+              <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">{readOnly ? 'Agenda Sequence' : 'Reorder Sequence'}{reordering && <span className="ml-2 normal-case tracking-normal text-xs text-primary animate-pulse">Saving…</span>}</h3>
               {!readOnly && (
-                <button
-                  type="button"
-                  onClick={undoReorder}
-                  disabled={undoStack.length === 0 || undoing}
-                  title={undoStack.length ? `Undo the last drag-and-drop (${undoStack.length} step${undoStack.length > 1 ? 's' : ''} available)` : 'Nothing to undo'}
-                  className="px-2.5 py-1 rounded-md border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  {undoing ? 'Undoing…' : `Undo${undoStack.length ? ` (${undoStack.length})` : ''}`}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={undoReorder}
+                    disabled={past.length === 0 || reordering}
+                    title={past.length ? `Undo the last change (${past.length} step${past.length > 1 ? 's' : ''} available)` : 'Nothing to undo'}
+                    className="px-2.5 py-1 rounded-md border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {`Undo${past.length ? ` (${past.length})` : ''}`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={redoReorder}
+                    disabled={future.length === 0 || reordering}
+                    title={future.length ? `Redo (${future.length} step${future.length > 1 ? 's' : ''} available)` : 'Nothing to redo'}
+                    className="px-2.5 py-1 rounded-md border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {`Redo${future.length ? ` (${future.length})` : ''}`}
+                  </button>
+                </div>
               )}
             </div>
 
             {/* Scrolls when the list is longer than the window. */}
-            <div className="space-y-4 max-h-[calc(100vh-15rem)] overflow-y-auto pr-1">
+            <div
+              ref={listRef}
+              onDragOver={autoScrollWhileDragging}
+              className="space-y-4 max-h-[calc(100vh-15rem)] overflow-y-auto pr-1"
+            >
               {reorderSequence.map((item) => {
                 if (item.type === 'category') {
                   return (
                     <div
                       key={item.key}
-                      draggable={!readOnly}
+                      draggable={!readOnly && !reordering}
                       onDragStart={(e) => handleCategoryDragStart(e, item.key)}
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleSequenceDropOnBlock(e, item.key)}
@@ -915,7 +1058,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                           return (
                             <div
                               key={agenda.id}
-                              draggable={!readOnly}
+                              draggable={!readOnly && !reordering}
                               onDragStart={(e) => handleAgendaDragStart(e, agenda.id)}
                               onDragOver={handleDragOver}
                               onDrop={(e) => handleAgendaDrop(e, agenda.id)}
@@ -932,6 +1075,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                               <span className="text-xs text-muted-foreground truncate flex-1 opacity-70">
                                 {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...
                               </span>
+                              {renderMoveControls(agenda)}
                             </div>
                           );
                         })}
@@ -946,7 +1090,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                   return (
                     <div
                       key={item.key}
-                      draggable={!readOnly}
+                      draggable={!readOnly && !reordering}
                       onDragStart={(e) => handleAgendaDragStart(e, agenda.id)}
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleAgendaDrop(e, agenda.id)}
@@ -963,6 +1107,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       <span className="text-xs text-muted-foreground truncate flex-1 opacity-80">
                         {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...
                       </span>
+                      {renderMoveControls(agenda)}
                     </div>
                   );
                 }
@@ -978,11 +1123,65 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             </div>
 
             <p className="text-xs text-muted-foreground mt-6 text-center italic">
-              {readOnly ? 'Double-click an agenda to go to it.' : 'Drag to reorder (within a category, or uncategorized agendas / category blocks). Double-click an agenda to go to it.'}
+              {readOnly ? 'Double-click an agenda to go to it.' : 'Drag to reorder (the list scrolls while you drag near its edge), or use the ↑ ↓ and ⇄ buttons to move or swap. Categories stay together. Double-click an agenda to go to it.'}
             </p>
           </div>
         </div>
       )}
+
+      {moveDialogId && (() => {
+        const source = regularAgendas.find((a: any) => a.id === moveDialogId);
+        if (!source) return null;
+        const choices = regularAgendas.filter((a: any) => a.id !== moveDialogId && !isBibidhaAgenda(a));
+        const act = async (how: 'above' | 'below' | 'swap') => {
+          const id = moveDialogId;
+          const target = moveTargetId;
+          setMoveDialogId(null);
+          await moveAgenda(id, how, target);
+        };
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setMoveDialogId(null)}>
+            <div className="bg-card border border-border rounded-lg shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div>
+                <h3 className="font-semibold text-base">Change position</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  <span className="font-medium text-foreground">{agendaSerialLabel(source)}</span> — choose another agenda:
+                </p>
+              </div>
+              <select
+                value={moveTargetId}
+                onChange={(e) => setMoveTargetId(e.target.value)}
+                className="w-full bg-input/20 border border-input rounded px-2 py-2 text-sm"
+              >
+                <option value="">Select an agenda…</option>
+                {choices.map((a: any) => (
+                  <option key={a.id} value={a.id}>
+                    {agendaSerialLabel(a)} — {plainText(a).substring(0, 40)}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-3 gap-2">
+                <button type="button" disabled={!moveTargetId} onClick={() => act('above')}
+                  className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                  Place above
+                </button>
+                <button type="button" disabled={!moveTargetId} onClick={() => act('below')}
+                  className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                  Place below
+                </button>
+                <button type="button" disabled={!moveTargetId} onClick={() => act('swap')}
+                  className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                  Swap
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">Agendas of different categories can't be mixed, and a category's agendas stay together.</p>
+              <div className="flex justify-end">
+                <button type="button" onClick={() => setMoveDialogId(null)} className="px-3 py-1.5 rounded-md border border-border text-sm cursor-pointer">Cancel</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <TemplateDrawer
         isOpen={isDrawerOpen}

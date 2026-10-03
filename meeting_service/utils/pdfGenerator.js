@@ -30,6 +30,18 @@ const getFontBase64 = () => {
 // Read and encode the Bangla font once at startup, then reuse for every request.
 const FONT_BASE64 = getFontBase64();
 
+// Optional Bangla fonts the editor's font dropdown offers. Embedded under
+// their own family names so text set in them prints in them.
+const getExtraFontFaces = () => {
+    return ['Nikosh', 'NikoshBAN'].map((family) => {
+        const fontPath = path.join(__dirname, 'fonts', `${family}.ttf`);
+        if (!fs.existsSync(fontPath)) return '';
+        const b64 = fs.readFileSync(fontPath).toString('base64');
+        return `@font-face { font-family: '${family}'; src: url(data:font/ttf;base64,${b64}) format('truetype'); }`;
+    }).join('\n');
+};
+const EXTRA_FONT_FACES = getExtraFontFaces();
+
 const getSignatureImageBase64 = async (imageKey) => {
     if (!imageKey) return null;
     try {
@@ -603,7 +615,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v77';
+const PDF_TEMPLATE_VERSION = 'v78';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -862,6 +874,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
 
         const fontBase64 = FONT_BASE64;
         const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
+    const fontFaceAll = fontFace + EXTRA_FONT_FACES;
 
         const getSuffix = (item) => {
             const office = normalize(item.office || '');
@@ -1008,7 +1021,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
         <html>
         <head>
             <style>
-                ${fontFace}
+                ${fontFaceAll}
                 body {
                     font-family: 'PrimaryFont', sans-serif;
                     font-size: 14px;
@@ -1668,6 +1681,7 @@ const buildSingleResolutionHtml = async (meetingId, agendaId) => {
 
     const fontBase64 = FONT_BASE64;
     const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
+    const fontFaceAll = fontFace + EXTRA_FONT_FACES;
     const contentHtml = styleRichTextHtml(convertMarkdownTablesToHtml(ag.content || ''), false);
     const resolutionHtml = styleRichTextHtml(convertMarkdownTablesToHtml(stripResolutionPrefix(ag.resolution || '')), false);
 
@@ -1675,7 +1689,7 @@ const buildSingleResolutionHtml = async (meetingId, agendaId) => {
         <html>
         <head>
             <style>
-                ${fontFace}
+                ${fontFaceAll}
                 body { font-family: 'PrimaryFont', sans-serif; font-size: 14px; line-height: 1.6; margin: 0; padding: 0; }
                 p { margin: 0 0 10px 0; }
             </style>
@@ -1810,6 +1824,7 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
 
         const fontBase64 = FONT_BASE64;
         const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
+    const fontFaceAll = fontFace + EXTRA_FONT_FACES;
 
         const formatMeetingSerial = (rawTitle) => {
             if (!rawTitle) return '';
@@ -1888,7 +1903,7 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
         <html>
         <head>
             <style>
-                ${fontFace}
+                ${fontFaceAll}
                 body {
                     font-family: 'PrimaryFont', sans-serif;
                     font-size: 14px;
@@ -2073,13 +2088,14 @@ const generateNoticePdf = async (notice, presentees) => {
 
     const fontBase64 = FONT_BASE64;
     const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
+    const fontFaceAll = fontFace + EXTRA_FONT_FACES;
 
     let html = `
     <!DOCTYPE html>
     <html>
     <head>
         <style>
-            ${fontFace}
+            ${fontFaceAll}
             body {
                 font-family: 'PrimaryFont', sans-serif;
                 font-size: 14px;

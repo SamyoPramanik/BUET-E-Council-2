@@ -671,6 +671,18 @@ textarea:focus {
   font-display: swap;
 }
 
+/* Optional Bangla fonts offered in the editor's font dropdown. */
+@font-face {
+  font-family: 'Nikosh';
+  src: url('/fonts/Nikosh.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NikoshBAN';
+  src: url('/fonts/NikoshBAN.ttf') format('truetype');
+  font-display: swap;
+}
+
 /* Tiptap ProseMirror Dynamic Editor Focus & Container Styles */
 .ProseMirror,
 .rich-content {

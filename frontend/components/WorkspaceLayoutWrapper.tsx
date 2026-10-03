@@ -6,11 +6,13 @@ import SidebarToggleButton from "./SidebarToggleButton";
 import { useAuth } from "../hooks/useAuth";
 import { useEffect, useState } from "react";
 import { WorkspaceSkeleton } from "./Skeleton";
+import useSidebarCollapsed from "../hooks/useSidebarCollapsed";
 
 export default function WorkspaceLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [menuCollapsed, toggleMenuCollapsed] = useSidebarCollapsed('sidebarCollapsed');
 
   const { role, error, isLoading } = useAuth();
 
@@ -44,9 +46,9 @@ export default function WorkspaceLayoutWrapper({ children }: { children: React.R
   // Standard Admin Layout
   return (
     <div className="flex flex-1 overflow-hidden">
-      <Sidebar type="admin" role={role} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar type="admin" role={role} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} collapsed={menuCollapsed} onCollapse={toggleMenuCollapsed} />
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-background">
-        <SidebarToggleButton onClick={() => setSidebarOpen(true)} />
+        <SidebarToggleButton onClick={() => setSidebarOpen(true)} collapsed={menuCollapsed} onExpand={toggleMenuCollapsed} />
         {children}
       </main>
     </div>

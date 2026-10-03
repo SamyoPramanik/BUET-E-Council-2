@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Users, Building2, Briefcase, Calendar,
-  Settings, Shield, LogOut, LayoutGrid, FileText, ScrollText
+  Settings, Shield, LogOut, LayoutGrid, FileText, ScrollText, PanelLeftClose
 } from 'lucide-react';
 import type { Role } from '../hooks/useAuth';
 
@@ -14,9 +14,12 @@ interface SidebarProps {
   // Mobile off-canvas drawer control; ignored (always visible) at md+ widths.
   isOpen?: boolean;
   onClose?: () => void;
+  // Desktop: hide the menu (collapsed) and the icon that does it (onCollapse).
+  collapsed?: boolean;
+  onCollapse?: () => void;
 }
 
-export default function Sidebar({ type = 'admin', role, isOpen = false, onClose }: SidebarProps) {
+export default function Sidebar({ type = 'admin', role, isOpen = false, onClose, collapsed = false, onCollapse }: SidebarProps) {
   const pathname = usePathname();
 
   const adminLinks = [
@@ -64,9 +67,22 @@ export default function Sidebar({ type = 'admin', role, isOpen = false, onClose 
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-sidebar border-r border-sidebar-border flex-shrink-0 transform transition-transform duration-200 ease-in-out
-          md:static md:z-auto md:min-h-[calc(100vh-4rem)] md:translate-x-0
+          md:static md:z-auto md:min-h-[calc(100vh-4rem)] md:translate-x-0 ${collapsed ? 'md:hidden' : ''}
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
+        {onCollapse && (
+          <div className="hidden md:flex justify-end px-4 pt-3">
+            <button
+              type="button"
+              onClick={onCollapse}
+              title="Hide menu"
+              aria-label="Hide menu"
+              className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-sidebar-accent cursor-pointer"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <div className="p-4 space-y-2">
           {links.map((link) => {
             const isActive = isLinkActive(link.href);

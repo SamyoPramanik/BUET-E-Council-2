@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree, Layers, Archive, Loader2, ChevronUp, ChevronDown, ArrowLeftRight } from "lucide-react";
+import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree, Layers, Archive, Loader2, ChevronUp, ChevronDown, ArrowLeftRight, PanelRightClose, PanelRightOpen } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import RichContentView from "./RichContentView";
 import AnnexureList from "./AnnexureList";
@@ -11,6 +11,7 @@ import useSWR from "swr";
 import api, { fetcher } from "../../lib/api";
 import { toast } from "sonner";
 import { useConfirm } from "../../hooks/useConfirm";
+import useSidebarCollapsed from "../../hooks/useSidebarCollapsed";
 import { useAuth } from "../../hooks/useAuth";
 import { canEditAgenda, canEditSuppliAgenda, canArchiveAgenda } from "../../lib/meetingAccess";
 import { toBanglaDigits, getSerialWidth } from "../../lib/banglaNumerals";
@@ -248,6 +249,11 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     if (!cId || !cName || /^(uncategorized|un-categorized|অশ্রেণীভুক্ত|অশ্রেণিভুক্ত)$/i.test(cName)) return null;
     return cId;
   };
+  // A short preview of the agenda for the panel (about two lines).
+  const agendaSnippet = (a: any) => {
+    const t = plainText(a).replace(/\s+/g, ' ');
+    return t.length > 90 ? `${t.slice(0, 90)}…` : t || '—';
+  };
   const agendaSerialLabel = (a: any) => {
     const idx = regularAgendas.findIndex((x: any) => x.id === a.id);
     return isBibidhaAgenda(a)
@@ -255,22 +261,24 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
       : `প্রস্তাব নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (a.agenda_serial || idx + 1), serialWidth) : toBanglaDigits(a.agenda_serial || idx + 1, serialWidth))}`;
   };
 
-  // Write an order (list of ids) to the cache and the server. Only agendas whose
-  // serial actually changes are sent. Agendas not named in `ids` (added or
-  // restored meanwhile) keep their relative order at the end.
+  // Write an order (list of ids) to the cache and the server. Agendas not named in
+  // `ids` (added or restored meanwhile) keep their relative order at the end.
   const writeOrder = async (ids: string[]): Promise<boolean> => {
     const byId = new Map<string, any>(agendas.map((a: any) => [a.id, a]));
     const ordered = ids.filter(id => byId.has(id));
     const placed = new Set(ordered);
     const full = [...ordered.map(id => byId.get(id)), ...agendas.filter((a: any) => !placed.has(a.id))];
+    // The main agenda's বিবিধ item always ends up last (the server enforces it too).
+    if (!isSuppliView) {
+      const bi = full.findIndex((a: any) => isBibidhaAgenda(a));
+      if (bi >= 0 && bi !== full.length - 1) full.push(full.splice(bi, 1)[0]);
+    }
     const updated = full.map((a: any, idx: number) => ({ ...a, agenda_serial: idx + 1 }));
     mutate({ ...response, data: updated }, false);
     try {
-      await Promise.all(
-        updated
-          .filter((a: any) => byId.get(a.id).agenda_serial !== a.agenda_serial)
-          .map((a: any) => api.put(`/agendas/${a.id}`, { agenda_serial: a.agenda_serial }))
-      );
+      // One request for the whole order (one permission check, one transaction),
+      // instead of one request per agenda.
+      await api.put(`/agendas/meeting/${meeting.id}/order`, { ids: full.map((a: any) => a.id), is_suppli: isSuppliView });
       mutate();
       return true;
     } catch {
@@ -528,6 +536,9 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   // The list scrolls, so a long drag needs help: while dragging near its top or
   // bottom edge, scroll it (faster the closer to the edge).
   const listRef = useRef<HTMLDivElement>(null);
+
+  // The sequence panel can be hidden with an icon (remembered in this browser).
+  const [panelHidden, togglePanel] = useSidebarCollapsed('agendaSequencePanelHidden');
   const autoScrollWhileDragging = (e: React.DragEvent) => {
     const el = listRef.current;
     if (!el) return;
@@ -692,7 +703,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   return (
     <div className="flex items-start gap-8 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
       <ConfirmModal />
-      <div className="flex-1 w-[70%] max-w-4xl pb-32">
+      <div className={`flex-1 ${reorderSequence.length > 0 && !panelHidden ? 'w-[70%] max-w-4xl' : 'w-full max-w-5xl'} pb-32`}>
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">{title}</h2>
           {meeting.status === 'draft' && userCanArchive && (
@@ -996,13 +1007,26 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
       {/* Right Side Reorder Panel (also on the supplementary agenda tab). Everyone can
           use it to jump to an agenda; only editors can drag to reorder. */}
-      {reorderSequence.length > 0 && (
+      {reorderSequence.length > 0 && panelHidden && (
+        <div className="shrink-0 sticky top-8">
+          <button
+            type="button"
+            onClick={togglePanel}
+            title={readOnly ? 'Show the agenda list' : 'Show the reorder panel'}
+            className="p-2 rounded-lg border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50 shadow-sm cursor-pointer"
+          >
+            <PanelRightOpen className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+      {reorderSequence.length > 0 && !panelHidden && (
         <div className="w-[30%] shrink-0 sticky top-8">
           <div className="bg-sidebar/50 border border-border rounded-lg p-5 shadow-sm backdrop-blur-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">{readOnly ? 'Agenda Sequence' : 'Reorder Sequence'}{reordering && <span className="ml-2 normal-case tracking-normal text-xs text-primary animate-pulse">Saving…</span>}</h3>
+              <div className="flex items-center gap-1.5">
               {!readOnly && (
-                <div className="flex items-center gap-1.5">
+                <>
                   <button
                     type="button"
                     onClick={undoReorder}
@@ -1021,8 +1045,17 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                   >
                     {`Redo${future.length ? ` (${future.length})` : ''}`}
                   </button>
-                </div>
+                </>
               )}
+              <button
+                type="button"
+                onClick={togglePanel}
+                title="Hide this panel"
+                className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-muted cursor-pointer"
+              >
+                <PanelRightClose className="w-4 h-4" />
+              </button>
+              </div>
             </div>
 
             {/* Scrolls when the list is longer than the window. */}
@@ -1045,7 +1078,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       {/* Category Header */}
                       <div className="flex items-center gap-2 pb-1 border-b border-border/50 cursor-grab active:cursor-grabbing">
                         <GripVertical className="w-4 h-4 text-muted-foreground group-hover/category:text-primary transition-colors shrink-0" />
-                        <span className="font-semibold text-xs text-primary truncate flex-1" title={item.categoryName}>
+                        <span className="font-semibold text-[11px] text-primary truncate flex-1" title={item.categoryName}>
                           {item.categoryName}
                         </span>
                       </div>
@@ -1064,16 +1097,16 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                               onDrop={(e) => handleAgendaDrop(e, agenda.id)}
                               onDoubleClick={() => jumpToAgenda(agenda.id)}
                               title="Double-click to go to this agenda"
-                              className={`bg-card border border-border p-2.5 rounded-md flex items-center gap-2.5 transition-colors group shadow-2xs ${!readOnly ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
+                              className={`bg-card border border-border p-2 rounded-md flex items-center gap-2 transition-colors group shadow-2xs ${!readOnly ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
                             >
                               <GripVertical className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                              <span className="font-medium text-xs shrink-0">
+                              <span className="font-semibold text-[11px] shrink-0">
                                 {isAgendaBibidha
                                   ? `বিবিধ : ${bibidhaSerial}`
                                   : `প্রস্তাব নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1, serialWidth))}`}
                               </span>
-                              <span className="text-xs text-muted-foreground truncate flex-1 opacity-70">
-                                {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...
+                              <span className="text-[10px] leading-snug text-muted-foreground line-clamp-2 flex-1 opacity-80" title={plainText(agenda)}>
+                                {agendaSnippet(agenda)}
                               </span>
                               {renderMoveControls(agenda)}
                             </div>
@@ -1096,16 +1129,16 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       onDrop={(e) => handleAgendaDrop(e, agenda.id)}
                       onDoubleClick={() => jumpToAgenda(agenda.id)}
                       title="Double-click to go to this agenda"
-                      className={`bg-card border border-border p-3 rounded-lg flex items-center gap-2.5 transition-colors group shadow-2xs ${!readOnly ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
+                      className={`bg-card border border-border p-2 rounded-lg flex items-center gap-2 transition-colors group shadow-2xs ${!readOnly ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
                     >
                       <GripVertical className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                      <span className="font-medium text-xs shrink-0 text-foreground">
+                      <span className="font-semibold text-[11px] shrink-0 text-foreground">
                         {isAgendaBibidha
                           ? `বিবিধ : ${bibidhaSerial}`
                           : `প্রস্তাব নং ${(meeting.agenda_prefix || '') + (isSuppliView ? toBanglaDigits(mainAgendaCount + (agenda.agenda_serial || globalIdx + 1), serialWidth) : toBanglaDigits(agenda.agenda_serial || globalIdx + 1, serialWidth))}`}
                       </span>
-                      <span className="text-xs text-muted-foreground truncate flex-1 opacity-80">
-                        {agenda.content ? agenda.content.replace(/<[^>]*>?/gm, '').substring(0, 32) : '...'}...
+                      <span className="text-[10px] leading-snug text-muted-foreground line-clamp-2 flex-1 opacity-80" title={plainText(agenda)}>
+                        {agendaSnippet(agenda)}
                       </span>
                       {renderMoveControls(agenda)}
                     </div>

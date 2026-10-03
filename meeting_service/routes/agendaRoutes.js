@@ -1,6 +1,6 @@
 const express = require('express');
 const { authMiddleware } = require('../middlewares/authMiddleware');
-const { requireMeetingAuthor, requireMeetingOperator, requireResolutionEditor } = require('../middlewares/meetingWorkflowMiddleware');
+const { requireMeetingAuthor, requireMeetingOperator, requireResolutionEditor, requireAgendaOrderEditor } = require('../middlewares/meetingWorkflowMiddleware');
 const agendaController = require('../controllers/agendaController');
 const { auditLog } = require('../middlewares/auditMiddleware');
 const multer = require('multer');
@@ -30,6 +30,7 @@ router.put('/:id/copy-to-archive', requireResolutionEditor, agendaController.cop
 router.put('/:id/remove-from-archive', requireResolutionEditor, agendaController.removeFromArchive);
 router.post('/meeting/:meetingId/restore-archived', requireMeetingAuthor, agendaController.restoreArchivedAgendams);
 router.delete('/archived/:id', requireMeetingAuthor, agendaController.deleteArchivedAgendam);
+router.put('/meeting/:meetingId/order', requireAgendaOrderEditor, agendaController.reorderAgendas);
 router.post('/', requireMeetingAuthor, agendaController.createAgendam);
 router.put('/:id', requireMeetingAuthor, agendaController.updateAgendam);
 router.delete('/:id', requireMeetingAuthor, agendaController.deleteAgendam);

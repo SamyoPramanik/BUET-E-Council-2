@@ -5,6 +5,7 @@ const meetingFileSystem = require('../utils/meetingFileSystem');
 const crypto = require('crypto');
 const { indexAgendaContent, indexResolutionContent } = require('../utils/searchIndexer');
 const { toBanglaDigits, stripProposalPrefix, stripResolutionPrefix } = require('../utils/agendaSerial');
+const { computeAgendaOrder } = require('../utils/agendaOrder');
 const { embedTexts } = require('../utils/embeddingClient');
 const {
     MAX_CLARIFICATION_ROUNDS,
@@ -312,6 +313,64 @@ const updateAgendam = async (req, res, next) => {
         res.status(200).json({ success: true, message: 'Agendam updated', data: agendam });
 
         if (content !== undefined) indexAgendaContent(id, content).catch(() => { });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Save a whole new agenda order in ONE request / transaction (the agenda panel's
+// drag-and-drop, move/swap and undo/redo). Replaces sending one PUT per agenda,
+// each of which re-checked the "বিবিধ" item behind the same per-meeting lock.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const reorderAgendas = async (req, res, next) => {
+    try {
+        const { meetingId } = req.params;
+        const ids = req.body?.ids;
+        const isSuppli = req.body?.is_suppli === true || req.body?.is_suppli === 'true';
+        if (!UUID_RE.test(String(meetingId || ''))) return next(new CustomError('Invalid meeting id', 400));
+        if (!Array.isArray(ids) || ids.length === 0 || ids.length > 5000 || !ids.every((id) => typeof id === 'string' && UUID_RE.test(id))) {
+            return next(new CustomError('ids must be a non-empty list of agenda ids', 400));
+        }
+
+        const client = await db.pool.connect();
+        let finalIds;
+        try {
+            await client.query('BEGIN');
+            // Same lock ensureBibidhaAgenda takes, so the two never interleave.
+            await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`bibidha:${meetingId}`]);
+
+            const current = await client.query(
+                `SELECT id, content FROM agenda
+                 WHERE meeting_id = $1 AND is_suppli = $2 AND (is_archived = false OR is_archived IS NULL)
+                 ORDER BY agenda_serial ASC, created_at ASC`,
+                [meetingId, isSuppli]
+            );
+            const result = computeAgendaOrder(current.rows, ids, isSuppli);
+            if (result.error) {
+                await client.query('ROLLBACK');
+                return next(new CustomError(result.error, 400));
+            }
+            finalIds = result.ids;
+
+            await client.query(
+                `UPDATE agenda SET agenda_serial = t.ord::int
+                 FROM unnest($1::uuid[]) WITH ORDINALITY AS t(id, ord)
+                 WHERE agenda.id = t.id AND agenda.agenda_serial IS DISTINCT FROM t.ord::int`,
+                [finalIds]
+            );
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw err;
+        } finally {
+            client.release();
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Agenda order saved',
+            data: finalIds.map((id, i) => ({ id, agenda_serial: i + 1 }))
+        });
     } catch (error) {
         next(error);
     }
@@ -1381,6 +1440,7 @@ const deleteArchivedAgendam = async (req, res, next) => {
 
 module.exports = {
     getAgendams,
+    reorderAgendas,
     createAgendam,
     updateAgendam,
     deleteAgendam,

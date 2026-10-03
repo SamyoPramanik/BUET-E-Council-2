@@ -390,6 +390,30 @@ const requireMeetingOperator = async (req, res, next) => {
     }
 };
 
+// Re-ordering a whole agenda list in one request: the same permission a single
+// agenda edit needs (requireMeetingAuthor), but the target (main vs
+// supplementary) comes from the body, since the route has no agenda id.
+const requireAgendaOrderEditor = async (req, res, next) => {
+    try {
+        if (!req.user) return next(new CustomError('You are not logged in.', 401));
+        const meeting = await loadMeeting(req);
+        if (!meeting) return next(new CustomError('Meeting not found.', 404));
+
+        const access = calculateMeetingAccess(meeting, req.user);
+        const isSuppli = req.body?.is_suppli === true || req.body?.is_suppli === 'true';
+        if (isSuppli) {
+            if (!access.canEditSuppliAgenda) {
+                return next(new CustomError('Access denied. Supplementary agenda is locked for your level.', 403));
+            }
+        } else if (!access.canEditAgenda && !access.canEditMeeting) {
+            return next(new CustomError('Access denied. Meeting or agenda editing is restricted.', 403));
+        }
+        return next();
+    } catch (err) {
+        next(err);
+    }
+};
+
 // Email sending is a separate action from the workflow — authorized editors/admins
 // can send emails at any stage (as long as the meeting isn't completed and email is not locked).
 const requireEmailSender = async (req, res, next) => {
@@ -501,6 +525,7 @@ module.exports = {
     calculateMeetingAccess,
     requireMeetingAuthor,
     requireMeetingOperator,
+    requireAgendaOrderEditor,
     requireResolutionEditor,
     requireEmailSender,
     requireCompletedMeetingEmailSender,

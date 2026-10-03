@@ -3,10 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useParams, usePathname } from "next/navigation";
-import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers, History, Mail, ShieldCheck, PenTool, Archive } from "lucide-react";
+import { FileText, Users, FileCheck, Info, FileBarChart, LayoutList, Layers, History, Mail, ShieldCheck, PenTool, Archive, PanelLeftClose } from "lucide-react";
 import useSWR from "swr";
 import { fetcher } from "../../../../lib/api";
 import SidebarToggleButton from "../../../../components/SidebarToggleButton";
+import useSidebarCollapsed from "../../../../hooks/useSidebarCollapsed";
 import MeetingWorkflowBar from "../../../../components/meetings/MeetingWorkflowBar";
 import { useAuth } from "../../../../hooks/useAuth";
 
@@ -35,6 +36,8 @@ export default function MeetingWorkspaceLayout({
   const pathname = usePathname();
   const currentView = searchParams.get('view') || 'info';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Desktop: the meeting menu can be hidden with an icon (remembered per browser).
+  const [menuCollapsed, toggleMenuCollapsed] = useSidebarCollapsed('meetingSidebarCollapsed');
 
   // The PDF Preview route is its own full-bleed page — no meeting sidebar/chrome.
   const isFullBleed = pathname?.endsWith('/pdf-preview');
@@ -100,13 +103,22 @@ export default function MeetingWorkspaceLayout({
       {/* Left Sidebar Navigation specifically for Meeting Workspace */}
       <div
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-sidebar border-r border-sidebar-border flex-shrink-0 flex flex-col transform transition-transform duration-200 ease-in-out
-          md:static md:z-auto md:h-full md:translate-x-0
+          md:static md:z-auto md:h-full md:translate-x-0 ${menuCollapsed ? 'md:hidden' : ''}
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
-        <div className="p-4 border-b border-sidebar-border">
+        <div className="p-4 border-b border-sidebar-border flex items-center justify-between gap-2">
           <Link href="/workspace/meetings" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-2">
             ← Back to Meetings
           </Link>
+          <button
+            type="button"
+            onClick={toggleMenuCollapsed}
+            title="Hide menu"
+            aria-label="Hide menu"
+            className="hidden md:inline-flex p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-sidebar-accent cursor-pointer"
+          >
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
         </div>
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
           {navItems.map((item) => {
@@ -139,7 +151,7 @@ export default function MeetingWorkspaceLayout({
 
       {/* Main Workspace Area */}
       <main className="flex-1 bg-background overflow-y-auto p-4 sm:p-8 relative">
-        <SidebarToggleButton onClick={() => setSidebarOpen(true)} />
+        <SidebarToggleButton onClick={() => setSidebarOpen(true)} collapsed={menuCollapsed} onExpand={toggleMenuCollapsed} />
         {children}
       </main>
     </div>

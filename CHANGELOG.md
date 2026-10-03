@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-10-03 — Bundled Fonts, Document Font, pt Font Sizes, Bijoy English Fixes
+
+### Changes
+
+- **Heading sizes.** University heading **22pt** (was 20pt), subtitle **18pt** (was 19pt), in every PDF template and the PDF Preview page.
+- **Font size box works in pt (Word-style).** The editor's size box, dropdown (8–36), grow/shrink buttons and style presets now use `pt` and save `Npt`. `fontSizeToPt` reads pasted Word `pt` sizes and older `px` content as their real size (1pt = 4/3 px), so retyping the number shown no longer shrinks text. Heading/Title style presets became 20/15/13/24/14pt.
+- **Bundled fonts** (editor `@font-face` in `globals.css` + PDF embedding in `pdfGenerator.js`, files in `frontend/public/fonts/` and `meeting_service/utils/fonts/`): Nikosh, NikoshBAN, SolaimanLipi, Kalpurush, Noto Sans Bengali (regular + bold), Inter (regular + bold, Latin), Arial (4 styles), Times New Roman (regular; bold uses Liberation Serif Bold), Calibri (4 styles). The PDF embeds only the fonts a document names (`EXTRA_FONTS` / `injectExtraFonts`, applied in `renderPdf`).
+- **Meeting-wide document font (`docFont`).** New *Document font* box (editor Page Layout tab and PDF Preview page), saved in `meetings.page_layout.docFont`. It replaces SonarBangla for the "প্রস্তাব নং" label, serials, category header, university heading, subtitle and any text with no font of its own. Bangla-capable fonts only (`DOC_FONTS` in `utils/pageLayout.js`). Preview endpoint takes a `docFont` query param.
+- **English word list for Bijoy paste.** `frontend/lib/englishWords.ts` (9,229 common words, from the public google-10000-english list, with a guard for short "v" words that collide with Bijoy) is a fallback in `isEnglishWord`; English possessives (`committee's`, `students'`, `don't`) are kept.
+- **Template fallback font.** PDF templates' `'PrimaryFont'` stacks now fall back to `Arial` (embedded) instead of `'Kalpurush'`, matching the editor.
+- **Agenda tab sequence panel.** The right-hand "Reorder Sequence" box (main and supplementary agenda tabs, `AgendaView.tsx`) now scrolls when the list is longer than the window (height follows the viewport), and **double-clicking** an agenda in it scrolls to that agenda's card and highlights it. It is also shown to users who can't edit (as "Agenda Sequence", for jumping only; drag and drop stay editor-only, and the drop handlers are guarded). **Drag-and-drop reorders can be undone** (button in the panel header + Undo on the toast, up to 20 steps, original serials restored exactly).
+- `PDF_TEMPLATE_VERSION` v75 → **v85**.
+
+### Bug Fixes
+
+- **Nikosh / NikoshBAN never rendered** (editor or PDF): Chromium rejected both files (`OTS parsing error: name: Failed to write nameRecord`, ~35 KB of license text overflowing the `name` table). The two oversized name records (IDs 10, 13) were cut to their first license line.
+- **`Kalpurush.ttf` in the repo was actually Siyam Rupali.** Replaced with the real Kalpurush.
+- **English in Times New Roman broke inside Bijoy text.** Word puts the Bijoy font in `mso-bidi-font-family` on nearly every run, and `inheritedFontIsBijoy` fell back to letter-guessing for those runs (Transcript, Grant, Supervisor, PDF, Ph.D. converted to gibberish). Plain-letter runs in a Latin font are now English outright.
+- **Pasted `14pt` text showed "14" and shrank when 14 was retyped** (see the pt change above).
+
+### Known behaviour / not checked
+
+- A Bijoy fragment typed in a Times New Roman run is no longer converted (deliberate).
+- Still broken when there is no font label (plain-text paste, or English typed in SutonnyMJ): dotted abbreviations (`Ph.D.`, `M.Sc.`, `B.Sc.`) and mixed-case words like `WiFi`.
+- Inter, Arial, Times New Roman and Calibri have no Bangla glyphs; Bangla in them falls back to the system font.
+- The Arial / Times New Roman / Calibri files are Microsoft/Monotype fonts and Nikosh is CC BY-NC-ND 3.0; redistribution from a public repo needs a license.
+- Verified with test renders (`pdffonts`), type-check and unit tests only. Not viewed in a browser or a full meeting PDF.
+
+---
 ## 2026-09-30 — PDF Heading Sizes, Category Header, Bijoy English, Skeleton Loading
 
 ### Changes

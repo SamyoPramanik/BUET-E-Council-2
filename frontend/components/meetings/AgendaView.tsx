@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree, Layers, Archive, Loader2 } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
 import RichContentView from "./RichContentView";
@@ -230,11 +230,68 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     return sequence;
   })();
 
+  // Undo history for drag-and-drop re-serialising: each entry is the order and
+  // serials the list had before one reorder (newest last).
+  const [undoStack, setUndoStack] = useState<{ id: string; agenda_serial: number }[][]>([]);
+  const [undoing, setUndoing] = useState(false);
+
+  // Put the list back to a saved order: the original serials are written back as
+  // they were (not renumbered), and agendas deleted since are skipped.
+  const restoreSnapshot = async (snapshot: { id: string; agenda_serial: number }[]) => {
+    const byId = new Map<string, any>(agendas.map((a: any) => [a.id, a]));
+    const kept = snapshot.filter(s => byId.has(s.id));
+    const keptIds = new Set(kept.map(s => s.id));
+    const restored = [
+      ...kept.map(s => ({ ...byId.get(s.id), agenda_serial: s.agenda_serial })),
+      ...agendas.filter((a: any) => !keptIds.has(a.id)),
+    ];
+    mutate({ ...response, data: restored }, false);
+    try {
+      await Promise.all(
+        kept
+          .filter(s => byId.get(s.id).agenda_serial !== s.agenda_serial)
+          .map(s => api.put(`/agendas/${s.id}`, { agenda_serial: s.agenda_serial }))
+      );
+      mutate();
+    } catch (err) {
+      toast.error("Failed to undo the reorder");
+      mutate();
+      throw err;
+    }
+  };
+
+  const undoReorder = async () => {
+    if (readOnly || undoing || undoStack.length === 0) return;
+    const snapshot = undoStack[undoStack.length - 1];
+    setUndoing(true);
+    try {
+      await restoreSnapshot(snapshot);
+      setUndoStack(prev => prev.slice(0, -1));
+      toast.success("Reorder undone");
+    } catch {
+      // restoreSnapshot already reported the failure; keep the entry to retry.
+    } finally {
+      setUndoing(false);
+    }
+  };
+
+  // The toast's Undo button outlives the render that created it, so it must call
+  // the latest undoReorder (current agendas / history), not a stale copy.
+  const undoRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    undoRef.current = () => { void undoReorder(); };
+  });
+
   const applyReorderedAgendas = async (newAgendas: any[]) => {
+    if (readOnly) return;
     const updatedAgendas = newAgendas.map((a: any, idx: number) => ({
       ...a,
       agenda_serial: idx + 1
     }));
+
+    // Remember how it was, so this reorder can be undone.
+    const snapshot = regularAgendas.map((a: any) => ({ id: a.id, agenda_serial: a.agenda_serial }));
+    const changed = newAgendas.some((a: any, i: number) => a.id !== regularAgendas[i]?.id);
 
     mutate({ ...response, data: updatedAgendas }, false);
 
@@ -245,11 +302,28 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
         )
       );
       mutate();
-      toast.success("Sequence reordered");
+      if (changed) {
+        setUndoStack(prev => [...prev.slice(-19), snapshot]);
+        toast.success("Sequence reordered", {
+          action: { label: "Undo", onClick: () => undoRef.current() },
+        });
+      } else {
+        toast.success("Sequence reordered");
+      }
     } catch (err) {
       toast.error("Failed to reorder sequence");
       mutate();
     }
+  };
+
+  // Double-clicking an item in the right panel scrolls to that agenda's card and
+  // briefly highlights it.
+  const jumpToAgenda = (agendaId: string) => {
+    const el = document.getElementById(`agenda-card-${agendaId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('ring-2', 'ring-primary');
+    window.setTimeout(() => el.classList.remove('ring-2', 'ring-primary'), 1600);
   };
 
   // Agenda Drag & Drop inside Right Panel
@@ -261,6 +335,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
   const handleAgendaDrop = async (e: React.DragEvent, targetAgendaId: string) => {
     e.preventDefault();
+    if (readOnly) return;
     e.stopPropagation();
 
     const dragType = e.dataTransfer.getData("type");
@@ -335,6 +410,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
 
   const handleSequenceDropOnBlock = async (e: React.DragEvent, targetSeqKey: string) => {
     e.preventDefault();
+    if (readOnly) return;
     e.stopPropagation();
 
     const dragType = e.dataTransfer.getData("type");
@@ -488,7 +564,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
   return (
     <div className="flex items-start gap-8 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
       <ConfirmModal />
-      <div className={`flex-1 ${!readOnly ? 'w-[70%] max-w-4xl' : 'w-full max-w-5xl'} pb-32`}>
+      <div className="flex-1 w-[70%] max-w-4xl pb-32">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">{title}</h2>
           {meeting.status === 'draft' && userCanArchive && (
@@ -617,7 +693,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                     </div>
                   )}
                   {/* Agenda Card */}
-                  <div className={`bg-card border ${isBibidha ? 'border-border/80 bg-muted/20' : 'border-border'} p-6 rounded-lg relative group shadow-sm hover:shadow-md transition-shadow`}>
+                  <div id={`agenda-card-${agenda.id}`} className={`bg-card border ${isBibidha ? 'border-border/80 bg-muted/20' : 'border-border'} p-6 rounded-lg relative group shadow-sm hover:shadow-md transition-all scroll-mt-24`}>
                     <div className="flex justify-between items-start mb-3">
                       <div className="space-y-1">
                         <h3 className="font-semibold text-lg text-primary flex items-center gap-2 flex-wrap">
@@ -790,13 +866,28 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
         )}
       </div>
 
-      {/* Right Side Reorder Panel */}
-      {!readOnly && (
+      {/* Right Side Reorder Panel (also on the supplementary agenda tab). Everyone can
+          use it to jump to an agenda; only editors can drag to reorder. */}
+      {reorderSequence.length > 0 && (
         <div className="w-[30%] shrink-0 sticky top-8">
           <div className="bg-sidebar/50 border border-border rounded-lg p-5 shadow-sm backdrop-blur-sm">
-            <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground mb-4">Reorder Sequence</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">{readOnly ? 'Agenda Sequence' : 'Reorder Sequence'}</h3>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={undoReorder}
+                  disabled={undoStack.length === 0 || undoing}
+                  title={undoStack.length ? `Undo the last drag-and-drop (${undoStack.length} step${undoStack.length > 1 ? 's' : ''} available)` : 'Nothing to undo'}
+                  className="px-2.5 py-1 rounded-md border border-border bg-background text-xs font-semibold text-foreground hover:border-primary/50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {undoing ? 'Undoing…' : `Undo${undoStack.length ? ` (${undoStack.length})` : ''}`}
+                </button>
+              )}
+            </div>
 
-            <div className="space-y-4">
+            {/* Scrolls when the list is longer than the window. */}
+            <div className="space-y-4 max-h-[calc(100vh-15rem)] overflow-y-auto pr-1">
               {reorderSequence.map((item) => {
                 if (item.type === 'category') {
                   return (
@@ -828,6 +919,8 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                               onDragStart={(e) => handleAgendaDragStart(e, agenda.id)}
                               onDragOver={handleDragOver}
                               onDrop={(e) => handleAgendaDrop(e, agenda.id)}
+                              onDoubleClick={() => jumpToAgenda(agenda.id)}
+                              title="Double-click to go to this agenda"
                               className={`bg-card border border-border p-2.5 rounded-md flex items-center gap-2.5 transition-colors group shadow-2xs ${!readOnly ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
                             >
                               <GripVertical className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
@@ -857,6 +950,8 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
                       onDragStart={(e) => handleAgendaDragStart(e, agenda.id)}
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleAgendaDrop(e, agenda.id)}
+                      onDoubleClick={() => jumpToAgenda(agenda.id)}
+                      title="Double-click to go to this agenda"
                       className={`bg-card border border-border p-3 rounded-lg flex items-center gap-2.5 transition-colors group shadow-2xs ${!readOnly ? 'cursor-grab hover:border-primary/50 active:cursor-grabbing' : ''}`}
                     >
                       <GripVertical className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
@@ -883,7 +978,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
             </div>
 
             <p className="text-xs text-muted-foreground mt-6 text-center italic">
-              Drag agendas within a category to reorder, or drag uncategorized agendas/category blocks to adjust the sequence.
+              {readOnly ? 'Double-click an agenda to go to it.' : 'Drag to reorder (within a category, or uncategorized agendas / category blocks). Double-click an agenda to go to it.'}
             </p>
           </div>
         </div>

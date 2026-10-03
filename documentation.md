@@ -1217,6 +1217,14 @@ Implementation: [`frontend/components/meetings/ArchivedAgendaView.tsx`](frontend
 
 A dedicated workspace view for browsing agenda snapshots that were archived off the live agenda list, with restore and delete actions inline — the same operations previously reachable only through `ArchivedAgendasModal`.
 
+### 5.12 Agenda Sequence Panel
+
+Implementation: [`frontend/components/meetings/AgendaView.tsx`](frontend/components/meetings/AgendaView.tsx) (shared by the `agenda` and `suppli-agenda` tabs).
+
+The right-hand panel lists every agenda (grouped by category block) so editors can drag to re-serialise. Its list scrolls (`max-h-[calc(100vh-15rem)]`, so it follows the window height), and **double-clicking** an item calls `jumpToAgenda`, which scrolls to the matching `#agenda-card-<id>` card and flashes a ring on it. Users without edit rights see the same panel as a read-only "Agenda Sequence" (jump only); `applyReorderedAgendas`, `handleAgendaDrop` and `handleSequenceDropOnBlock` return early when `readOnly`. The immediate-meeting supplementary tab keeps its "no supplementary agendas" message.
+
+**Undo:** every reorder (single agenda or whole category block, all through `applyReorderedAgendas`) first saves the previous order and serials on an undo stack (last 20). The panel's **Undo (n)** button and the "Sequence reordered" toast's *Undo* action call `undoReorder`, which writes the saved serials back exactly (`restoreSnapshot` — not renumbered; agendas deleted in the meantime are skipped). The toast reaches the latest `undoReorder` through `undoRef`, because its closure outlives the render that created it. History is per tab session and is not persisted.
+
 ## 6. Development, Maintenance & Troubleshooting
 
 ### 6.1 Running via Docker Compose

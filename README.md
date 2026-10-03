@@ -73,7 +73,9 @@
 
 ### 📄 PDF Document Export & Bangla Typography
 - **Puppeteer PDF Engine**: High-performance headless browser PDF generation with connection pooling.
-- **Embedded Bangla Fonts**: Built-in Base64 embedding of `SonarBangla.ttf` and `Kalpurush.ttf` ensuring consistent, pixel-perfect Bangla rendering without external font dependency.
+- **Embedded Fonts**: `SonarBangla.ttf` is the default Bangla font; Nikosh, NikoshBAN, SolaimanLipi, Kalpurush, Noto Sans Bengali, Inter, Arial, Times New Roman and Calibri are bundled too and embedded in a PDF only when a document uses them, so what you pick in the editor prints.
+- **Meeting-wide Document Font**: one Bangla font per meeting for the "প্রস্তাব নং" label, serials and headings (Page Layout tab / PDF Preview page).
+- **Bijoy Paste Conversion**: pasted SutonnyMJ text becomes Unicode; English words (by font label, word list and rules) are left intact.
 - **Export Formats**: PDF downloads for Agenda Documents, Official Resolutions, and Resolution Execution Status reports.
 - **Interactive PDF Preview**: A live preview page with page size / orientation / margin / scale / line-height controls (validated and clamped server-side, cached per-layout) plus in-place cell editing of agenda, resolution, description, and conclusion text.
 - **Markdown Tables**: Pipe-style Markdown tables in agenda/resolution bodies are converted to bordered HTML tables in the rendered document, tolerant of entity-encoded pipes and autocorrected dash separators.

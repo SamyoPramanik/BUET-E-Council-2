@@ -33,7 +33,7 @@ const FONT_BASE64 = getFontBase64();
 // Optional Bangla fonts the editor's font dropdown offers. Embedded under
 // their own family names so text set in them prints in them.
 const getExtraFontFaces = () => {
-    return ['Nikosh', 'NikoshBAN'].map((family) => {
+    return ['Nikosh', 'NikoshBAN', 'SolaimanLipi', 'Kalpurush'].map((family) => {
         const fontPath = path.join(__dirname, 'fonts', `${family}.ttf`);
         if (!fs.existsSync(fontPath)) return '';
         const b64 = fs.readFileSync(fontPath).toString('base64');
@@ -615,7 +615,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v78';
+const PDF_TEMPLATE_VERSION = 'v80';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 

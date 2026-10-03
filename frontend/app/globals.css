@@ -682,6 +682,16 @@ textarea:focus {
   src: url('/fonts/NikoshBAN.ttf') format('truetype');
   font-display: swap;
 }
+@font-face {
+  font-family: 'SolaimanLipi';
+  src: url('/fonts/SolaimanLipi.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Kalpurush';
+  src: url('/fonts/Kalpurush.ttf') format('truetype');
+  font-display: swap;
+}
 
 /* Tiptap ProseMirror Dynamic Editor Focus & Container Styles */
 .ProseMirror,

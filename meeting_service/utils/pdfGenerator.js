@@ -603,7 +603,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v75';
+const PDF_TEMPLATE_VERSION = 'v77';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -1017,8 +1017,8 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                     padding: 0;
                 }
                 .text-center { text-align: center; }
-                .header-title { font-size: 20pt; margin-bottom: 10px; }
-                .sub-title { font-size: 19pt; text-decoration: underline; margin-bottom: 20px; }
+                .header-title { font-size: 22pt; margin-bottom: 10px; }
+                .sub-title { font-size: 18pt; text-decoration: underline; margin-bottom: 20px; }
                 .description { font-size: 14px; text-align: left; margin-bottom: 30px; }
                 .presentees-header { font-size: 14px; text-decoration: underline; margin-bottom: 15px; }
                 .columns-container {
@@ -1153,14 +1153,14 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
         </head>
         <body>
             ${cacheVariant === 'suppli-agenda' ? `
-            <div class="text-center header-title" style="text-align: center; font-size: 20pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 19pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel}<br/>${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 22pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel}<br/>${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।</div>
             ` : (isImmediate ? `
-            <div class="text-center header-title" style="text-align: center; font-size: 20pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 19pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${dateShort} তারিখে অনুষ্ঠিতব্য ${councilLabel}<br/>${formattedSerial}তম জরুরী (Immediate) সভার ${docLabel}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 22pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${dateShort} তারিখে অনুষ্ঠিতব্য ${councilLabel}<br/>${formattedSerial}তম জরুরী (Immediate) সভার ${docLabel}</div>
             ` : `
-            <div class="text-center header-title" style="text-align: center; font-size: 20pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 19pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel.replace(/^(.*?(?:সিন্ডিকেটের|কাউন্সিলের))\s+/, '$1<br/>')} ${docLabel}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 22pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel.replace(/^(.*?(?:সিন্ডিকেটের|কাউন্সিলের))\s+/, '$1<br/>')} ${docLabel}</div>
             `)}
 
             ${cacheVariant === 'resolution-status' ? '' : (isResolution ? `
@@ -1897,8 +1897,8 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
                     padding: 0;
                 }
                 .text-center { text-align: center; }
-                .header-title { font-size: 20pt; margin-bottom: 10px; font-weight: bold; }
-                .sub-title { font-size: 19pt; margin-bottom: 20px; }
+                .header-title { font-size: 22pt; margin-bottom: 10px; font-weight: bold; }
+                .sub-title { font-size: 18pt; margin-bottom: 20px; }
                 
                 .section-title {
                     font-size: 16px;
@@ -1922,8 +1922,8 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
             </style>
         </head>
         <body>
-            <div class="text-center header-title" style="text-align: center; font-size: 20pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
-            <div class="text-center sub-title" style="text-align: center; font-size: 19pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${attendanceSubTitle}</div>
+            <div class="text-center header-title" style="text-align: center; font-size: 22pt; font-weight: bold; margin-bottom: 10px;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+            <div class="text-center sub-title" style="text-align: center; font-size: 18pt; font-weight: bold; text-decoration: underline; margin-bottom: 20px;">${attendanceSubTitle}</div>
             ${sections}
         </body>
         </html>
@@ -2088,7 +2088,7 @@ const generateNoticePdf = async (notice, presentees) => {
                 padding: 40px 50px;
             }
             .header-title {
-                font-size: 20pt;
+                font-size: 22pt;
                 font-weight: bold;
                 text-align: center;
                 margin-bottom: 30px;

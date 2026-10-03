@@ -510,10 +510,10 @@ A non-default layout is hashed into its own PDF cache key (`<type>--l<sha1>`) an
 
 #### Heading Sizes, Subtitle & Category Header
 
-- Sizes are in **points** (Word-style), not px: university heading `.header-title` 20pt, meeting subtitle `.sub-title` 19pt, category header 14pt, "প্রস্তাব নং" title / inline label / inline serial 14pt. The PDF Preview page and the editor's `.hanging-label` / `.hanging-prefix` use the same values.
+- Sizes are in **points** (Word-style), not px: university heading `.header-title` 22pt, meeting subtitle `.sub-title` 18pt, category header 14pt, "প্রস্তাব নং" title / inline label / inline serial 14pt. The PDF Preview page and the editor's `.hanging-label` / `.hanging-prefix` use the same values.
 - The subtitle breaks after the council name (`<br/>` in the PDF, `\n` + `whitespace-pre-line` in the preview).
 - The category header is `'<letter>' গ্রুপ প্রস্তাব নং <first> হতে <last> পর্যন্ত (<category>)`; a one-proposal group ends with `:` instead of "পর্যন্ত". Brackets already present in `category_name` are stripped before the single pair is added. Built in three places: `pdfGenerator.js`, `AgendaView.tsx`, `ResolutionView.tsx`.
-- **Cache:** generated PDFs are cached under `PDF_TEMPLATE_VERSION` (currently `v75`). Bump it whenever a template's appearance changes, or old PDFs keep being served.
+- **Cache:** generated PDFs are cached under `PDF_TEMPLATE_VERSION` (currently `v77`). Bump it whenever a template's appearance changes, or old PDFs keep being served.
 
 #### Notice PDF Features
 

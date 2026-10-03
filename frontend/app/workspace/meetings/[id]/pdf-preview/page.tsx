@@ -880,9 +880,9 @@ export default function PdfPreviewPage() {
             {/* Document title block — computed identically to the generated PDF. */}
             <div className="text-center font-bold mb-5 leading-snug">
               {heading.university && (
-                <div className="text-[20pt] mb-2.5">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
+                <div className="text-[22pt] mb-2.5">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</div>
               )}
-              <div className="underline text-[19pt] whitespace-pre-line">{heading.subtitle}</div>
+              <div className="underline text-[18pt] whitespace-pre-line">{heading.subtitle}</div>
             </div>
 
             {docType === "resolution" ? (

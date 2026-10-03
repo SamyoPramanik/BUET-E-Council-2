@@ -84,9 +84,14 @@ test('English run in Times New Roman is not Bijoy, even with a Bijoy bidi font',
   assert.equal(inheritedFontIsBijoy(tnr, 'special case'), false);
   assert.equal(inheritedFontIsBijoy(fakeEl('font-family:Calibri'), 'held on'), false);
 });
-test('a Bijoy fragment in a Times New Roman + Bijoy-bidi run still converts', () => {
+test('every English word in a Times New Roman + Bijoy-bidi run stays English', () => {
   const tnr = fakeEl('font-family:"Times New Roman",serif;mso-bidi-font-family:SutonnyMJ');
-  assert.equal(inheritedFontIsBijoy(tnr, 'Zvi'), true);
+  for (const w of ['Transcript', 'Grant', 'Supervisor', 'Leave', 'Study', 'Fee', 'PDF', 'Ph.D.', 'M.Sc.', 'WiFi']) {
+    assert.equal(inheritedFontIsBijoy(tnr, w), false, w);
+  }
+});
+test('the ascii font slot alone also marks a run as English', () => {
+  assert.equal(inheritedFontIsBijoy(fakeEl('mso-ascii-font-family:"Times New Roman";mso-bidi-font-family:SutonnyMJ'), 'Transcript'), false);
 });
 test('a run set in SutonnyMJ is Bijoy', () => {
   assert.equal(inheritedFontIsBijoy(fakeEl('font-family:SutonnyMJ'), 'Zvi'), true);

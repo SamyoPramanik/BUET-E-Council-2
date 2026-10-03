@@ -88,20 +88,17 @@ export function inheritedFontIsBijoy(el: Element | null, text: string): boolean 
     }
     const style = cur.getAttribute?.("style") || "";
     // Plain ASCII text is drawn with the run's own (ascii) font; the
-    // complex-script slot only applies to text with non-ASCII bytes. So an
-    // English word set in "Times New Roman" (or Calibri, Arial...) is English
-    // whatever its bidi slot says. Only when the run is Times New Roman with a
-    // Bijoy bidi slot AND the text doesn't read as English (a Bijoy fragment
-    // like "Zvi") do we fall through to the bidi check below.
+    // complex-script slot only applies to text with non-ASCII bytes. Word sets
+    // `mso-bidi-font-family` to the Bijoy font on nearly every run of a Bijoy
+    // document, English runs included, so a run whose own font is a Latin font
+    // (Times New Roman, Calibri, Arial...) is English whatever its bidi slot
+    // says. Guessing from the letters here broke real English words
+    // ("Transcript", "Grant", "PDF", "Ph.D.").
     if (!hasNonAscii) {
       const plain = grabStyleProp(style, "font-family") || grabStyleProp(style, "mso-ascii-font-family");
       if (plain) {
         if (fontIsBijoyName(plain)) return true;
-        if (fontIsUnicodeBanglaName(plain)) return false;
-        const bidi = grabStyleProp(style, "mso-bidi-font-family");
-        if (!(bidi && fontIsBijoyName(bidi))) return false;
-        const words = text.match(/[A-Za-z]+/g) || [];
-        if (words.length && words.every(isEnglishWord)) return false;
+        return false;
       }
     }
     const props = hasNonAscii

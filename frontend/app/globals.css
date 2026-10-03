@@ -693,8 +693,7 @@ textarea:focus {
   font-display: swap;
 }
 
-/* Inter, Noto Sans Bengali, Arial and Times New Roman are bundled files; bold Times
-   uses Liberation Serif Bold (metric-compatible), and Calibri is bundled too, so
+/* Inter, Noto Sans Bengali, Arial, Times New Roman and Calibri are bundled files, so
    the editor and the PDF draw the same glyphs and wrap identically. */
 @font-face {
   font-family: 'Inter';
@@ -755,7 +754,7 @@ textarea:focus {
 @font-face {
   font-family: 'Times New Roman';
   font-weight: 700;
-  src: url('/fonts/LiberationSerif-Bold.ttf') format('truetype');
+  src: url('/fonts/TimesNewRoman-Bold.ttf') format('truetype');
   font-display: swap;
 }
 @font-face {

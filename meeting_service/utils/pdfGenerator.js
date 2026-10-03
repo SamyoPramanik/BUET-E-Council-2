@@ -32,8 +32,7 @@ const FONT_BASE64 = getFontBase64();
 
 // Fonts the editor's font dropdown offers. Each is embedded under the family
 // name the editor writes into the text, so what you pick is what prints.
-// Arial, Times New Roman and Calibri are the supplied font files; bold Times
-// uses Liberation Serif Bold (metric-compatible, no real bold file was supplied).
+// Arial, Times New Roman and Calibri are the supplied font files.
 const EXTRA_FONTS = [
     { family: 'Nikosh', file: 'Nikosh.ttf' },
     { family: 'NikoshBAN', file: 'NikoshBAN.ttf' },
@@ -48,7 +47,7 @@ const EXTRA_FONTS = [
     { family: 'Arial', file: 'Arial-Italic.ttf', weight: 400, style: 'italic' },
     { family: 'Arial', file: 'Arial-BoldItalic.ttf', weight: 700, style: 'italic' },
     { family: 'Times New Roman', file: 'TimesNewRoman-Regular.ttf', weight: 400 },
-    { family: 'Times New Roman', file: 'LiberationSerif-Bold.ttf', weight: 700 },
+    { family: 'Times New Roman', file: 'TimesNewRoman-Bold.ttf', weight: 700 },
     { family: 'Calibri', file: 'Calibri-Regular.ttf', weight: 400 },
     { family: 'Calibri', file: 'Calibri-Bold.ttf', weight: 700 },
     { family: 'Calibri', file: 'Calibri-Italic.ttf', weight: 400, style: 'italic' },
@@ -685,7 +684,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v85';
+const PDF_TEMPLATE_VERSION = 'v86';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 

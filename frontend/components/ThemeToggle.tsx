@@ -149,13 +149,13 @@ export default function ThemeToggle() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-card hover:bg-muted transition-all border border-border text-foreground shadow-xs cursor-pointer"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/15 hover:bg-white/25 transition-all border border-white/30 text-white shadow-xs cursor-pointer"
         aria-label="Select theme"
         title="Choose Application Theme"
       >
-        <span className={`w-3.5 h-3.5 rounded-full ${activeTheme.bgClass} shadow-xs ring-2 ring-background`} />
+        <span className={`w-3.5 h-3.5 rounded-full ${activeTheme.bgClass} shadow-xs ring-2 ring-white/70`} />
         <span className="text-xs font-semibold hidden sm:inline">{activeTheme.name}</span>
-        <Palette className="w-4 h-4 text-muted-foreground" />
+        <Palette className="w-4 h-4 text-white/80" />
       </button>
 
       {isOpen && (

@@ -7,7 +7,7 @@ export default function WorkspaceLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
+    <div className="h-screen flex flex-col bg-page overflow-hidden">
       <Header />
       <WorkspaceLayoutWrapper>
         {children}

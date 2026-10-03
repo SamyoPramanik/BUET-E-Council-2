@@ -23,7 +23,7 @@ export default function RootPage() {
   }, [user, isLoading, router]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="min-h-screen flex items-center justify-center bg-page">
       <div className="text-muted-foreground text-sm font-medium animate-pulse">
         Loading...
       </div>

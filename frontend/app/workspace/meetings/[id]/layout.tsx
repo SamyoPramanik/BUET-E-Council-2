@@ -150,7 +150,7 @@ export default function MeetingWorkspaceLayout({
       </div>
 
       {/* Main Workspace Area */}
-      <main className="flex-1 bg-background overflow-y-auto p-4 sm:p-8 relative">
+      <main className="flex-1 bg-page overflow-y-auto p-4 sm:p-8 relative">
         <SidebarToggleButton onClick={() => setSidebarOpen(true)} collapsed={menuCollapsed} onExpand={toggleMenuCollapsed} />
         {children}
       </main>

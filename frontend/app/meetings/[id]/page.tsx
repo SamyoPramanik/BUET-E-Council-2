@@ -154,7 +154,7 @@ function PublicMeetingContent() {
   const { data: presenteesRes } = useSWR(isPast ? `/meetings/${meetingId}/presentees` : null, fetcher);
 
   if (meetingError) return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-page">
       <Header />
       <div className="p-8 text-destructive font-medium mx-auto max-w-7xl">
         {meetingError.response?.status === 404 || meetingError.status === 404 || meetingError.response?.data?.message === 'Meeting not found'
@@ -165,7 +165,7 @@ function PublicMeetingContent() {
   );
 
   if (!meetingRes) return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-page">
       <Header />
       <MeetingSkeleton />
     </div>
@@ -268,7 +268,7 @@ function PublicMeetingContent() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-page">
       <Header />
 
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">

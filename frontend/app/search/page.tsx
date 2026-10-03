@@ -207,7 +207,7 @@ function SearchPageInner() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-page">
       <Header hideSearch />
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-6">
         <form

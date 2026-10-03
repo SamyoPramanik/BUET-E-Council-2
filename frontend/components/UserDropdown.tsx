@@ -42,9 +42,9 @@ export default function UserDropdown() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/20 hover:bg-primary/30 transition-colors border border-primary/30 focus:outline-none focus:ring-2 focus:ring-ring"
+        className="flex items-center justify-center w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 transition-colors border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50"
       >
-        <User className="w-5 h-5 text-primary" />
+        <User className="w-5 h-5 text-white" />
       </button>
 
       {isOpen && user && (

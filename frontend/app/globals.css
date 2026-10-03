@@ -83,6 +83,12 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  /* Page canvas (tinted with the theme colour) and the deep top bar. Cards and the
+     editor boxes keep --background / --card so they stay neutral on the tint. */
+  --color-page: var(--page-background);
+  --color-topbar: var(--topbar-background);
+  --color-topbar-foreground: var(--topbar-foreground);
+
   --color-sidebar: var(--sidebar-background);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -603,8 +609,20 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Derived from each theme's own --primary, so every theme gets a matching deep top bar
+   and a softly tinted page. (Resolved on <html>, where the theme class sets --primary.) */
+:root {
+  --topbar-background: color-mix(in srgb, var(--primary) 70%, black);
+  --topbar-foreground: #ffffff;
+  --page-background: color-mix(in srgb, var(--primary) 9%, var(--background));
+}
+.dark {
+  --topbar-background: color-mix(in srgb, var(--primary) 40%, black);
+  --page-background: color-mix(in srgb, var(--primary) 7%, var(--background));
+}
+
 body {
-  background-color: var(--background);
+  background-color: var(--page-background);
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;

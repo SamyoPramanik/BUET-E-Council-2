@@ -693,6 +693,84 @@ textarea:focus {
   font-display: swap;
 }
 
+/* Inter, Noto Sans Bengali, Arial and Times New Roman are bundled files; bold Times
+   uses Liberation Serif Bold and Calibri uses Carlito (both metric-compatible), so
+   the editor and the PDF draw the same glyphs and wrap identically. */
+@font-face {
+  font-family: 'Inter';
+  font-weight: 400;
+  src: url('/fonts/Inter-400.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 700;
+  src: url('/fonts/Inter-700.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Noto Sans Bengali';
+  font-weight: 400;
+  src: url('/fonts/NotoSansBengali-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Noto Sans Bengali';
+  font-weight: 700;
+  src: url('/fonts/NotoSansBengali-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Arial';
+  font-weight: 400;
+  src: url('/fonts/Arial-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Arial';
+  font-weight: 700;
+  src: url('/fonts/Arial-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Arial';
+  font-weight: 400;
+  font-style: italic;
+  src: url('/fonts/Arial-Italic.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Arial';
+  font-weight: 700;
+  font-style: italic;
+  src: url('/fonts/Arial-BoldItalic.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Times New Roman';
+  font-weight: 400;
+  src: url('/fonts/TimesNewRoman-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Times New Roman';
+  font-weight: 700;
+  src: url('/fonts/LiberationSerif-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Calibri';
+  font-weight: 400;
+  src: url('/fonts/Carlito-400.woff2') format('woff2');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Calibri';
+  font-weight: 700;
+  src: url('/fonts/Carlito-700.woff2') format('woff2');
+  font-display: swap;
+}
+
 /* Tiptap ProseMirror Dynamic Editor Focus & Container Styles */
 .ProseMirror,
 .rich-content {

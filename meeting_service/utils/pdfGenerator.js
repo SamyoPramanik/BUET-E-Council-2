@@ -30,17 +30,56 @@ const getFontBase64 = () => {
 // Read and encode the Bangla font once at startup, then reuse for every request.
 const FONT_BASE64 = getFontBase64();
 
-// Optional Bangla fonts the editor's font dropdown offers. Embedded under
-// their own family names so text set in them prints in them.
-const getExtraFontFaces = () => {
-    return ['Nikosh', 'NikoshBAN', 'SolaimanLipi', 'Kalpurush'].map((family) => {
-        const fontPath = path.join(__dirname, 'fonts', `${family}.ttf`);
-        if (!fs.existsSync(fontPath)) return '';
-        const b64 = fs.readFileSync(fontPath).toString('base64');
-        return `@font-face { font-family: '${family}'; src: url(data:font/ttf;base64,${b64}) format('truetype'); }`;
-    }).join('\n');
+// Fonts the editor's font dropdown offers. Each is embedded under the family
+// name the editor writes into the text, so what you pick is what prints.
+// Arial and Times New Roman are the supplied font files; bold Times uses
+// Liberation Serif Bold (metric-compatible, no real bold file was supplied) and
+// Calibri is stood in for by the metric-compatible open font Carlito.
+const EXTRA_FONTS = [
+    { family: 'Nikosh', file: 'Nikosh.ttf' },
+    { family: 'NikoshBAN', file: 'NikoshBAN.ttf' },
+    { family: 'SolaimanLipi', file: 'SolaimanLipi.ttf' },
+    { family: 'Kalpurush', file: 'Kalpurush.ttf' },
+    { family: 'Noto Sans Bengali', file: 'NotoSansBengali-Regular.ttf', weight: 400 },
+    { family: 'Noto Sans Bengali', file: 'NotoSansBengali-Bold.ttf', weight: 700 },
+    { family: 'Inter', file: 'Inter-400.woff2', weight: 400 },
+    { family: 'Inter', file: 'Inter-700.woff2', weight: 700 },
+    { family: 'Arial', file: 'Arial-Regular.ttf', weight: 400 },
+    { family: 'Arial', file: 'Arial-Bold.ttf', weight: 700 },
+    { family: 'Arial', file: 'Arial-Italic.ttf', weight: 400, style: 'italic' },
+    { family: 'Arial', file: 'Arial-BoldItalic.ttf', weight: 700, style: 'italic' },
+    { family: 'Times New Roman', file: 'TimesNewRoman-Regular.ttf', weight: 400 },
+    { family: 'Times New Roman', file: 'LiberationSerif-Bold.ttf', weight: 700 },
+    { family: 'Calibri', file: 'Carlito-400.woff2', weight: 400 },
+    { family: 'Calibri', file: 'Carlito-700.woff2', weight: 700 },
+];
+const extraFontCss = new Map();
+const getExtraFontCss = (font) => {
+    if (!extraFontCss.has(font.file)) {
+        const fontPath = path.join(__dirname, 'fonts', font.file);
+        let css = '';
+        if (fs.existsSync(fontPath)) {
+            const woff2 = font.file.endsWith('.woff2');
+            const b64 = fs.readFileSync(fontPath).toString('base64');
+            css = `@font-face { font-family: '${font.family}'; ${font.weight ? `font-weight: ${font.weight}; ` : ''}${font.style ? `font-style: ${font.style}; ` : ''}src: url(data:font/${woff2 ? 'woff2' : 'ttf'};base64,${b64}) format('${woff2 ? 'woff2' : 'truetype'}'); }`;
+        }
+        extraFontCss.set(font.file, css);
+    }
+    return extraFontCss.get(font.file);
 };
-const EXTRA_FONT_FACES = getExtraFontFaces();
+// Embeds only the fonts the document actually names, so a PDF that doesn't use
+// them doesn't carry their data.
+const injectExtraFonts = (html) => {
+    const lower = html.toLowerCase();
+    const css = EXTRA_FONTS
+        .filter((f) => lower.includes(f.family.toLowerCase()))
+        .map(getExtraFontCss)
+        .join('\n');
+    if (!css) return html;
+    return html.includes('</head>')
+        ? html.replace('</head>', () => `<style>${css}</style></head>`)
+        : `<style>${css}</style>${html}`;
+};
 
 const getSignatureImageBase64 = async (imageKey) => {
     if (!imageKey) return null;
@@ -576,7 +615,7 @@ const renderPdf = async (html, layout) => {
             }
         });
 
-        await page.setContent(html, { waitUntil: 'load' });
+        await page.setContent(injectExtraFonts(html), { waitUntil: 'load' });
         // Ensure the embedded Bangla font is fully loaded before rendering so
         // the output stays identical to the previous networkidle0 behaviour.
         await page.evaluate(() => document.fonts.ready.then(() => true));
@@ -615,7 +654,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v81';
+const PDF_TEMPLATE_VERSION = 'v83';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -874,7 +913,6 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
 
         const fontBase64 = FONT_BASE64;
         const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
-    const fontFaceAll = fontFace + EXTRA_FONT_FACES;
 
         const getSuffix = (item) => {
             const office = normalize(item.office || '');
@@ -1021,7 +1059,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
         <html>
         <head>
             <style>
-                ${fontFaceAll}
+                ${fontFace}
                 body {
                     font-family: 'PrimaryFont', sans-serif;
                     font-size: 14px;
@@ -1681,7 +1719,6 @@ const buildSingleResolutionHtml = async (meetingId, agendaId) => {
 
     const fontBase64 = FONT_BASE64;
     const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
-    const fontFaceAll = fontFace + EXTRA_FONT_FACES;
     const contentHtml = styleRichTextHtml(convertMarkdownTablesToHtml(ag.content || ''), false);
     const resolutionHtml = styleRichTextHtml(convertMarkdownTablesToHtml(stripResolutionPrefix(ag.resolution || '')), false);
 
@@ -1689,7 +1726,7 @@ const buildSingleResolutionHtml = async (meetingId, agendaId) => {
         <html>
         <head>
             <style>
-                ${fontFaceAll}
+                ${fontFace}
                 body { font-family: 'PrimaryFont', sans-serif; font-size: 14px; line-height: 1.6; margin: 0; padding: 0; }
                 p { margin: 0 0 10px 0; }
             </style>
@@ -1824,7 +1861,6 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
 
         const fontBase64 = FONT_BASE64;
         const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
-    const fontFaceAll = fontFace + EXTRA_FONT_FACES;
 
         const formatMeetingSerial = (rawTitle) => {
             if (!rawTitle) return '';
@@ -1903,7 +1939,7 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
         <html>
         <head>
             <style>
-                ${fontFaceAll}
+                ${fontFace}
                 body {
                     font-family: 'PrimaryFont', sans-serif;
                     font-size: 14px;
@@ -2088,14 +2124,13 @@ const generateNoticePdf = async (notice, presentees) => {
 
     const fontBase64 = FONT_BASE64;
     const fontFace = fontBase64 ? `@font-face { font-family: 'PrimaryFont'; src: url(${fontBase64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }` : '';
-    const fontFaceAll = fontFace + EXTRA_FONT_FACES;
 
     let html = `
     <!DOCTYPE html>
     <html>
     <head>
         <style>
-            ${fontFaceAll}
+            ${fontFace}
             body {
                 font-family: 'PrimaryFont', sans-serif;
                 font-size: 14px;

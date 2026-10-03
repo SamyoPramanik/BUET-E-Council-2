@@ -1,5 +1,5 @@
 const { injectInlinePrefix } = require('./inlinePrefix');
-const { toPdfLayout } = require('./pageLayout');
+const { toPdfLayout, cleanDocFont } = require('./pageLayout');
 const HTMLtoDOCX = require('html-to-docx');
 const puppeteer = require('puppeteer-core');
 const fs = require('fs');
@@ -32,9 +32,8 @@ const FONT_BASE64 = getFontBase64();
 
 // Fonts the editor's font dropdown offers. Each is embedded under the family
 // name the editor writes into the text, so what you pick is what prints.
-// Arial and Times New Roman are the supplied font files; bold Times uses
-// Liberation Serif Bold (metric-compatible, no real bold file was supplied) and
-// Calibri is stood in for by the metric-compatible open font Carlito.
+// Arial, Times New Roman and Calibri are the supplied font files; bold Times
+// uses Liberation Serif Bold (metric-compatible, no real bold file was supplied).
 const EXTRA_FONTS = [
     { family: 'Nikosh', file: 'Nikosh.ttf' },
     { family: 'NikoshBAN', file: 'NikoshBAN.ttf' },
@@ -50,8 +49,10 @@ const EXTRA_FONTS = [
     { family: 'Arial', file: 'Arial-BoldItalic.ttf', weight: 700, style: 'italic' },
     { family: 'Times New Roman', file: 'TimesNewRoman-Regular.ttf', weight: 400 },
     { family: 'Times New Roman', file: 'LiberationSerif-Bold.ttf', weight: 700 },
-    { family: 'Calibri', file: 'Carlito-400.woff2', weight: 400 },
-    { family: 'Calibri', file: 'Carlito-700.woff2', weight: 700 },
+    { family: 'Calibri', file: 'Calibri-Regular.ttf', weight: 400 },
+    { family: 'Calibri', file: 'Calibri-Bold.ttf', weight: 700 },
+    { family: 'Calibri', file: 'Calibri-Italic.ttf', weight: 400, style: 'italic' },
+    { family: 'Calibri', file: 'Calibri-BoldItalic.ttf', weight: 700, style: 'italic' },
 ];
 const extraFontCss = new Map();
 const getExtraFontCss = (font) => {
@@ -546,7 +547,8 @@ const DEFAULT_PDF_LAYOUT = {
     // 'inline'  => body starts with a bold, non-editable "<prefix><n>:" run
     //              (matches the PDF Preview page's 3-column layout).
     agendaNumberStyle: 'heading',
-    separatePages: false
+    separatePages: false,
+    docFont: null       // meeting-wide font replacing the default SonarBangla (see applyDocFont)
 };
 
 const clampNum = (val, min, max, fallback) => {
@@ -584,13 +586,42 @@ const normalizePdfLayout = (raw) => {
         : 'heading';
     const separatePages = raw.separatePages === true || String(raw.separatePages || '').toLowerCase() === 'true' || raw.separatePages === '1' || raw.separatePages === 1;
 
-    const layout = { pageSize, orientation, margin, scale, lineHeight, agendaNumberStyle, separatePages };
+    const docFont = cleanDocFont(raw.docFont);
+
+    const layout = { pageSize, orientation, margin, scale, lineHeight, agendaNumberStyle, separatePages, docFont };
     const isCustom = JSON.stringify(layout) !== JSON.stringify(DEFAULT_PDF_LAYOUT);
     return { layout, isCustom };
 };
 
 const layoutCacheTag = (layout) => 'l' + crypto.createHash('sha1')
     .update(JSON.stringify(layout)).digest('hex').slice(0, 12);
+
+// The meeting's document font replaces the default SonarBangla everywhere the
+// templates use the embedded "PrimaryFont" face: the "প্রস্তাব নং" label, serials,
+// category header, university heading and subtitle, and any text with no font of
+// its own. Text the author gave an explicit font keeps it.
+const DOC_FONT_FILES = {
+    'Nikosh': [{ file: 'Nikosh.ttf' }],
+    'NikoshBAN': [{ file: 'NikoshBAN.ttf' }],
+    'SolaimanLipi': [{ file: 'SolaimanLipi.ttf' }],
+    'Kalpurush': [{ file: 'Kalpurush.ttf' }],
+    'Noto Sans Bengali': [{ file: 'NotoSansBengali-Regular.ttf', weight: 400 }, { file: 'NotoSansBengali-Bold.ttf', weight: 700 }],
+};
+const applyDocFont = (html, docFont) => {
+    const files = docFont && DOC_FONT_FILES[docFont];
+    if (!files) return html;
+    const faces = files.map((f) => {
+        const fontPath = path.join(__dirname, 'fonts', f.file);
+        if (!fs.existsSync(fontPath)) return '';
+        const b64 = fs.readFileSync(fontPath).toString('base64');
+        return `@font-face { font-family: 'PrimaryFont'; ${f.weight ? `font-weight: ${f.weight}; ` : ''}src: url(data:font/ttf;base64,${b64}) format('truetype'); unicode-range: U+0980-09FF, U+200C-200D; }`;
+    }).filter(Boolean);
+    if (!faces.length) return html;
+    // Drop the default PrimaryFont face, then declare the chosen one under the same name.
+    const stripped = html.replace(/@font-face \{ font-family: 'PrimaryFont';[^}]*\}/g, '');
+    const css = `<style>${faces.join('\n')}</style>`;
+    return stripped.includes('</head>') ? stripped.replace('</head>', () => `${css}</head>`) : `${css}${stripped}`;
+};
 
 /**
  * Render an HTML string to a PDF Buffer using the shared browser. Extracted so
@@ -615,7 +646,7 @@ const renderPdf = async (html, layout) => {
             }
         });
 
-        await page.setContent(injectExtraFonts(html), { waitUntil: 'load' });
+        await page.setContent(injectExtraFonts(applyDocFont(html, L.docFont)), { waitUntil: 'load' });
         // Ensure the embedded Bangla font is fully loaded before rendering so
         // the output stays identical to the previous networkidle0 behaviour.
         await page.evaluate(() => document.fonts.ready.then(() => true));
@@ -654,7 +685,7 @@ const renderPdf = async (html, layout) => {
 // existing caches are invalidated.
 // ---------------------------------------------------------------------------
 const CACHE_PREFIX = 'generated-pdfs';
-const PDF_TEMPLATE_VERSION = 'v83';
+const PDF_TEMPLATE_VERSION = 'v85';
 
 const pdfCacheKey = (meetingId, type) => `${CACHE_PREFIX}/${meetingId}/${type}.pdf`;
 
@@ -987,8 +1018,8 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
             items.forEach(item => {
                 html += `<table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border: none; margin-bottom: 4px; font-size: 13px; line-height: 1.4;">
                     <tr>
-                        <td style="width: 75%; text-align: left; vertical-align: top; border: none; font-size: 13px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${getDisplayName(item, isOthers, isLeadership)}</td>
-                        <td style="width: 25%; text-align: right; vertical-align: top; font-weight: bold; border: none; font-size: 13px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${getSuffix(item)}</td>
+                        <td style="width: 75%; text-align: left; vertical-align: top; border: none; font-size: 13px; font-family: 'PrimaryFont', Arial, sans-serif;">${getDisplayName(item, isOthers, isLeadership)}</td>
+                        <td style="width: 25%; text-align: right; vertical-align: top; font-weight: bold; border: none; font-size: 13px; font-family: 'PrimaryFont', Arial, sans-serif;">${getSuffix(item)}</td>
                     </tr>
                 </table>`;
             });
@@ -1044,11 +1075,11 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
 
             return `
             <div class="agenda-block" style="margin-bottom: 30px; page-break-before: auto;">
-                <div class="agenda-title" style="font-weight: bold; margin-bottom: 5px; font-size: 14pt; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${isBibidha ? 'বিবিধ :' : 'প্রস্তাব নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</b></div>
-                <div class="agenda-content" style="text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${styleRichTextHtml(displayContent, false)}</div>
+                <div class="agenda-title" style="font-weight: bold; margin-bottom: 5px; font-size: 14pt; font-family: 'PrimaryFont', Arial, sans-serif;"><b>${isBibidha ? 'বিবিধ :' : 'প্রস্তাব নং ' + (meeting.agenda_prefix ? toBanglaDigits(meeting.agenda_prefix) : '') + toBanglaDigits(ag.agenda_serial)}</b></div>
+                <div class="agenda-content" style="text-align: left; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', Arial, sans-serif;">${styleRichTextHtml(displayContent, false)}</div>
                 ${isResolution ? `
-                <div class="agenda-title" style="margin-top:15px; font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>সিদ্ধান্ত:</b></div>
-                <div class="agenda-resolution" style="text-align: left; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;"><b>${styleRichTextHtml(stripResolutionPrefix(ag.resolution || ''), false)}</b></div>
+                <div class="agenda-title" style="margin-top:15px; font-weight: bold; margin-bottom: 5px; font-size: 14px; font-family: 'PrimaryFont', Arial, sans-serif;"><b>সিদ্ধান্ত:</b></div>
+                <div class="agenda-resolution" style="text-align: left; font-size: 14px; line-height: 1.6; font-weight: bold; margin-bottom: 12px; font-family: 'PrimaryFont', Arial, sans-serif;"><b>${styleRichTextHtml(stripResolutionPrefix(ag.resolution || ''), false)}</b></div>
                 ` : ''}
             </div>
             `;
@@ -1061,7 +1092,7 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
             <style>
                 ${fontFace}
                 body {
-                    font-family: 'PrimaryFont', sans-serif;
+                    font-family: 'PrimaryFont', Arial, sans-serif;
                     font-size: 14px;
                     line-height: 1.5;
                     margin: 0;
@@ -1538,14 +1569,14 @@ const buildMeetingHtml = async (meetingId, isResolution, cacheVariant, layout, l
                         <div class="signature-space" style="height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 10px; text-align: center;">
                             ${presidentSignatureBase64 ? `<img src="${presidentSignatureBase64}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />` : ''}
                         </div>
-                        <div class="signature-text" style="font-size: 13px; line-height: 1.5; font-weight: bold; text-align: center; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${(presidentSignature || '').replace(/\n/g, '<br/>')}</div>
+                        <div class="signature-text" style="font-size: 13px; line-height: 1.5; font-weight: bold; text-align: center; font-family: 'PrimaryFont', Arial, sans-serif;">${(presidentSignature || '').replace(/\n/g, '<br/>')}</div>
                     </td>
                     <td style="width: 10%; border: none;"></td>
                     <td style="width: 45%; text-align: center; vertical-align: bottom; border: none;">
                         <div class="signature-space" style="height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 10px; text-align: center;">
                             ${secretarySignatureBase64 ? `<img src="${secretarySignatureBase64}" style="max-height: 55px; max-width: 150px; object-fit: contain;" />` : ''}
                         </div>
-                        <div class="signature-text" style="font-size: 13px; line-height: 1.5; font-weight: bold; text-align: center; font-family: 'PrimaryFont', 'Kalpurush', sans-serif;">${(secretarySignature || '').replace(/\n/g, '<br/>')}</div>
+                        <div class="signature-text" style="font-size: 13px; line-height: 1.5; font-weight: bold; text-align: center; font-family: 'PrimaryFont', Arial, sans-serif;">${(secretarySignature || '').replace(/\n/g, '<br/>')}</div>
                     </td>
                 </tr>
             </table>
@@ -1727,16 +1758,16 @@ const buildSingleResolutionHtml = async (meetingId, agendaId) => {
         <head>
             <style>
                 ${fontFace}
-                body { font-family: 'PrimaryFont', sans-serif; font-size: 14px; line-height: 1.6; margin: 0; padding: 0; }
+                body { font-family: 'PrimaryFont', Arial, sans-serif; font-size: 14px; line-height: 1.6; margin: 0; padding: 0; }
                 p { margin: 0 0 10px 0; }
             </style>
         </head>
         <body>
-            <div style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 20px; font-family: 'PrimaryFont', sans-serif;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়,ঢাকা</div>
-            <div style="font-weight: bold; font-size: 14px; margin-bottom: 8px; font-family: 'PrimaryFont', sans-serif;">${titleStr}</div>
-            <div style="text-align: justify; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', sans-serif;">${contentHtml}</div>
-            <div style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 8px; font-family: 'PrimaryFont', sans-serif;">সিদ্ধান্ত:</div>
-            <div style="text-align: justify; font-size: 14px; line-height: 1.6; font-weight: bold; font-family: 'PrimaryFont', sans-serif;">${resolutionHtml}</div>
+            <div style="text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 20px; font-family: 'PrimaryFont', Arial, sans-serif;">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়,ঢাকা</div>
+            <div style="font-weight: bold; font-size: 14px; margin-bottom: 8px; font-family: 'PrimaryFont', Arial, sans-serif;">${titleStr}</div>
+            <div style="text-align: justify; font-size: 14px; line-height: 1.6; margin-bottom: 12px; font-family: 'PrimaryFont', Arial, sans-serif;">${contentHtml}</div>
+            <div style="font-weight: bold; font-size: 14px; margin-top: 15px; margin-bottom: 8px; font-family: 'PrimaryFont', Arial, sans-serif;">সিদ্ধান্ত:</div>
+            <div style="text-align: justify; font-size: 14px; line-height: 1.6; font-weight: bold; font-family: 'PrimaryFont', Arial, sans-serif;">${resolutionHtml}</div>
         </body>
         </html>`;
 };
@@ -1941,7 +1972,7 @@ const buildAttendanceHtml = async (meetingId, groupFilter = null) => {
             <style>
                 ${fontFace}
                 body {
-                    font-family: 'PrimaryFont', sans-serif;
+                    font-family: 'PrimaryFont', Arial, sans-serif;
                     font-size: 14px;
                     line-height: 1.5;
                     margin: 0;
@@ -2132,7 +2163,7 @@ const generateNoticePdf = async (notice, presentees) => {
         <style>
             ${fontFace}
             body {
-                font-family: 'PrimaryFont', sans-serif;
+                font-family: 'PrimaryFont', Arial, sans-serif;
                 font-size: 14px;
                 line-height: 1.6;
                 margin: 0;
@@ -2355,6 +2386,8 @@ function renderNoticeMembers(presentees) {
 module.exports = {
     // Exposed for meeting_service/scripts/tableFidelityAudit (dev tooling).
     styleRichTextHtml,
+    normalizePdfLayout,
+    applyDocFont,
     renderPdf,
     generatePdf,
     generateMeetingDocx,

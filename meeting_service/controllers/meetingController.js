@@ -1459,7 +1459,7 @@ const generatePdf = async (req, res, next) => {
         // leave generation on its historical A4 / 20mm defaults. All values are
         // validated & clamped inside pdfGenerator.normalizePdfLayout().
         const q = req.query;
-        const hasLayout = ['pageSize', 'orientation', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'scale', 'lineHeight', 'agendaNumberStyle', 'separatePages']
+        const hasLayout = ['pageSize', 'orientation', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft', 'scale', 'lineHeight', 'agendaNumberStyle', 'separatePages', 'docFont']
             .some((k) => q[k] !== undefined && q[k] !== '');
         const layout = hasLayout ? {
             pageSize: q.pageSize,
@@ -1468,7 +1468,8 @@ const generatePdf = async (req, res, next) => {
             scale: q.scale,
             lineHeight: q.lineHeight,
             agendaNumberStyle: q.agendaNumberStyle,
-            separatePages: q.separatePages === 'true' || q.separatePages === true || q.separatePages === '1' || q.separatePages === 1
+            separatePages: q.separatePages === 'true' || q.separatePages === true || q.separatePages === '1' || q.separatePages === 1,
+            docFont: q.docFont
         } : undefined;
 
         const meetingCheck = await db.query('SELECT id, status, type FROM meetings WHERE id = $1', [id]);

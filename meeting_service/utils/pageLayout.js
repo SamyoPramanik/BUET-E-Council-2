@@ -3,7 +3,12 @@
 // can print on exactly the page the author was writing on.
 
 const PAGE_SIZES = ['A4', 'Letter', 'Legal', 'A3', 'A5', 'Tabloid'];
+// Bangla-capable fonts a meeting can use as its document font (labels, headings,
+// serials and any text with no font of its own). null = the default SonarBangla.
+const DOC_FONTS = ['Nikosh', 'NikoshBAN', 'SolaimanLipi', 'Kalpurush', 'Noto Sans Bengali'];
 const MARGIN_PRESETS = ['normal', 'narrow', 'moderate', 'wide', 'custom'];
+
+const cleanDocFont = (value) => DOC_FONTS.find((f) => f.toLowerCase() === String(value || '').trim().toLowerCase()) || null;
 
 const clampMm = (value, fallback) => {
     const n = Number(value);
@@ -28,6 +33,7 @@ const sanitizePageLayout = (raw) => {
             left: clampMm(m.left, 25.4),
         },
         marginPreset: MARGIN_PRESETS.includes(raw.marginPreset) ? raw.marginPreset : 'custom',
+        docFont: cleanDocFont(raw.docFont),
     };
 };
 
@@ -35,7 +41,7 @@ const sanitizePageLayout = (raw) => {
 const toPdfLayout = (saved) => {
     const layout = sanitizePageLayout(saved);
     if (!layout) return undefined;
-    return { pageSize: layout.size, orientation: layout.orientation, margin: { ...layout.margins } };
+    return { pageSize: layout.size, orientation: layout.orientation, margin: { ...layout.margins }, docFont: layout.docFont };
 };
 
-module.exports = { sanitizePageLayout, toPdfLayout, PAGE_SIZES };
+module.exports = { sanitizePageLayout, toPdfLayout, cleanDocFont, PAGE_SIZES, DOC_FONTS };

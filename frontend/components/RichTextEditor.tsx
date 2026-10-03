@@ -1646,7 +1646,21 @@ export interface PageSettings {
   pageColor: string;
   border: { enabled: boolean; style: 'solid' | 'double' | 'dashed' | 'dotted'; width: number; color: string };
   watermark: { enabled: boolean; text: string; color: string; opacity: number };
+  // The meeting's document font ('' = the default SonarBangla): the "প্রস্তাব নং" label,
+  // serials, headings and any text with no font of its own, in the editor and the PDF.
+  docFont: string;
 }
+
+// Bangla-capable fonts only: the label and headings are Bangla text.
+export const DOC_FONT_OPTIONS = [
+  { value: '', label: 'Default (SonarBangla)' },
+  { value: 'Nikosh', label: 'Nikosh' },
+  { value: 'NikoshBAN', label: 'NikoshBAN' },
+  { value: 'SolaimanLipi', label: 'SolaimanLipi' },
+  { value: 'Kalpurush', label: 'Kalpurush' },
+  { value: 'Noto Sans Bengali', label: 'Noto Sans Bengali' },
+];
+export const docFontCssValue = (docFont: string) => (docFont ? `'${docFont}'` : undefined);
 
 export const DEFAULT_PAGE_SETTINGS: PageSettings = {
   // Defaults: Legal page, 25.4 mm (1 inch) margins on every side. The PDF and the
@@ -1658,6 +1672,7 @@ export const DEFAULT_PAGE_SETTINGS: PageSettings = {
   pageColor: '',
   border: { enabled: false, style: 'solid', width: 1, color: '#800000' },
   watermark: { enabled: false, text: 'CONFIDENTIAL', color: '#94a3b8', opacity: 0.25 },
+  docFont: '',
 };
 
 // The page setup shared by every editor on a meeting page. It is saved with the
@@ -3807,6 +3822,15 @@ const MenuBar = ({
                     ))}
                   </LayoutPopover>
                 </div>
+                {/* Document font */}
+                <div className="w-40" title="Font for the meeting's label, serials, headings and unstyled text — in the editor and the PDF">
+                  <CustomSelect
+                    placeholder="Document font"
+                    value={pageSettings.docFont || ''}
+                    onChange={(val) => setPageSettings(prev => ({ ...prev, docFont: val }))}
+                    options={DOC_FONT_OPTIONS}
+                  />
+                </div>
               </div>
               <span className="text-[9px] font-bold text-muted-foreground/80 tracking-wider uppercase mt-auto">Page Setup</span>
             </div>
@@ -5864,6 +5888,7 @@ export default function RichTextEditor({
               : "w-full min-h-full h-auto bg-card p-6 rounded-xl flex flex-col transition-all overflow-x-auto"
           }
           style={viewMode === 'pageView' ? {
+            ...(pageSettings.docFont ? ({ '--doc-font': docFontCssValue(pageSettings.docFont) } as React.CSSProperties) : {}),
             width: `${pageWidthMm}mm`,
             minHeight: `${pageHeightMm}mm`,
             paddingTop: `${pageSettings.margins.top}mm`,

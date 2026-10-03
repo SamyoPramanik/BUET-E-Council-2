@@ -5,7 +5,7 @@ const { sanitizePageLayout, toPdfLayout } = require('./pageLayout');
 
 test('keeps a valid layout and drops unknown fields', () => {
     const out = sanitizePageLayout({ size: 'Legal', orientation: 'landscape', margins: { top: 10, right: 12.7, bottom: 10, left: 12.7 }, marginPreset: 'narrow', junk: 1 });
-    assert.deepEqual(out, { size: 'Legal', orientation: 'landscape', margins: { top: 10, right: 12.7, bottom: 10, left: 12.7 }, marginPreset: 'narrow' });
+    assert.deepEqual(out, { size: 'Legal', orientation: 'landscape', margins: { top: 10, right: 12.7, bottom: 10, left: 12.7 }, marginPreset: 'narrow', docFont: null });
 });
 
 test('size is matched case-insensitively; unknown size or non-object is rejected', () => {
@@ -29,7 +29,15 @@ test('orientation defaults to portrait; unknown preset becomes custom', () => {
 test('toPdfLayout maps to the shape normalizePdfLayout takes', () => {
     assert.deepEqual(
         toPdfLayout({ size: 'Legal', orientation: 'portrait', margins: { top: 20, right: 20, bottom: 20, left: 20 } }),
-        { pageSize: 'Legal', orientation: 'portrait', margin: { top: 20, right: 20, bottom: 20, left: 20 } }
+        { pageSize: 'Legal', orientation: 'portrait', margin: { top: 20, right: 20, bottom: 20, left: 20 }, docFont: null }
     );
     assert.equal(toPdfLayout(null), undefined);
+});
+
+test('docFont accepts the Bangla document fonts case-insensitively; anything else is cleared', () => {
+    assert.equal(sanitizePageLayout({ size: 'A4', docFont: 'nikosh' }).docFont, 'Nikosh');
+    assert.equal(sanitizePageLayout({ size: 'A4', docFont: 'Noto Sans Bengali' }).docFont, 'Noto Sans Bengali');
+    assert.equal(sanitizePageLayout({ size: 'A4', docFont: 'Arial' }).docFont, null); // no Bangla glyphs
+    assert.equal(sanitizePageLayout({ size: 'A4', docFont: "x'; } body{display:none" }).docFont, null);
+    assert.equal(toPdfLayout({ size: 'A4', docFont: 'SolaimanLipi' }).docFont, 'SolaimanLipi');
 });

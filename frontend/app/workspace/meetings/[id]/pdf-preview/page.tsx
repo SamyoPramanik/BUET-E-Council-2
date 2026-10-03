@@ -29,7 +29,7 @@ import {
 } from "../../../../../lib/meetingAccess";
 import { toBanglaDigits, getSerialWidth } from "../../../../../lib/banglaNumerals";
 import { sanitizeHtml } from "../../../../../lib/sanitize";
-import RichTextEditor, { DEFAULT_PAGE_SETTINGS, MeetingPageLayoutContext, type PageSettings } from "../../../../../components/RichTextEditor";
+import RichTextEditor, { DEFAULT_PAGE_SETTINGS, DOC_FONT_OPTIONS, MeetingPageLayoutContext, type PageSettings } from "../../../../../components/RichTextEditor";
 
 type DocType = "agenda" | "suppli-agenda" | "resolution" | "resolution-status";
 // id "meeting" is the sentinel for the meeting-level description / conclusion cells.
@@ -128,6 +128,7 @@ export default function PdfPreviewPage() {
   const [scalePct, setScalePct] = useState(100);
   const [lineHeight, setLineHeight] = useState<number | "">("");
   const [separatePages, setSeparatePages] = useState(false);
+  const [docFont, setDocFont] = useState("");
 
   // Start from the page the author set up in the editor's Page Layout tab (saved
   // with the meeting), so the preview and the PDF match the editor. The controls
@@ -138,6 +139,7 @@ export default function PdfPreviewPage() {
     if (!saved || savedLayoutApplied.current) return;
     savedLayoutApplied.current = true;
     if (typeof saved.size === "string") setPageSize(saved.size);
+    if (typeof saved.docFont === "string") setDocFont(saved.docFont);
     if (saved.orientation === "landscape" || saved.orientation === "portrait") setOrientation(saved.orientation);
     if (saved.margins) {
       setMargins({
@@ -158,7 +160,7 @@ export default function PdfPreviewPage() {
     setSavingLayout(true);
     try {
       await api.put(`/meetings/${id}/page-layout`, {
-        page_layout: { size: pageSize, orientation, margins, marginPreset: "custom" },
+        page_layout: { size: pageSize, orientation, margins, marginPreset: "custom", docFont: docFont || null },
       });
       await mutateMeeting();
       toast.success("Saved as the meeting's page layout");
@@ -173,16 +175,17 @@ export default function PdfPreviewPage() {
   // margins) — live, whether or not it has been saved on the meeting. Changing the
   // page from inside that editor updates these same controls.
   const editorLayout = useMemo(() => ({
-    settings: { ...DEFAULT_PAGE_SETTINGS, size: pageSize as PageSettings["size"], orientation, margins, marginPreset: "custom" as const },
+    settings: { ...DEFAULT_PAGE_SETTINGS, size: pageSize as PageSettings["size"], orientation, margins, marginPreset: "custom" as const, docFont },
     setSettings: ((action: React.SetStateAction<PageSettings>) => {
       const next = typeof action === "function"
-        ? (action as (p: PageSettings) => PageSettings)({ ...DEFAULT_PAGE_SETTINGS, size: pageSize as PageSettings["size"], orientation, margins, marginPreset: "custom" })
+        ? (action as (p: PageSettings) => PageSettings)({ ...DEFAULT_PAGE_SETTINGS, size: pageSize as PageSettings["size"], orientation, margins, marginPreset: "custom", docFont })
         : action;
       setPageSize(next.size);
       setOrientation(next.orientation);
       setMargins(next.margins);
+      setDocFont(next.docFont || "");
     }) as React.Dispatch<React.SetStateAction<PageSettings>>,
-  }), [pageSize, orientation, margins]);
+  }), [pageSize, orientation, margins, docFont]);
 
   const layoutQuery = useMemo(() => {
     const qs = new URLSearchParams({
@@ -198,9 +201,10 @@ export default function PdfPreviewPage() {
       agendaNumberStyle: "inline",
     });
     if (lineHeight !== "") qs.set("lineHeight", String(lineHeight));
+    if (docFont) qs.set("docFont", docFont);
     if (docType === "resolution" && separatePages) qs.set("separatePages", "true");
     return qs.toString();
-  }, [pageSize, orientation, margins, scalePct, lineHeight, docType, separatePages]);
+  }, [pageSize, orientation, margins, scalePct, lineHeight, docType, separatePages, docFont]);
 
   // Render the actual PDF for the "pdf" preview mode. Debounced so dragging the
   // layout sliders doesn't fire a request per keystroke.
@@ -792,6 +796,20 @@ export default function PdfPreviewPage() {
             />
           </label>
 
+          <label className="flex items-center gap-1.5">
+            <span className="text-muted-foreground">Document&nbsp;font</span>
+            <select
+              value={docFont}
+              onChange={(e) => setDocFont(e.target.value)}
+              title="Font for the label, serials, headings and unstyled text"
+              className="bg-input/20 border border-input rounded px-1.5 py-1"
+            >
+              {DOC_FONT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+
           {user && user.role !== "viewer" && (
             <button
               type="button"
@@ -874,7 +892,7 @@ export default function PdfPreviewPage() {
               // wraps where the editor and the PDF do, instead of falling back to
               // whatever "Kalpurush" font happens to be installed on the viewer's
               // own machine.
-              fontFamily: "'PrimaryFont', Arial, Helvetica, sans-serif",
+              fontFamily: `${docFont ? `'${docFont}', ` : ""}'PrimaryFont', Arial, Helvetica, sans-serif`,
             }}
           >
             {/* Document title block — computed identically to the generated PDF. */}

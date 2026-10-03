@@ -6,7 +6,7 @@ import api from "../../lib/api";
 import { DEFAULT_PAGE_SETTINGS, MeetingPageLayoutContext, type PageMargins, type PageSettings } from "../RichTextEditor";
 
 // What the meeting API returns in `page_layout` (null when never set).
-type SavedPageLayout = (Partial<Pick<PageSettings, "size" | "orientation" | "marginPreset">> & { margins?: Partial<PageMargins> }) | null | undefined;
+type SavedPageLayout = (Partial<Pick<PageSettings, "size" | "orientation" | "marginPreset" | "docFont">> & { margins?: Partial<PageMargins> }) | null | undefined;
 
 // Only these are printed by the PDF, so only they are saved with the meeting.
 const pickSaved = (s: PageSettings) => ({
@@ -14,6 +14,7 @@ const pickSaved = (s: PageSettings) => ({
   orientation: s.orientation,
   margins: s.margins,
   marginPreset: s.marginPreset,
+  docFont: s.docFont || null,
 });
 
 const fromSaved = (saved: SavedPageLayout): PageSettings => {
@@ -24,6 +25,7 @@ const fromSaved = (saved: SavedPageLayout): PageSettings => {
     orientation: saved.orientation === "landscape" ? "landscape" : "portrait",
     margins: { ...DEFAULT_PAGE_SETTINGS.margins, ...(saved.margins || {}) },
     marginPreset: saved.marginPreset || "custom",
+    docFont: typeof saved.docFont === "string" ? saved.docFont : "",
   };
 };
 

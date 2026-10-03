@@ -3,6 +3,7 @@
  * Powered by the official `bijoy2unicode` library (behind bijoy2unicode.com).
  */
 
+import { ENGLISH_WORDS } from "./englishWords.ts";
 import {
   convertBijoyToUnicode as pkgConvertBijoyToUnicode,
   shouldConvertAsBijoy as pkgShouldConvertAsBijoy,
@@ -200,7 +201,7 @@ const ENGLISH_ALLOWLIST = new Set([
   "with", "from", "that", "this", "than", "then", "them", "they", "will", "shall", "been", "held", "list",
   "plan", "work", "part", "each", "such", "into", "upon", "also", "only", "both", "more", "most", "must",
   "which", "where", "while", "their", "there", "these", "those", "after", "before", "under", "about",
-  "students", "student", "meeting", "council", "syndicate", "academic", "agenda", "resolution", "committee",
+  "supervisor", "supervisors", "supervise", "supervision", "students", "student", "meeting", "council", "syndicate", "academic", "agenda", "resolution", "committee",
   "department", "university", "approved", "decision", "report", "annex", "annexure", "attached", "subject",
   "reference", "notice", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
 ]);
@@ -223,6 +224,9 @@ function isEnglishWord(word: string): boolean {
   if (!/^[A-Za-z]+$/.test(word)) return false;
   if (ENGLISH_DEPT_CODES.has(word)) return true;
   if (ENGLISH_ALLOWLIST.has(word.toLowerCase())) return true;
+  // Fallback: a real English word (lowercase, Capitalised or ALL CAPS) from the
+  // bundled common-word list. Mixed case ("wWbm") is Bijoy, never a word.
+  if (word.length >= 3 && /^(?:[a-z]+|[A-Z][a-z]+|[A-Z]+)$/.test(word) && ENGLISH_WORDS.has(word.toLowerCase())) return true;
   // Acronyms: BUET, CSE, CGPA.
   if (word.length >= 3 && word === word.toUpperCase()) return /[AEIOU]/.test(word);
   if (word.length < 4) return false;
@@ -250,6 +254,9 @@ function convertKeepingEnglish(text: string, convert: (s: string) => string): st
     if (ENGLISH_DEPT_CODES.has(core) || (trail.startsWith(".") && ENGLISH_ABBREVIATIONS_WITH_DOT.has(core.toLowerCase()))) {
       return core + convert(trail);
     }
+    // English possessives / contractions: "committee's", "students'", "don't".
+    const apos = core.match(/^([A-Za-z]{3,})'(?:s|t|re|ll|ve|d)?$/);
+    if (apos && isEnglishWord(apos[1])) return core + convert(trail);
     // "Thesis-G": Bijoy "G" is the suffix "এ" attached to an English word.
     const suffixed = core.match(/^([A-Za-z]{4,})-G$/);
     if (suffixed && isEnglishWord(suffixed[1])) {

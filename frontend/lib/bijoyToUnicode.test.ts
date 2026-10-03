@@ -96,3 +96,11 @@ test('the ascii font slot alone also marks a run as English', () => {
 test('a run set in SutonnyMJ is Bijoy', () => {
   assert.equal(inheritedFontIsBijoy(fakeEl('font-family:SutonnyMJ'), 'Zvi'), true);
 });
+
+for (const w of ['Transcript', 'Grant', 'Supervisor', 'Leave', 'Study', 'Fee', 'these', 'those', 'should', 'because', 'Examination', "Committee's", "students'", "don't"]) {
+  test(`dictionary keeps English word "${w}" inside Bijoy text`, () =>
+    assert.ok(convertBijoyToUnicode(`Avgvi ${w} †Kv‡b`).includes(w)));
+}
+for (const b of ['Avi', 'eve', 'Kvi', 'Zvi', 'Ges', 'Gi', 'mn', 'me', 'Kg', 'bv', 'Rb', 'KvR']) {
+  test(`dictionary does not swallow Bijoy word "${b}"`, () => assert.notEqual(convertBijoyToUnicode(b), b));
+}

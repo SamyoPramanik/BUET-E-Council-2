@@ -5719,6 +5719,8 @@ export default function RichTextEditor({
       CharacterCount,
       Link.configure({
         openOnClick: false,
+        // Typing "M.Sc." or "abc.bd" must stay plain text; links are added only via the Hyperlink button / Ctrl+K.
+        autolink: false,
         HTMLAttributes: {
           class: 'text-primary underline cursor-pointer',
         },

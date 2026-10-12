@@ -9,6 +9,7 @@ import { toBanglaDigits, getSerialWidth } from "../../../lib/banglaNumerals";
 import Header from "../../../components/Header";
 import RichContentView from "../../../components/meetings/RichContentView";
 import MeetingPageLayoutProvider from "../../../components/meetings/MeetingPageLayoutProvider";
+import { buildMeetingHeading } from "../../../lib/meetingHeading";
 import { MeetingSkeleton } from "../../../components/Skeleton";
 
 // Component to render a single agenda and its annexures
@@ -273,6 +274,19 @@ function PublicMeetingContent() {
 
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* Document heading, same as the generated PDF. */}
+          {(() => {
+            const heading = buildMeetingHeading(
+              meeting,
+              isPast ? 'resolution' : activeAgendaTab === 'suppli' ? 'suppli-agenda' : 'agenda',
+            );
+            return (
+              <div className="text-center font-bold mb-6 leading-snug">
+                <h2 className="text-[22pt] mb-2.5">বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়, ঢাকা</h2>
+                <h3 className="underline text-[18pt] whitespace-pre-line">{heading.subtitle}</h3>
+              </div>
+            );
+          })()}
           <div className="border-b border-border pb-6 mb-6">
             <h1 className="text-3xl font-bold mb-2">
               {meeting.meeting_title || `${meeting.title} ${meeting.type === 'academic' ? 'Academic' : 'Syndicate'} Meeting`}

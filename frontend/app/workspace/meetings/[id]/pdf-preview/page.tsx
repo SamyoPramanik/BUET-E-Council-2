@@ -1,5 +1,6 @@
 "use client";
 
+import { buildMeetingHeading } from "../../../../../lib/meetingHeading";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -322,65 +323,8 @@ export default function PdfPreviewPage() {
     return map;
   })();
 
-  const docLabel =
-    docType === "resolution"
-      ? "কার্যবিবরণী"
-      : docType === "resolution-status"
-        ? "সিদ্ধান্ত বাস্তবায়ন অবস্থা"
-        : docType === "suppli-agenda"
-          ? "সম্পূরক আলোচ্যসূচি"
-          : "আলোচ্যসূচী";
-
-  // Heading block, computed exactly like meeting_service/utils/pdfGenerator.js
-  // (buildMeetingHtml) so the "edit" view matches the generated PDF.
-  const heading = (() => {
-    const formatMeetingSerial = (rawTitle: string) =>
-      !rawTitle
-        ? ""
-        : toBanglaDigits(
-            String(rawTitle)
-              .trim()
-              .replace(/^(meeting\s*|councel\s*|council\s*)/i, "")
-              .replace(/^(\d+)(st|nd|rd|th)$/i, "$1")
-              .trim(),
-          );
-
-    const d = meeting?.meeting_date ? new Date(meeting.meeting_date) : null;
-    const dateShort = d
-      ? `${toBanglaDigits(d.getDate(), 2)}-${toBanglaDigits(String(d.getMonth() + 1).padStart(2, "0"), 2)}-${toBanglaDigits(d.getFullYear())}`
-      : "";
-    const meetingDate = d
-      ? toBanglaDigits(d.toLocaleDateString("bn-BD", { year: "numeric", month: "long", day: "numeric" }))
-      : "";
-    const serialNo = formatMeetingSerial(meeting?.title || "Untitled");
-    const serialNoDigits = serialNo.replace(/[^\d০-৯]/g, "");
-    const formattedSerial = serialNoDigits ? toBanglaDigits(serialNoDigits, 2) : toBanglaDigits(serialNo, 2);
-    const meetingSerialLabel =
-      serialNo.includes("সভা") || serialNo.includes("কাউন্সিল") ? serialNo : `${serialNo}তম সভার`;
-    const typeStr = (meeting?.type || "").toLowerCase();
-    const isSyndicate = typeStr === "syndicate" || typeStr.includes("syndicate");
-    const councilLabel = isSyndicate ? "সিন্ডিকেটের" : "একাডেমিক কাউন্সিলের";
-    // Every heading names the council; skip it only if a custom title already does.
-    const meetingCouncilLabel = /কাউন্সিল|সিন্ডিকেট/.test(meetingSerialLabel) ? meetingSerialLabel : `${councilLabel} ${meetingSerialLabel}`;
-    const dateVerb = docType === "resolution" || docType === "resolution-status" ? "অনুষ্ঠিত" : "অনুষ্ঠিতব্য";
-
-    if (docType === "suppli-agenda") {
-      return {
-        university: true,
-        subtitle: `${meetingDate} তারিখে অনুষ্ঠিতব্য ${councilLabel}\n${serialNo}তম সভার সাপ্লিমেন্টারী আলোচ্যসূচী।`,
-      };
-    }
-    if (isEmergency) {
-      return {
-        university: true,
-        subtitle: `${dateShort} তারিখে অনুষ্ঠিতব্য ${councilLabel}\n${formattedSerial}তম জরুরী (Immediate) সভার ${docLabel}`,
-      };
-    }
-    return {
-      university: true,
-      subtitle: `${meetingDate} তারিখে ${dateVerb} ${meetingCouncilLabel.replace(/^(.*?(?:সিন্ডিকেটের|কাউন্সিলের))\s+/, "$1\n")} ${docLabel}`,
-    };
-  })();
+  // Heading block, computed exactly like the generated PDF (lib/meetingHeading.ts).
+  const heading = buildMeetingHeading(meeting, docType);
 
   // ---- Actions -----------------------------------------------------
   const startEdit = (ag: any, field: EditField) => {

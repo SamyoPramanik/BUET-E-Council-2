@@ -1,5 +1,6 @@
 "use client";
 
+import DocumentHeading from "./DocumentHeading";
 import { useState, useEffect, useRef } from "react";
 import { Edit3, Plus, FileText, GripVertical, Trash2, Tag, FolderTree, Layers, Archive, Loader2, ChevronUp, ChevronDown, ArrowLeftRight, PanelRightClose, PanelRightOpen } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
@@ -704,6 +705,7 @@ export default function AgendaView({ meeting, type }: { meeting: any, type: stri
     <div className="flex items-start gap-8 w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
       <ConfirmModal />
       <div className={`flex-1 ${reorderSequence.length > 0 && !panelHidden ? 'w-[70%] max-w-4xl' : 'w-full max-w-5xl'} pb-32`}>
+        <DocumentHeading meeting={meeting} docType={type === 'suppli-agenda' ? 'suppli-agenda' : 'agenda'} />
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">{title}</h2>
           {meeting.status === 'draft' && userCanArchive && (

@@ -1,5 +1,6 @@
 "use client";
 
+import DocumentHeading from "./DocumentHeading";
 import { useState, useEffect } from "react";
 import { Edit3, FileText, FileCheck, Plus, Trash2, Eye, Download, X, Loader2, Sparkles } from "lucide-react";
 import RichTextEditor from "../RichTextEditor";
@@ -455,6 +456,7 @@ export default function ResolutionView({ meeting }: { meeting: any }) {
   return (
     <div className="max-w-4xl pb-32 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <ConfirmModal />
+      <DocumentHeading meeting={meeting} docType="resolution" />
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Resolutions</h2>
       </div>

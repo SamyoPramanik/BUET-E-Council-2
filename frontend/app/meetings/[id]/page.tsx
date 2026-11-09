@@ -276,9 +276,6 @@ function PublicMeetingContent() {
         <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <DocumentHeading meeting={meeting} docType={isPast ? 'resolution' : activeAgendaTab === 'suppli' ? 'suppli-agenda' : 'agenda'} />
           <div className="border-b border-border pb-6 mb-6">
-            <h1 className="text-3xl font-bold mb-2">
-              {meeting.meeting_title || `${meeting.title} ${meeting.type === 'academic' ? 'Academic' : 'Syndicate'} Meeting`}
-            </h1>
             <div className="flex gap-4 text-sm text-muted-foreground">
               <span className="bg-muted px-2 py-1 rounded-md capitalize">{meeting.type} Meeting</span>
               <span className="bg-muted px-2 py-1 rounded-md capitalize">{meeting.status}</span>
